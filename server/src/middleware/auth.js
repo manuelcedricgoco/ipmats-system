@@ -1,0 +1,47 @@
+/**
+ * Authentication.
+ * Every request gets:
+ *   req.user  – { id, email, role, profile } or null (anonymous)
+ *   req.db    – Supabase client acting AS the caller (RLS enforced) for reads
+ * The JWT is verified by Supabase Auth (getUser), never trusted blindly.
+ */
+import { anonClient, userClient } from '../config/supabase.js';
+import { forbidden, unauthorized } from '../utils/httpError.js';
+
+function bearer(req) {
+  const h = req.headers.authorization || '';
+  const [scheme, token] = h.split(' ');
+  return scheme?.toLowerCase() === 'bearer' && token ? token : null;
+}
+
+export async function authenticate(req, _res, next) {
+  try {
+    req.user = null;
+    req.db = anonClient;
+    const token = bearer(req);
+    if (!token) return next();
+
+    const db = userClient(token);
+    const { data, error } = await db.auth.getUser(token);
+    if (error || !data?.user) throw unauthorized('Session expired or invalid. Please sign in again.');
+
+    const { data: profile, error: pErr } = await db
+      .from('profiles')
+      .select('id, email, full_name, role, agency_id, position, is_active, approval_status, requested_role, requested_at, review_note, avatar_path')
+      .eq('id', data.user.id)
+      .single();
+    if (pErr || !profile) throw unauthorized('No profile found for this account.');
+    if (!profile.is_active) throw forbidden('This account has been deactivated. Contact the System Administrator.');
+
+    req.user = { id: data.user.id, email: data.user.email, role: profile.role, profile };
+    req.db = db;
+    return next();
+  } catch (err) {
+    return next(err);
+  }
+}
+
+export function requireAuth(req, _res, next) {
+  if (!req.user) return next(unauthorized());
+  return next();
+}

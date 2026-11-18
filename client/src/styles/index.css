@@ -1,0 +1,90 @@
+@import '@fontsource/public-sans/400.css';
+@import '@fontsource/public-sans/500.css';
+@import '@fontsource/public-sans/600.css';
+@import '@fontsource/public-sans/700.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+  :focus-visible {
+    outline: 2px solid theme('colors.brand.600');
+    outline-offset: 2px;
+  }
+  /* Smooth hover/focus feedback on every link and button; utilities can still override. */
+  a,
+  button,
+  summary {
+    transition-property: color, background-color, border-color, box-shadow, opacity, transform;
+    transition-duration: 150ms;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  tbody tr {
+    transition: background-color 150ms ease;
+  }
+  ::selection {
+    background: theme('colors.brand.100');
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+/* Calendar (react-day-picker) themed to the DPWH palette */
+.dpwh-calendar .rdp-root {
+  --rdp-accent-color: theme('colors.brand.700');
+  --rdp-accent-background-color: theme('colors.brand.50');
+  --rdp-today-color: theme('colors.accent.600');
+  --rdp-day-height: 38px;
+  --rdp-day-width: 38px;
+  --rdp-day_button-height: 34px;
+  --rdp-day_button-width: 34px;
+  --rdp-day_button-border-radius: 8px;
+  --rdp-selected-border: 0;
+  --rdp-nav-height: 2.5rem;
+  font-size: 0.875rem;
+}
+.dpwh-calendar .rdp-day_button {
+  transition: background-color 120ms ease, color 120ms ease, transform 120ms ease;
+}
+.dpwh-calendar .rdp-day:not(.rdp-disabled):not(.rdp-selected) .rdp-day_button:hover {
+  background-color: theme('colors.brand.50');
+  color: theme('colors.brand.900');
+}
+.dpwh-calendar .rdp-selected .rdp-day_button {
+  background-color: theme('colors.brand.700');
+  color: #fff;
+  font-weight: 600;
+}
+.dpwh-calendar .rdp-today:not(.rdp-selected) .rdp-day_button {
+  font-weight: 700;
+  box-shadow: inset 0 0 0 1px theme('colors.accent.400');
+}
+.dpwh-calendar .rdp-dropdown_root {
+  border-radius: 6px;
+  padding: 2px 4px;
+  transition: background-color 120ms ease;
+}
+.dpwh-calendar .rdp-dropdown_root:hover {
+  background-color: theme('colors.slate.100');
+}
+.dpwh-calendar .rdp-caption_label {
+  font-weight: 600;
+  color: theme('colors.slate.900');
+}
+.dpwh-calendar .rdp-weekday {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: theme('colors.slate.500');
+}
+.dpwh-calendar .rdp-chevron {
+  fill: theme('colors.brand.700');
+}

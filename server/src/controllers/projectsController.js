@@ -1,0 +1,128 @@
+/**
+ * WEEK 1 — Projects API (Julina Mae Escabosa, Back-end)
+ * Register, update, list and view infrastructure projects: identification,
+ * implementing office (agency), contractor, location, budget and duration.
+ * Reads run as the signed-in user (RLS); writes use the service key after the
+ * role check in the route.
+ */
+import { adminClient } from '../config/supabase.js';
+import { badRequest, notFound, unwrap } from '../utils/httpError.js';
+
+const LIST_COLUMNS =
+  'id, project_code, name, project_type, status, approved_budget, contract_amount, notice_to_proceed, duration_days, ' +
+  'target_completion_date, actual_completion_date, municipality_id, municipality_name, barangay_id, barangay_name, ' +
+  'agency_id, agency_name, contractor_id, contractor_name, updated_at';
+
+export function addDays(dateStr, days) {
+  const d = new Date(`${dateStr}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + Number(days || 0));
+  return d.toISOString().slice(0, 10);
+}
+
+function pagination(query, maxSize = 100) {
+  const page = Math.max(1, Number.parseInt(query.page, 10) || 1);
+  const pageSize = Math.min(maxSize, Math.max(1, Number.parseInt(query.pageSize, 10) || 25));
+  return { page, pageSize, from: (page - 1) * pageSize, to: page * pageSize - 1 };
+}
+
+/** Filters shared by the list endpoint. */
+export function applyProjectFilters(query, f) {
+  let q = query;
+  if (f.municipality_id) q = q.eq('municipality_id', f.municipality_id);
+  if (f.barangay_id) q = q.eq('barangay_id', f.barangay_id);
+  if (f.agency_id) q = q.eq('agency_id', f.agency_id);
+  if (f.contractor_id) q = q.eq('contractor_id', f.contractor_id);
+  if (f.status) q = q.eq('status', f.status);
+  if (f.type) q = q.eq('project_type', f.type);
+  if (f.search) {
+    const s = String(f.search).replace(/[%,()]/g, ' ').trim();
+    if (s) q = q.or(`name.ilike.%${s}%,project_code.ilike.%${s}%,contractor_name.ilike.%${s}%`);
+  }
+  return q;
+}
+
+export async function listProjects(req, res) {
+  const { page, pageSize, from, to } = pagination(req.query);
+  const sortable = ['updated_at', 'name', 'project_code', 'approved_budget', 'contract_amount', 'duration_days', 'target_completion_date'];
+  const sort = sortable.includes(req.query.sort) ? req.query.sort : 'updated_at';
+  const ascending = req.query.order === 'asc';
+  let q = req.db.from('v_project_summary').select(LIST_COLUMNS, { count: 'exact' });
+  q = applyProjectFilters(q, req.query).order(sort, { ascending }).range(from, to);
+  const { data, count, error } = await q;
+  unwrap({ data, error });
+  res.json({ data, page, pageSize, total: count ?? 0 });
+}
+
+export async function getProject(req, res) {
+  const project = unwrap(await req.db.from('v_project_summary').select('*').eq('id', req.params.id).maybeSingle());
+  if (!project) throw notFound('Project not found');
+  res.json({ data: project });
+}
+
+/** Dashboard numbers for Week 1 (counts and totals of the projects the user can see). */
+export async function projectStats(req, res) {
+  const rows = unwrap(await req.db.from('v_project_summary').select('status, project_type, approved_budget, contract_amount, agency_id, contractor_id'));
+  const countBy = (k) => rows.reduce((a, r) => ({ ...a, [r[k]]: (a[r[k]] || 0) + 1 }), {});
+  const sum = (k) => rows.reduce((s, r) => s + Number(r[k] || 0), 0);
+  res.json({
+    data: {
+      total_projects: rows.length,
+      by_status: countBy('status'),
+      by_type: countBy('project_type'),
+      total_approved_budget: sum('approved_budget'),
+      total_contract_amount: sum('contract_amount'),
+      contractors_with_projects: new Set(rows.map((r) => r.contractor_id).filter(Boolean)).size,
+      offices_with_projects: new Set(rows.map((r) => r.agency_id)).size,
+    },
+  });
+}
+
+async function assertBarangayInMunicipality(barangayId, municipalityId) {
+  if (!barangayId) return;
+  const b = unwrap(await adminClient.from('barangays').select('municipality_id').eq('id', barangayId).maybeSingle());
+  if (!b || b.municipality_id !== municipalityId) throw badRequest('The selected barangay does not belong to the selected municipality.');
+}
+
+async function getProjectOrThrow(id, columns = '*') {
+  const data = unwrap(await adminClient.from('projects').select(columns).eq('id', id).maybeSingle());
+  if (!data) throw notFound('Project not found');
+  return data;
+}
+
+export async function createProject(req, res) {
+  const body = { ...req.body };
+  await assertBarangayInMunicipality(body.barangay_id, body.municipality_id);
+  if (body.notice_to_proceed && body.duration_days && !body.target_completion_date) {
+    body.target_completion_date = addDays(body.notice_to_proceed, body.duration_days);
+  }
+  const project = unwrap(
+    await adminClient
+      .from('projects')
+      .insert({ ...body, created_by: req.user.id, updated_by: req.user.id })
+      .select('id, project_code')
+      .single(),
+  );
+  res.status(201).json({ data: project });
+}
+
+export async function updateProject(req, res) {
+  const { id } = req.params;
+  const current = await getProjectOrThrow(id, 'id, municipality_id, barangay_id, notice_to_proceed, duration_days');
+  const body = { ...req.body };
+  if (body.barangay_id !== undefined || body.municipality_id !== undefined) {
+    await assertBarangayInMunicipality(body.barangay_id ?? current.barangay_id, body.municipality_id ?? current.municipality_id);
+  }
+  const ntp = body.notice_to_proceed ?? current.notice_to_proceed;
+  const days = body.duration_days ?? current.duration_days;
+  if ((body.notice_to_proceed || body.duration_days) && !body.target_completion_date && ntp && days) {
+    body.target_completion_date = addDays(ntp, days);
+  }
+  unwrap(await adminClient.from('projects').update({ ...body, updated_by: req.user.id }).eq('id', id));
+  res.json({ data: { id } });
+}
+
+export async function deleteProject(req, res) {
+  const project = await getProjectOrThrow(req.params.id, 'id');
+  unwrap(await adminClient.from('projects').delete().eq('id', project.id));
+  res.status(204).end();
+}
