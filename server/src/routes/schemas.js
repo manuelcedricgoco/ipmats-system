@@ -102,3 +102,53 @@ export const userReject = z.object({ note: nullable(text(500)) });
 export const meUpdate = z.object({ full_name: text(120).min(2), position: nullable(text(120)) });
 
 export { opt };
+
+// ---------------------------------------------------------------------------
+// WEEK 2 — phases, progress updates and financial records
+// (shape only; the rules that need the project's data are in services/validationRules.js)
+// ---------------------------------------------------------------------------
+export const phasesReplace = z.object({
+  phases: z
+    .array(
+      z.object({
+        id: z.string().uuid().optional(),
+        sequence_no: z.coerce.number().int().min(1).max(50),
+        name: text(160).min(2),
+        weight: z.coerce.number().positive().max(100),
+        planned_start: nullable(isoDate),
+        planned_end: nullable(isoDate),
+        remarks: nullable(text(1000)),
+      }),
+    )
+    .min(1, 'Add at least one phase')
+    .max(20, 'At most 20 phases'),
+});
+
+export const progressSubmit = z.object({
+  report_date: isoDate,
+  remarks: opt(text(2000)),
+  actual_completion_date: nullable(isoDate),
+  phases: z
+    .array(
+      z.object({
+        phase_id: z.string().uuid(),
+        accomplishment: z.coerce.number().min(0, 'Accomplishment is 0–100%').max(100, 'Accomplishment is 0–100%'),
+        actual_start: nullable(isoDate),
+        actual_end: nullable(isoDate),
+        remarks: nullable(text(1000)),
+      }),
+    )
+    .min(1, 'Report at least one phase'),
+});
+
+export const FINANCE_TYPES = ['variation_order', 'obligation', 'disbursement', 'expense'];
+export const financialRecord = z
+  .object({
+    record_type: z.enum(FINANCE_TYPES),
+    amount: z.coerce.number().finite().min(-1e13).max(1e13),
+    record_date: isoDate,
+    reference_no: nullable(text(80)),
+    description: nullable(text(1000)),
+  })
+  .refine((r) => r.amount !== 0, { message: 'Amount cannot be zero', path: ['amount'] })
+  .refine((r) => r.record_type === 'variation_order' || r.amount > 0, { message: 'Amount must be positive (only a variation order can be negative)', path: ['amount'] });

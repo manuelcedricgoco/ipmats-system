@@ -8,9 +8,10 @@ export default function ProtectedRoute({ roles }) {
   const location = useLocation();
   if (loading) return <PageLoader />;
   if (!isAuthenticated) return <Navigate to="/login" replace state={{ from: location }} />;
-  // Accounts without a staff role (pending/declined sign-ups) only see their request status.
   if (roles && !roles.includes(role)) {
-    return <Navigate to={isPending || role === 'public' ? '/account-pending' : '/app'} replace />;
+    // Pending/declined staff requests → request status; Public accounts → public portal; other staff → dashboard
+    if (isPending) return <Navigate to="/account-pending" replace />;
+    return <Navigate to={role === 'public' ? '/' : '/app'} replace />;
   }
   return <Outlet />;
 }

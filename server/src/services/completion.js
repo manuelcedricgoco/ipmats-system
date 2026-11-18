@@ -1,0 +1,112 @@
+/**
+ * WEEK 2 — Overall project completion (Julina Mae Escabosa, Back-end)
+ *
+ * Overall completion = Σ(weight × accomplishment) ÷ Σ(weight)
+ * e.g. phases 10% @100, 20% @100, 20% @50, 35% @0, 15% @0 → 10 + 20 + 10 = 40%
+ *
+ * Pure functions (no database calls) so they are easy to unit test.
+ */
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** 'YYYY-MM-DD' / Date / ISO string → Date at UTC midnight (or null). */
+export function toDate(value) {
+  if (!value) return null;
+  const d = value instanceof Date ? value : new Date(typeof value === 'string' && value.length === 10 ? `${value}T00:00:00Z` : value);
+  if (Number.isNaN(d.getTime())) return null;
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+}
+
+export const isoDate = (d) => toDate(d).toISOString().slice(0, 10);
+
+export function addDays(value, days) {
+  const d = toDate(value);
+  d.setUTCDate(d.getUTCDate() + Number(days || 0));
+  return isoDate(d);
+}
+
+export const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+const clamp = (n, min = 0, max = 100) => Math.min(max, Math.max(min, n));
+
+/** Weighted overall completion (0–100) of a list of phases. */
+export function computeOverallProgress(phases = []) {
+  const totalWeight = phases.reduce((s, p) => s + Number(p.weight || 0), 0);
+  if (totalWeight <= 0) return 0;
+  const weighted = phases.reduce((s, p) => s + Number(p.weight || 0) * clamp(Number(p.accomplishment || 0)), 0);
+  return round2(clamp(weighted / totalWeight));
+}
+
+/** Planned % for one window [start, end] on `today` (straight line). */
+function linearPlanned(start, end, today) {
+  const s = toDate(start);
+  const e = toDate(end);
+  if (!s || !e) return null;
+  if (today < s) return 0;
+  if (today >= e) return 100;
+  return e - s <= 0 ? 100 : ((today - s) / (e - s)) * 100;
+}
+
+/**
+ * Where the project should be today according to the plan: each phase's planned
+ * window (weighted); without phase dates, a straight line from the Notice to
+ * Proceed to the target completion date.
+ */
+export function computePlannedProgress(project, phases = [], todayInput = new Date()) {
+  const today = toDate(todayInput);
+  const dated = phases.filter((p) => p.planned_start && p.planned_end);
+  const totalWeight = dated.reduce((s, p) => s + Number(p.weight || 0), 0);
+  if (dated.length && totalWeight > 0) {
+    const weighted = dated.reduce((s, p) => s + Number(p.weight) * linearPlanned(p.planned_start, p.planned_end, today), 0);
+    return round2(clamp(weighted / totalWeight));
+  }
+  return round2(clamp(linearPlanned(project.notice_to_proceed, project.target_completion_date, today) ?? 0));
+}
+
+/** Slippage = actual − planned (negative = behind schedule). */
+export const computeSlippage = (actual, planned) => round2(Number(actual) - Number(planned));
+
+/** Default phases per project type, used when setting up a plan. Weights total 100. */
+export const PHASE_TEMPLATES = {
+  road: [['Site Preparation', 10], ['Earthworks', 20], ['Drainage Construction', 20], ['Road Concreting', 35], ['Finishing and Inspection', 15]],
+  bridge: [['Mobilization and Site Preparation', 10], ['Substructure (Foundation and Piers)', 30], ['Superstructure (Girders and Deck)', 35], ['Approaches and Slope Protection', 15], ['Finishing and Inspection', 10]],
+  flood_control: [['Site Preparation', 10], ['Excavation and Dewatering', 20], ['Revetment / Dike Construction', 45], ['Drainage Outlets', 15], ['Finishing and Inspection', 10]],
+  building: [['Site Preparation', 10], ['Foundation', 20], ['Structural Frame', 30], ['Roofing and Masonry', 25], ['Finishing and Inspection', 15]],
+  water_supply: [['Site Preparation', 10], ['Source Development', 25], ['Transmission and Distribution Lines', 35], ['Reservoir and Structures', 20], ['Testing and Commissioning', 10]],
+  other: [['Site Preparation', 10], ['Main Works', 70], ['Finishing and Inspection', 20]],
+};
+
+/** Template phases with planned dates spread over the contract duration by weight. */
+export function planFromTemplate(type, ntp, days) {
+  const t = PHASE_TEMPLATES[type] || PHASE_TEMPLATES.other;
+  let cursor = 0;
+  return t.map(([name, weight], i) => {
+    const len = Math.max(1, Math.round(((Number(days) || 0) * weight) / 100));
+    const start = ntp ? addDays(ntp, cursor) : null;
+    cursor += len;
+    const end = ntp ? addDays(ntp, i === t.length - 1 ? Number(days) || cursor : cursor) : null;
+    return { sequence_no: i + 1, name, weight, planned_start: start, planned_end: end };
+  });
+}
+
+/** Financial summary of one project from its records (contract + variation orders etc.). */
+export function summarizeFinance(project, records = []) {
+  const sum = (type) => round2(records.filter((r) => r.record_type === type).reduce((s, r) => s + Number(r.amount), 0));
+  const contract = Number(project.contract_amount || 0);
+  const variationOrders = sum('variation_order');
+  const revised = round2(contract + variationOrders);
+  const disbursed = sum('disbursement');
+  return {
+    approved_budget: Number(project.approved_budget || 0),
+    contract_amount: contract,
+    variation_orders: variationOrders,
+    revised_contract_amount: revised,
+    total_obligated: sum('obligation'),
+    total_disbursed: disbursed,
+    total_expenses: sum('expense'),
+    remaining_balance: round2(revised - disbursed),
+    // Fund utilization = disbursed ÷ revised contract amount
+    utilization_pct: revised > 0 ? round2((disbursed / revised) * 100) : 0,
+  };
+}
+
+export { DAY_MS };

@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 
 /** DPWH seal + product name. `light` = for dark (navy) backgrounds. */
-export default function Logo({ to = '/login', light = false, subtitle = true, size = 'md' }) {
+export default function Logo({ to = '/', light = false, subtitle = true, size = 'md' }) {
   const img = size === 'lg' ? 'h-14 w-14' : 'h-10 w-10';
   return (
     <Link
@@ -17,7 +17,7 @@ export default function Logo({ to = '/login', light = false, subtitle = true, si
       />
       <span className="leading-tight">
         <span className={`block text-base font-bold tracking-tight ${light ? 'text-white' : 'text-brand-900'}`}>DPWH 360°</span>
-        {subtitle && <span className={`hidden text-[11px] sm:block ${light ? 'text-brand-200' : 'text-slate-500'}`}>Occidental Mindoro · Project Records</span>}
+        {subtitle && <span className={`hidden text-[11px] sm:block ${light ? 'text-brand-200' : 'text-slate-500'}`}>Occidental Mindoro · Project Transparency</span>}
       </span>
     </Link>
   );

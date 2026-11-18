@@ -37,9 +37,9 @@ export function Input({ className = '', invalid, type, ...props }) {
 /** Modern dropdown (Headless UI) with the native <select> API. */
 export const Select = CustomSelect;
 
-export function Textarea({ className = '', rows = 3, ...props }) {
+export function Textarea({ className = '', rows = 3, invalid, ...props }) {
   const value = props.onChange && props.value == null ? '' : props.value;
-  return <textarea rows={rows} className={`${base} ${className}`} {...props} value={value} />;
+  return <textarea rows={rows} className={`${base} ${invalid ? 'ring-red-400' : ''} ${className}`} {...props} value={value} />;
 }
 
 export function Checkbox({ label, description, ...props }) {

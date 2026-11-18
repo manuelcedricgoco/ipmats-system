@@ -1,4 +1,4 @@
-import { Building2, FolderKanban, Landmark, LayoutDashboard, Menu, UserRound, Users, X } from 'lucide-react';
+import { Building2, Coins, FolderKanban, Globe2, Landmark, LayoutDashboard, Menu, TrendingUp, UserRound, Users, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext.jsx';
@@ -9,13 +9,15 @@ import Logo from './Logo.jsx';
 import UserMenu from './UserMenu.jsx';
 
 const ALL = ['admin', 'dpwh_personnel', 'auditor'];
-// Week 1 modules. Later weeks add Phases, Financial, 360° monitoring, GIS map, Flags, Audit and Reports here.
+// Week 1 + Week 2 modules. Later weeks add 360° monitoring, GIS map, Flags, Audit and Reports here.
 const SECTIONS = [
   {
     title: 'Records',
     items: [
       { to: '/app', label: 'Dashboard', icon: LayoutDashboard, end: true, roles: ALL },
       { to: '/app/projects', label: 'Project Management', icon: FolderKanban, roles: ALL },
+      { to: '/app/progress', label: 'Progress Monitoring', icon: TrendingUp, roles: ALL }, // Week 2
+      { to: '/app/finance', label: 'Financial Monitoring', icon: Coins, roles: ALL }, // Week 2
       { to: '/app/contractors', label: 'Contractors', icon: Building2, roles: ALL },
       { to: '/app/agencies', label: 'Offices & Agencies', icon: Landmark, roles: ALL },
     ],
@@ -84,6 +86,9 @@ export default function AppLayout() {
       <div className="space-y-0.5 border-t border-white/10 p-3">
         <NavLink to="/app/account" className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-brand-100 transition-colors hover:bg-white/5 hover:text-white">
           <UserRound className="h-4 w-4" aria-hidden /> My account
+        </NavLink>
+        <NavLink to="/" className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-brand-100 transition-colors hover:bg-white/5 hover:text-white">
+          <Globe2 className="h-4 w-4" aria-hidden /> Public portal
         </NavLink>
       </div>
     </div>

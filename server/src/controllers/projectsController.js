@@ -6,12 +6,15 @@
  * role check in the route.
  */
 import { adminClient } from '../config/supabase.js';
+import { assertValid, checkContractAmountChange, checkStatusChange } from '../services/validationRules.js';
 import { badRequest, notFound, unwrap } from '../utils/httpError.js';
 
 const LIST_COLUMNS =
   'id, project_code, name, project_type, status, approved_budget, contract_amount, notice_to_proceed, duration_days, ' +
   'target_completion_date, actual_completion_date, municipality_id, municipality_name, barangay_id, barangay_name, ' +
-  'agency_id, agency_name, contractor_id, contractor_name, updated_at';
+  'agency_id, agency_name, contractor_id, contractor_name, updated_at, ' +
+  // Week 2
+  'overall_progress, phase_count, revised_contract_amount, total_disbursed, remaining_balance';
 
 export function addDays(dateStr, days) {
   const d = new Date(`${dateStr}T00:00:00Z`);
@@ -43,7 +46,7 @@ export function applyProjectFilters(query, f) {
 
 export async function listProjects(req, res) {
   const { page, pageSize, from, to } = pagination(req.query);
-  const sortable = ['updated_at', 'name', 'project_code', 'approved_budget', 'contract_amount', 'duration_days', 'target_completion_date'];
+  const sortable = ['updated_at', 'name', 'project_code', 'approved_budget', 'contract_amount', 'duration_days', 'target_completion_date', 'overall_progress', 'total_disbursed'];
   const sort = sortable.includes(req.query.sort) ? req.query.sort : 'updated_at';
   const ascending = req.query.order === 'asc';
   let q = req.db.from('v_project_summary').select(LIST_COLUMNS, { count: 'exact' });
@@ -59,9 +62,9 @@ export async function getProject(req, res) {
   res.json({ data: project });
 }
 
-/** Dashboard numbers for Week 1 (counts and totals of the projects the user can see). */
+/** Dashboard numbers (counts and totals of the projects the user can see). */
 export async function projectStats(req, res) {
-  const rows = unwrap(await req.db.from('v_project_summary').select('status, project_type, approved_budget, contract_amount, agency_id, contractor_id'));
+  const rows = unwrap(await req.db.from('v_project_summary').select('status, project_type, approved_budget, contract_amount, agency_id, contractor_id, overall_progress, phase_count, revised_contract_amount, total_disbursed, remaining_balance'));
   const countBy = (k) => rows.reduce((a, r) => ({ ...a, [r[k]]: (a[r[k]] || 0) + 1 }), {});
   const sum = (k) => rows.reduce((s, r) => s + Number(r[k] || 0), 0);
   res.json({
@@ -73,6 +76,12 @@ export async function projectStats(req, res) {
       total_contract_amount: sum('contract_amount'),
       contractors_with_projects: new Set(rows.map((r) => r.contractor_id).filter(Boolean)).size,
       offices_with_projects: new Set(rows.map((r) => r.agency_id)).size,
+      // Week 2
+      average_progress: rows.length ? Math.round((sum('overall_progress') / rows.length) * 100) / 100 : 0,
+      projects_without_phases: rows.filter((r) => !Number(r.phase_count)).length,
+      total_revised_contract: sum('revised_contract_amount'),
+      total_disbursed: sum('total_disbursed'),
+      total_remaining_balance: sum('remaining_balance'),
     },
   });
 }
@@ -109,6 +118,15 @@ export async function updateProject(req, res) {
   const { id } = req.params;
   const current = await getProjectOrThrow(id, 'id, municipality_id, barangay_id, notice_to_proceed, duration_days');
   const body = { ...req.body };
+  // Week 2: "Completed" is only accepted when every phase is at 100%.
+  if (body.status) {
+    const phases = unwrap(await adminClient.from('project_phases').select('name, accomplishment').eq('project_id', id));
+    assertValid(checkStatusChange({ status: body.status, phases }));
+  }
+  if (body.contract_amount !== undefined) {
+    const records = unwrap(await adminClient.from('financial_records').select('record_type, amount').eq('project_id', id));
+    assertValid(checkContractAmountChange({ contractAmount: body.contract_amount, records }));
+  }
   if (body.barangay_id !== undefined || body.municipality_id !== undefined) {
     await assertBarangayInMunicipality(body.barangay_id ?? current.barangay_id, body.municipality_id ?? current.municipality_id);
   }

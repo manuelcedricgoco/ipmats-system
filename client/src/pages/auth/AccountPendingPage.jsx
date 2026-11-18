@@ -9,11 +9,12 @@ import AuthShell from './AuthShell.jsx';
 
 /** Shown to signed-in accounts whose staff access request is pending or declined. */
 export default function AccountPendingPage() {
-  const { loading, isAuthenticated, profile, isStaff, signOut } = useAuth();
+  const { loading, isAuthenticated, profile, isStaff, isPending, signOut } = useAuth();
   const navigate = useNavigate();
   if (loading) return <PageLoader />;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   if (isStaff) return <Navigate to="/app" replace />;
+  if (!isPending) return <Navigate to="/" replace />; // approved Public account → portal
 
   const declined = profile.approval_status === 'rejected';
   return (
@@ -24,7 +25,7 @@ export default function AccountPendingPage() {
           <>
             <p className="mt-2 font-semibold">The System Administrator declined your request.</p>
             {profile.review_note && <p className="mt-1">Reason: {profile.review_note}</p>}
-            <p className="mt-2">Contact your DPWH office if you believe this is a mistake.</p>
+            <p className="mt-2">Contact your DPWH office if you believe this is a mistake. You can still view the public portal.</p>
           </>
         ) : (
           <>
@@ -34,6 +35,7 @@ export default function AccountPendingPage() {
         )}
       </div>
       <div className="mt-6 flex flex-wrap gap-2">
+        <Button to="/" variant="secondary">Public portal</Button>
         <Button
           variant="ghost"
           icon={LogOut}

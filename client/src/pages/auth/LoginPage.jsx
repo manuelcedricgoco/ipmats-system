@@ -9,7 +9,12 @@ import { useAuth } from '../../context/AuthContext.jsx';
 import { STAFF_ROLES } from '../../lib/constants.js';
 import AuthShell from './AuthShell.jsx';
 
-/** WEEK 1 — Login page (Tracy Ann Milaflores, front-end): opens the dashboard for the user's role. */
+/**
+ * WEEK 1 — Login page (Tracy Ann Milaflores, front-end): opens the right place for each role.
+ * Staff → their dashboard · Public → the public portal · pending/declined staff requests → request status.
+ * The entry splash starts the moment "Sign in" is clicked and lasts 10 seconds in total
+ * (the sign-in itself happens while it plays).
+ */
 export default function LoginPage() {
   const { signIn, isAuthenticated, role, isPending, profile } = useAuth();
   const location = useLocation();
@@ -17,22 +22,26 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
-  // True from a successful sign-in until the 10-second entry splash finishes.
-  const [entering, setEntering] = useState(false);
+  const [entering, setEntering] = useState(false); // splash showing
+  const [splashDone, setSplashDone] = useState(false);
 
-  // While the splash runs we stay on this page; once it ends the redirect below takes over.
-  if (isAuthenticated && entering) return <SplashScreen name={profile?.full_name} onDone={() => setEntering(false)} />;
+  // Splash: from the click until both the 10 s have passed AND the sign-in has finished.
+  if (entering && !(splashDone && isAuthenticated)) {
+    return <SplashScreen name={profile?.full_name} onDone={() => setSplashDone(true)} />;
+  }
 
-  if (isAuthenticated && isPending) return <Navigate to="/account-pending" replace />;
   if (isAuthenticated) {
+    if (isPending) return <Navigate to="/account-pending" replace />;
     const from = location.state?.from?.pathname;
-    return <Navigate to={from && from !== '/login' ? from : STAFF_ROLES.includes(role) ? '/app' : '/account-pending'} replace />;
+    if (STAFF_ROLES.includes(role)) return <Navigate to={from && from.startsWith('/app') ? from : '/app'} replace />;
+    return <Navigate to={from && !from.startsWith('/app') && from !== '/login' ? from : '/'} replace />;
   }
 
   const submit = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
+    setSplashDone(false);
     setEntering(true);
     try {
       await signIn(email.trim(), password);
@@ -44,7 +53,7 @@ export default function LoginPage() {
   };
 
   return (
-    <AuthShell title="Staff sign in" subtitle="For DPWH personnel, auditors and system administrators.">
+    <AuthShell title="Sign in" subtitle="For registered public viewers, DPWH personnel, auditors and system administrators.">
       <form onSubmit={submit} className="space-y-4">
         {error && <Alert tone="error">{error}</Alert>}
         <Field label="Email" required>{(a) => <Input {...a} type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus />}</Field>
@@ -52,7 +61,10 @@ export default function LoginPage() {
         <Button type="submit" icon={LogIn} loading={loading} className="w-full">Sign in</Button>
       </form>
       <p className="mt-6 text-center text-sm text-slate-600">
-        DPWH staff without an account? <Link to="/register" className="font-semibold text-brand-700 hover:underline">Request staff access</Link>
+        No account yet? <Link to="/register" className="font-semibold text-brand-700 hover:underline">Register</Link>
+      </p>
+      <p className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-center text-xs text-slate-600">
+        The public portal of projects, progress and finances is for registered accounts. Register as <strong>Public</strong> to view it.
       </p>
     </AuthShell>
   );

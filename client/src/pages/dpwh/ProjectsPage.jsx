@@ -7,6 +7,7 @@ import { Card, PageHeader } from '../../components/common/Card.jsx';
 import { EmptyState, ErrorState, PageLoader } from '../../components/common/Feedback.jsx';
 import { Input, Select } from '../../components/common/Form.jsx';
 import Pagination from '../../components/common/Pagination.jsx';
+import ProgressBar from '../../components/common/ProgressBar.jsx';
 import ProjectFilters from '../../components/projects/ProjectFilters.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useApi } from '../../hooks/useApi.js';
@@ -75,6 +76,7 @@ export default function ProjectsPage() {
               <option value="contract_amount">Contract amount</option>
               <option value="duration_days">Duration</option>
               <option value="target_completion_date">Target completion</option>
+              <option value="overall_progress">Completion %</option>
             </Select>
           </div>
           <button
@@ -108,7 +110,7 @@ export default function ProjectsPage() {
                     <th scope="col" className="px-4 py-3">Office &amp; contractor</th>
                     <th scope="col" className="px-4 py-3">Budget</th>
                     <th scope="col" className="px-4 py-3">Duration</th>
-                    <th scope="col" className="px-4 py-3">Status</th>
+                    <th scope="col" className="w-40 px-4 py-3">Status &amp; progress</th>
                     <th scope="col" className="px-4 py-3"><span className="sr-only">Open</span></th>
                   </tr>
                 </thead>
@@ -137,7 +139,10 @@ export default function ProjectsPage() {
                         <span className="block font-medium">{p.duration_days ? `${p.duration_days} days` : '—'}</span>
                         <span className="mt-0.5 block text-xs text-slate-500">{p.target_completion_date ? `until ${date(p.target_completion_date)}` : 'No target date'}</span>
                       </td>
-                      <td className="px-4 py-3"><StatusBadge status={p.status} /></td>
+                      <td className="px-4 py-3">
+                        <StatusBadge status={p.status} />
+                        {Number(p.phase_count) > 0 ? <ProgressBar value={p.overall_progress} size="sm" className="mt-2" /> : <span className="mt-1 block text-[11px] text-slate-400">No phases yet</span>}
+                      </td>
                       <td className="px-4 py-3 text-right">
                         <Link to={`/app/projects/${p.id}`} className="inline-flex rounded p-1 text-slate-400 transition-all duration-150 hover:bg-slate-100 group-hover:translate-x-0.5 group-hover:text-brand-600" aria-label={`Open ${p.name}`}>
                           <ChevronRight className="h-4 w-4" />
@@ -158,6 +163,7 @@ export default function ProjectsPage() {
                     </div>
                     <p className="text-xs text-slate-500"><span className="font-mono">{p.project_code}</span> · {p.municipality_name} · {p.duration_days ? `${p.duration_days} days` : 'no duration'}</p>
                     <p className="text-xs text-slate-600">{p.contractor_name || 'Not yet awarded'} · ABC {pesoCompact(p.approved_budget)} · Contract {pesoCompact(p.contract_amount)}</p>
+                    {Number(p.phase_count) > 0 && <ProgressBar value={p.overall_progress} size="sm" />}
                   </Link>
                 </li>
               ))}

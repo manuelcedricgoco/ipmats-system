@@ -1,5 +1,5 @@
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react';
-import { ChevronDown, Clock3, LayoutDashboard, LogOut, UserRound } from 'lucide-react';
+import { ChevronDown, Clock3, Globe2, LayoutDashboard, LogOut, UserRound } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext.jsx';
 import Avatar from '../common/Avatar.jsx';
@@ -45,8 +45,13 @@ export default function UserMenu({ dark = false }) {
             </MenuItem>
           )}
           <MenuItem>
-            <Link to={isStaff ? '/app/account' : '/account-pending'} className={`${item} text-slate-700`}>
+            <Link to={isStaff ? '/app/account' : '/account'} className={`${item} text-slate-700`}>
               <UserRound className="h-4 w-4 text-slate-400" aria-hidden /> My account
+            </Link>
+          </MenuItem>
+          <MenuItem>
+            <Link to="/" className={`${item} text-slate-700`}>
+              <Globe2 className="h-4 w-4 text-slate-400" aria-hidden /> Public portal
             </Link>
           </MenuItem>
           {isPending && (

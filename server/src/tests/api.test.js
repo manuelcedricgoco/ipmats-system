@@ -15,11 +15,11 @@ before(async () => {
   app = createApp();
 });
 
-describe('API guards (Week 1)', () => {
-  it('health reports week 1 and read-only mode without a service key', async () => {
+describe('API guards (Weeks 1–2)', () => {
+  it('health reports week 2 and read-only mode without a service key', async () => {
     const res = await request(app).get('/api/health');
     assert.equal(res.status, 200);
-    assert.equal(res.body.week, 1);
+    assert.equal(res.body.week, 2);
     assert.equal(res.body.writes, false);
   });
   it('requires sign-in for every project, contractor and user endpoint', async () => {
@@ -42,6 +42,23 @@ describe('API guards (Week 1)', () => {
   it('rejects malformed ids with 400 before touching the database', async () => {
     const res = await request(app).get('/api/users/not-a-uuid/approve');
     assert.ok([400, 404].includes(res.status));
+  });
+  it('Week 2: requires sign-in for phases, progress and finance', async () => {
+    const id = '9f343767-8d98-5863-903c-3bc97288d015';
+    for (const path of [`/api/projects/${id}/phases`, `/api/projects/${id}/progress`, `/api/projects/${id}/finance`, '/api/finance/overview']) {
+      assert.equal((await request(app).get(path)).status, 401, path);
+    }
+    assert.equal((await request(app).post(`/api/projects/${id}/progress`).send({})).status, 401);
+    assert.equal((await request(app).post(`/api/projects/${id}/finance`).send({})).status, 401);
+    assert.equal((await request(app).put(`/api/projects/${id}/phases`).send({})).status, 401);
+  });
+  it('Week 2: /projects/stats is not mistaken for a project id', async () => {
+    assert.equal((await request(app).get('/api/projects/stats')).status, 401);
+  });
+  it('Public portal requires sign-in for every endpoint (no anonymous reads)', async () => {
+    for (const path of ['/api/public/stats', '/api/public/projects', '/api/public/projects/9f343767-8d98-5863-903c-3bc97288d015']) {
+      assert.equal((await request(app).get(path)).status, 401, path);
+    }
   });
   it('returns JSON 404 for routes that do not exist yet', async () => {
     const res = await request(app).get('/api/flags');

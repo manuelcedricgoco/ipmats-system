@@ -1,7 +1,9 @@
-import { ArrowRight, Building2, CheckCircle2, ChevronRight, FolderKanban, Landmark, Plus, Users, Wallet } from 'lucide-react';
+import { ArrowRight, Banknote, Building2, ChevronRight, Coins, FolderKanban, Plus, TrendingUp, Users, Wallet } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { StatusBadge } from '../../components/common/Badges.jsx';
 import { Card, CardBody, CardHeader, PageHeader, StatCard } from '../../components/common/Card.jsx';
+import ProgressBar from '../../components/common/ProgressBar.jsx';
+import UtilizationBar from '../../components/common/UtilizationBar.jsx';
 import { ErrorState, PageLoader } from '../../components/common/Feedback.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useApi } from '../../hooks/useApi.js';
@@ -19,27 +21,28 @@ const ROLE_DASHBOARD = {
     actions: [
       { to: '/app/users', label: 'Access requests and users', icon: Users },
       { to: '/app/projects/new', label: 'Register a project', icon: Plus },
-      { to: '/app/agencies', label: 'Offices and agencies', icon: Landmark },
-      { to: '/app/contractors', label: 'Contractors', icon: Building2 },
+      { to: '/app/finance', label: 'Financial monitoring', icon: Coins },
+      { to: '/app/progress', label: 'Progress monitoring', icon: TrendingUp },
     ],
   },
   dpwh_personnel: {
     eyebrow: 'DPWH Personnel dashboard',
-    description: 'Register infrastructure projects and keep their budget, contractor, office and duration records complete.',
+    description: 'Register projects, submit phase-by-phase progress updates and record disbursements and other financial records.',
     actions: [
+      { to: '/app/progress', label: 'Submit progress updates', icon: TrendingUp },
+      { to: '/app/finance', label: 'Record disbursements', icon: Coins },
       { to: '/app/projects/new', label: 'Register a project', icon: Plus },
-      { to: '/app/projects', label: 'Project list', icon: FolderKanban },
       { to: '/app/contractors', label: 'Contractors', icon: Building2 },
-      { to: '/app/agencies', label: 'Offices and agencies', icon: Landmark },
     ],
   },
   auditor: {
     eyebrow: 'Auditor dashboard',
-    description: 'View registered projects with their approved budget, contract amount, contractor and duration (read-only).',
+    description: 'Review project records, phase progress and fund utilization (read-only).',
     actions: [
-      { to: '/app/projects', label: 'Review project records', icon: FolderKanban },
+      { to: '/app/finance', label: 'Review fund utilization', icon: Coins },
+      { to: '/app/progress', label: 'Review project progress', icon: TrendingUp },
+      { to: '/app/projects', label: 'Project records', icon: FolderKanban },
       { to: '/app/contractors', label: 'Contractors', icon: Building2 },
-      { to: '/app/agencies', label: 'Offices and agencies', icon: Landmark },
     ],
   },
 };
@@ -98,9 +101,9 @@ export default function DashboardPage() {
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard label="Registered projects" value={s.total_projects} hint={`${s.by_status.ongoing || 0} ongoing · ${s.by_status.completed || 0} completed`} icon={FolderKanban} />
-        <StatCard label="Approved budget (ABC)" value={pesoCompact(s.total_approved_budget)} hint="All registered projects" icon={Wallet} tone="slate" />
-        <StatCard label="Contract amount" value={pesoCompact(s.total_contract_amount)} hint="Awarded projects" icon={CheckCircle2} tone="green" />
-        <StatCard label="Contractors · offices" value={`${s.contractors_with_projects} · ${s.offices_with_projects}`} hint="With at least one project" icon={Building2} tone="yellow" />
+        <StatCard label="Average completion" value={`${s.average_progress.toFixed(1)}%`} hint={s.projects_without_phases ? `${s.projects_without_phases} project(s) without phases` : 'Across all projects'} icon={TrendingUp} tone="green" />
+        <StatCard label="Disbursed" value={pesoCompact(s.total_disbursed)} hint={`of ${pesoCompact(s.total_revised_contract)} contract amount`} icon={Banknote} tone="yellow" />
+        <StatCard label="Remaining balance" value={pesoCompact(s.total_remaining_balance)} hint={`ABC ${pesoCompact(s.total_approved_budget)}`} icon={Wallet} tone="slate" />
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-3">
@@ -119,9 +122,12 @@ export default function DashboardPage() {
                       <span className="font-mono">{p.project_code}</span> · {p.municipality_name} · {p.contractor_name || 'Not yet awarded'}
                     </p>
                   </div>
-                  <div className="shrink-0 text-xs text-slate-500 sm:text-right">
-                    <span className="block font-medium tabular-nums text-slate-800">{pesoCompact(p.contract_amount ?? p.approved_budget)}</span>
-                    {p.duration_days ? `${p.duration_days} days · until ${date(p.target_completion_date)}` : 'No duration yet'}
+                  <div className="w-full shrink-0 sm:w-36">
+                    {Number(p.phase_count) > 0 ? <ProgressBar value={p.overall_progress} size="sm" /> : <span className="text-xs text-slate-400">No phases yet</span>}
+                  </div>
+                  <div className="shrink-0 text-xs text-slate-500 sm:w-32 sm:text-right">
+                    <span className="block font-medium tabular-nums text-slate-800">{pesoCompact(p.remaining_balance)} left</span>
+                    {p.duration_days ? `until ${date(p.target_completion_date)}` : 'No duration yet'}
                   </div>
                   <StatusBadge status={p.status} />
                   <ChevronRight className="hidden h-4 w-4 text-slate-300 transition-transform group-hover:translate-x-0.5 group-hover:text-brand-600 sm:block" aria-hidden />
@@ -134,6 +140,11 @@ export default function DashboardPage() {
         <Card>
           <CardHeader title="Project records" />
           <CardBody className="space-y-6">
+            <div>
+              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">Fund utilization</p>
+              <UtilizationBar disbursed={s.total_disbursed} total={s.total_revised_contract} compact />
+              <p className="mt-1 text-xs tabular-nums text-slate-600">{s.total_revised_contract ? ((s.total_disbursed / s.total_revised_contract) * 100).toFixed(1) : 0}% of the contract amount disbursed</p>
+            </div>
             <Breakdown title="By status" rows={statusRows} labels={STATUS_META} />
             <Breakdown title="By type" rows={typeRows} labels={PROJECT_TYPES} />
           </CardBody>
