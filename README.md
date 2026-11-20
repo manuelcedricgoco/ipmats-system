@@ -103,6 +103,51 @@ Open <http://localhost:5173>.
 
 Change or delete these accounts before real use.
 
+## Docker
+
+The system runs as two containers: the **API** (`server/Dockerfile`, Node.js 22) and the **web app** (`client/Dockerfile`, built with Vite and served by nginx, which also forwards `/api` to the API). `docker-compose.yml` starts both.
+
+### Run locally with Docker (PowerShell)
+
+Install **Docker Desktop**, make sure it is running, then:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Edit `.env`: set `DOCKERHUB_USER` to your Docker Hub username, and paste the two public Supabase values from `client\.env`. `server\.env` must already be filled in (service-role key included).
+
+```powershell
+docker compose up --build
+```
+
+Open <http://localhost:8080>. Stop with `Ctrl+C`, or run `docker compose down`.
+
+### Push the images to Docker Hub
+
+Create a free account at hub.docker.com and create two public repositories: `ipmats-api` and `ipmats-web`. Then:
+
+```powershell
+docker login
+```
+
+```powershell
+docker compose build
+```
+
+```powershell
+docker compose push
+```
+
+This uploads `<your-username>/ipmats-api:week2` and `<your-username>/ipmats-web:week2`. Anyone can then run the system with the same `docker compose` file pointing at those images, or with `docker run` directly.
+
+### Security of the images
+
+- No secrets are stored in an image. `.dockerignore` excludes every `.env` file, and the service-role key reaches the API only at run time (`env_file: server/.env`).
+- The API runs as the unprivileged `node` user and has a health check (`/api/health`).
+- The only values baked into the web image are the **public** Supabase URL and publishable key, which the browser needs anyway.
+- Never type `server/.env` values into a build argument, and never push an image built from a folder that still has secrets in it.
+
 ### Tests
 
 ```powershell

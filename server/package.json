@@ -6,7 +6,7 @@
   "description": "IPMATS / DPWH 360 API (Week 1): authentication, role-based access, projects, contractors and agencies.",
   "main": "src/server.js",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "start": "node src/server.js",

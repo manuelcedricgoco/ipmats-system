@@ -1,0 +1,32 @@
+# IPMATS — run the whole system with one command:  docker compose up --build
+# Browser:  http://localhost:8080      API (through the web app):  http://localhost:8080/api/health
+#
+# Settings are read from the root .env file (copy .env.example to .env and fill it in).
+# server/.env is passed to the API at run time and is never copied into the image.
+name: ipmats
+
+services:
+  api:
+    build: ./server
+    image: ${DOCKERHUB_USER:?set DOCKERHUB_USER in .env}/ipmats-api:${TAG:-week2}
+    env_file: ./server/.env
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      # Only the web app on port 8080 may call the API directly (it normally goes through nginx)
+      CORS_ORIGINS: http://localhost:8080
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./client
+      args:
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:?set VITE_SUPABASE_URL in .env}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:?set VITE_SUPABASE_ANON_KEY in .env}
+        VITE_API_URL: /api
+    image: ${DOCKERHUB_USER}/ipmats-web:${TAG:-week2}
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
+    restart: unless-stopped
