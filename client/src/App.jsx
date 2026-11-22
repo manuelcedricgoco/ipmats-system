@@ -7,10 +7,10 @@ import NotFoundPage from './pages/NotFoundPage.jsx';
 import ProtectedRoute from './routes/ProtectedRoute.jsx';
 
 // Week 1 (Objective 1): secure login/registration + project, contractor, agency, budget and duration records.
-// Landing page (everyone) and public portal (signed-in accounts)
-const LandingPage = lazy(() => import('./pages/landing/LandingPage.jsx'));
+// Public portal: open to everyone, no account needed
 const PortalHome = lazy(() => import('./pages/public/PortalHome.jsx'));
-const PublicProjectPage = lazy(() => import('./pages/public/PublicProjectPage.jsx'));
+const PublicProjectsPage = lazy(() => import('./pages/public/PublicProjectsPage.jsx'));
+const PublicMapPage = lazy(() => import('./pages/public/PublicMapPage.jsx'));
 // Authentication
 const LoginPage = lazy(() => import('./pages/auth/LoginPage.jsx'));
 const RegisterPage = lazy(() => import('./pages/auth/RegisterPage.jsx'));
@@ -36,8 +36,6 @@ const SettingsPage = lazy(() => import('./pages/admin/SettingsPage.jsx'));
 const MapPage = lazy(() => import('./pages/shared/MapPage.jsx'));
 const AuditPage = lazy(() => import('./pages/auditor/AuditPage.jsx'));
 const ReportsPage = lazy(() => import('./pages/auditor/ReportsPage.jsx'));
-const PublicMapPage = lazy(() => import('./pages/public/PublicMapPage.jsx'));
-const PublicDashboardPage = lazy(() => import('./pages/public/PublicDashboardPage.jsx'));
 const ContractorsPage = lazy(() => import('./pages/dpwh/ContractorsPage.jsx'));
 const AgenciesPage = lazy(() => import('./pages/dpwh/AgenciesPage.jsx'));
 const UsersPage = lazy(() => import('./pages/admin/UsersPage.jsx'));
@@ -50,24 +48,20 @@ export default function App() {
   return (
     <Suspense fallback={<PageLoader />}>
       <Routes>
-        {/* Landing page: overview of the system for everyone, before Sign in / Register */}
-        <Route index element={<LandingPage />} />
-
-        {/* Public portal: a signed-in account is required (any role, incl. Public). Visitors go to /login. */}
-        <Route path="/portal" element={<ProtectedRoute />}>
-          <Route element={<PublicLayout />}>
-            <Route index element={<PortalHome />} />
-            <Route path="projects/:id" element={<PublicProjectPage />} />
-            <Route path="map" element={<PublicMapPage />} />
-            <Route path="dashboard" element={<PublicDashboardPage />} />
-            <Route path="account" element={<AccountPage />} />
-            <Route path="*" element={<NotFoundPage homeTo="/portal" homeLabel="Back to the portal" />} />
-          </Route>
+        {/* Public portal: open to everyone, no account (top navigation, no sidebar) */}
+        <Route element={<PublicLayout />}>
+          <Route index element={<PortalHome />} />
+          <Route path="/projects" element={<PublicProjectsPage />} />
+          <Route path="/map" element={<PublicMapPage />} />
         </Route>
         {/* Earlier portal addresses keep working */}
-        <Route path="/map" element={<Navigate to="/portal/map" replace />} />
-        <Route path="/dashboard" element={<Navigate to="/portal/dashboard" replace />} />
-        <Route path="/account" element={<Navigate to="/portal/account" replace />} />
+        <Route path="/portal" element={<Navigate to="/" replace />} />
+        <Route path="/portal/dashboard" element={<Navigate to="/" replace />} />
+        <Route path="/portal/map" element={<Navigate to="/map" replace />} />
+        <Route path="/portal/projects/:id" element={<OldProjectAddress />} />
+        <Route path="/portal/*" element={<Navigate to="/" replace />} />
+        <Route path="/dashboard" element={<Navigate to="/" replace />} />
+        <Route path="/account" element={<Navigate to="/app/account" replace />} />
         <Route path="/projects/:id" element={<OldProjectAddress />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
@@ -89,7 +83,7 @@ export default function App() {
               <Route path="flags" element={<FlagsTab />} />
               <Route path="documents" element={<DocumentsTab />} />
             </Route>
-            <Route path="map" element={<MapPage staff />} />
+            <Route path="map" element={<MapPage />} />
             <Route path="audit" element={<AuditPage />} />
             <Route path="reports" element={<ReportsPage />} />
             <Route path="progress" element={<ProgressPage />} />
@@ -114,8 +108,8 @@ export default function App() {
   );
 }
 
-/** /projects/:id (before the portal moved to /portal) → /portal/projects/:id */
+/** Old project addresses (/projects/:id, /portal/projects/:id) → the project's drawer on the map */
 function OldProjectAddress() {
   const { id } = useParams();
-  return <Navigate to={`/portal/projects/${id}`} replace />;
+  return <Navigate to={`/map?project=${encodeURIComponent(id)}`} replace />;
 }

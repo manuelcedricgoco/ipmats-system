@@ -9,21 +9,19 @@ import { ErrorState, Spinner } from '../common/Feedback.jsx';
 import ProgressBar from '../common/ProgressBar.jsx';
 import PanoramaViewer from '../viewer360/PanoramaViewer.jsx';
 
-/** Turn the staff (/map/projects/:id) or public (/public/projects/:id) answer into one shape. */
-function normalize(data, isPublic) {
+/** The staff answer (/map/projects/:id) with the flag reasons worth showing. */
+function normalize(data) {
   if (!data) return null;
-  if (!isPublic) return { ...data, flag: data.current_flag, reasons: (data.auto_flag_reasons || []).filter((r) => r.severity === 'yellow' || r.severity === 'red') };
-  const { project, images, flag, planned_progress: planned } = data;
-  return { ...project, images, planned_progress: planned, flag: flag.color, reasons: flag.reasons || [], under_review: flag.under_review };
+  return { ...data, flag: data.current_flag, reasons: (data.auto_flag_reasons || []).filter((r) => r.severity === 'yellow' || r.severity === 'red') };
 }
 
 /**
  * WEEK 3 — Opens when a map marker is selected (Tracy Ann Milaflores): the latest 360° image
- * in the Pannellum viewer beside the project's details, progress and flag.
+ * in the Pannellum viewer beside the project's details, progress and flag. Staff map only.
  */
-export default function ProjectPanel({ projectId, onClose, isPublic = false }) {
-  const { data, error, loading, reload } = useApi(projectId ? (isPublic ? `/public/projects/${projectId}` : `/map/projects/${projectId}`) : null, undefined, { select: (r) => r.data });
-  const p = normalize(data, isPublic);
+export default function ProjectPanel({ projectId, onClose }) {
+  const { data, error, loading, reload } = useApi(projectId ? `/map/projects/${projectId}` : null, undefined, { select: (r) => r.data });
+  const p = normalize(data);
 
   return (
     <aside className="flex h-full flex-col bg-white" aria-label="Selected project">
@@ -49,7 +47,7 @@ export default function ProjectPanel({ projectId, onClose, isPublic = false }) {
             </div>
             <div className="space-y-4 px-4 pb-5">
               <div className="flex flex-wrap items-center gap-2">
-                <FlagBadge flag={p.flag} long emptyLabel={isPublic ? 'Under review' : 'Not evaluated'} />
+                <FlagBadge flag={p.flag} long emptyLabel="Not evaluated" />
                 <StatusBadge status={p.status} />
                 <span className="text-xs text-slate-500">{PROJECT_TYPES[p.project_type]}</span>
               </div>
@@ -88,9 +86,8 @@ export default function ProjectPanel({ projectId, onClose, isPublic = false }) {
                   <FlagReasons reasons={p.reasons} compact />
                 </div>
               )}
-              {isPublic && p.under_review && <p className="rounded-md bg-slate-50 p-3 text-xs text-slate-600">The flag of this project is shown once an auditor has reviewed it.</p>}
               <Link
-                to={isPublic ? `/portal/projects/${p.id}` : `/app/projects/${p.id}`}
+                to={`/app/projects/${p.id}`}
                 className="group inline-flex w-full items-center justify-center gap-2 rounded-md bg-brand-800 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all duration-150 hover:bg-brand-900 hover:shadow-md active:scale-[0.98]"
               >
                 Full project details <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-1" aria-hidden />

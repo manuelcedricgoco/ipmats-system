@@ -9,11 +9,11 @@ import { pesoCompact } from '../../lib/format.js';
 
 const grid = { color: '#eef2f7' };
 
-/** Projects by flag. With `underReview`, a grey slice for flags not yet reviewed (public portal). */
-export function FlagDonut({ counts = {}, underReview = false, height = 'h-56' }) {
-  const labels = ['Green', 'Yellow', 'Red', ...(underReview ? ['Under review'] : [])];
-  const values = [counts.green || 0, counts.yellow || 0, counts.red || 0, ...(underReview ? [counts.under_review || 0] : [])];
-  const data = { labels, datasets: [{ data: values, backgroundColor: [PALETTE.green, PALETTE.yellow, PALETTE.red, PALETTE.slate], borderWidth: 2, borderColor: '#fff' }] };
+/** Projects by flag (staff dashboard). */
+export function FlagDonut({ counts = {}, height = 'h-56' }) {
+  const labels = ['Green', 'Yellow', 'Red'];
+  const values = [counts.green || 0, counts.yellow || 0, counts.red || 0];
+  const data = { labels, datasets: [{ data: values, backgroundColor: [PALETTE.green, PALETTE.yellow, PALETTE.red], borderWidth: 2, borderColor: '#fff' }] };
   return (
     <div className={`relative ${height}`}>
       <Doughnut data={data} role="img" aria-label={`Projects by flag: ${labels.map((l, i) => `${l} ${values[i]}`).join(', ')}`} options={{ maintainAspectRatio: false, cutout: '66%', plugins: { legend: { position: 'bottom' } } }} />
@@ -46,21 +46,6 @@ export function MunicipalityFlagBar({ rows = [] }) {
   return (
     <div className="relative h-64">
       <Bar data={data} role="img" aria-label="Flags per municipality" options={{ maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } }, scales: { x: { stacked: true, grid: { display: false } }, y: { stacked: true, ticks: { precision: 0 }, grid } } }} />
-    </div>
-  );
-}
-
-/** Average completion per municipality. */
-export function ProgressByMunicipality({ rows = [] }) {
-  const data = { labels: rows.map((r) => r.municipality), datasets: [{ label: 'Average completion', data: rows.map((r) => r.average_progress), backgroundColor: PALETTE.brand, borderRadius: 4 }] };
-  return (
-    <div className="relative h-64">
-      <Bar
-        data={data}
-        role="img"
-        aria-label="Average completion per municipality"
-        options={{ maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => `${c.parsed.y.toFixed(1)}%` } } }, scales: { x: { grid: { display: false } }, y: { min: 0, max: 100, ticks: { callback: (v) => `${v}%` }, grid } } }}
-      />
     </div>
   );
 }
@@ -103,17 +88,6 @@ export function ContractVsDisbursed({ rows = [] }) {
         aria-label="Contract amount and disbursed amount per municipality"
         options={{ maintainAspectRatio: false, plugins: { legend: { position: 'bottom' }, tooltip: { callbacks: { label: (c) => `${c.dataset.label}: ${pesoCompact(c.parsed.y)}` } } }, scales: { x: { grid: { display: false } }, y: { ticks: { callback: (v) => pesoCompact(v) }, grid } } }}
       />
-    </div>
-  );
-}
-
-/** How many projects fall in each completion range (public dashboard). */
-export function ProgressBuckets({ buckets = {} }) {
-  const labels = Object.keys(buckets);
-  const data = { labels, datasets: [{ label: 'Projects', data: labels.map((k) => buckets[k]), backgroundColor: [PALETTE.slate, PALETTE.brandLight, PALETTE.brand, '#173a6a', PALETTE.green], borderRadius: 4 }] };
-  return (
-    <div className="relative h-56">
-      <Bar data={data} role="img" aria-label="Projects by completion range" options={{ maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { display: false } }, y: { ticks: { precision: 0 }, grid } } }} />
     </div>
   );
 }

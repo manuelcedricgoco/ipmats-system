@@ -5,15 +5,18 @@ export const ROLES = Object.freeze({
   ADMIN: 'admin',
   PERSONNEL: 'dpwh_personnel',
   AUDITOR: 'auditor',
-  PUBLIC: 'public',
 });
 export const STAFF = [ROLES.ADMIN, ROLES.PERSONNEL, ROLES.AUDITOR];
 
-/** Allow only the listed roles. */
+/**
+ * Allow only the listed roles. Accounts waiting for approval (or declined) have no role and are
+ * refused here; the approval check is repeated so a role can never be used before approval.
+ */
 export function requireRole(...roles) {
   const allowed = roles.flat();
   return (req, _res, next) => {
     if (!req.user) return next(unauthorized());
+    if (req.user.profile?.approval_status !== 'approved') return next(forbidden('Your account is waiting for approval by the System Administrator.'));
     if (!allowed.includes(req.user.role)) return next(forbidden());
     return next();
   };

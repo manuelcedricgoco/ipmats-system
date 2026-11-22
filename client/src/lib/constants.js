@@ -1,10 +1,11 @@
+// `color`: map-pin colour on the public portal (pins are coloured by status there).
 export const STATUS_META = {
-  not_started: { label: 'Not started', cls: 'bg-slate-100 text-slate-700' },
-  ongoing: { label: 'Ongoing', cls: 'bg-brand-50 text-brand-700' },
-  delayed: { label: 'Delayed', cls: 'bg-orange-50 text-orange-800' },
-  completed: { label: 'Completed', cls: 'bg-emerald-50 text-emerald-800' },
-  suspended: { label: 'Suspended', cls: 'bg-slate-200 text-slate-800' },
-  terminated: { label: 'Terminated', cls: 'bg-red-50 text-red-800' },
+  not_started: { label: 'Not started', cls: 'bg-slate-100 text-slate-700', color: '#64748b' },
+  ongoing: { label: 'Ongoing', cls: 'bg-brand-50 text-brand-700', color: '#1d4ed8' },
+  delayed: { label: 'Delayed', cls: 'bg-orange-50 text-orange-800', color: '#ea580c' },
+  completed: { label: 'Completed', cls: 'bg-emerald-50 text-emerald-800', color: '#059669' },
+  suspended: { label: 'Suspended', cls: 'bg-slate-200 text-slate-800', color: '#7c3aed' },
+  terminated: { label: 'Terminated', cls: 'bg-red-50 text-red-800', color: '#dc2626' },
 };
 // Week 1: status is chosen manually ('Delayed' is detected automatically in a later week)
 export const MANUAL_STATUSES = ['not_started', 'ongoing', 'completed', 'suspended', 'terminated'];
@@ -22,7 +23,6 @@ export const ROLE_LABELS = {
   admin: 'System Administrator',
   dpwh_personnel: 'DPWH Personnel',
   auditor: 'Auditor',
-  public: 'Public Viewer',
 };
 
 export const OFFICE_TYPES = {

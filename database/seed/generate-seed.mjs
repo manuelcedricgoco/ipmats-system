@@ -111,7 +111,7 @@ const USERS = [
   { key: 'personnel', email: 'personnel@dpwh360.local', full_name: 'Engr. Jose Reyes', role: 'dpwh_personnel', agency: 'DPWH-OMDEO', position: 'Project Engineer' },
   { key: 'personnel2', email: 'personnel.south@dpwh360.local', full_name: 'Engr. Ana Lim', role: 'dpwh_personnel', agency: 'DPWH-SJFO', position: 'Project Engineer' },
   { key: 'auditor', email: 'auditor@dpwh360.local', full_name: 'Carlos Mendoza, CPA', role: 'auditor', agency: 'DPWH-OMDEO', position: 'Technical Auditor' },
-  { key: 'applicant', email: 'applicant@dpwh360.local', full_name: 'Rosa Villareal', role: 'public', requested: 'dpwh_personnel', agency: 'DPWH-OMDEO', position: 'Engineer II' },
+  { key: 'applicant', email: 'applicant@dpwh360.local', full_name: 'Rosa Villareal', role: null, requested: 'dpwh_personnel', agency: 'DPWH-OMDEO', position: 'Engineer II' },
 ].map((u) => ({ ...u, id: uuid(`user:${u.email}`) }));
 const userId = (k) => USERS.find((u) => u.key === k).id;
 

@@ -14,7 +14,7 @@ export default function AccountPendingPage() {
   if (loading) return <PageLoader />;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   if (isStaff) return <Navigate to="/app" replace />;
-  if (!isPending) return <Navigate to="/portal/dashboard" replace />; // approved Public account → portal Dashboard
+  if (!isPending) return <Navigate to="/" replace />;
 
   const declined = profile.approval_status === 'rejected';
   return (
@@ -25,17 +25,17 @@ export default function AccountPendingPage() {
           <>
             <p className="mt-2 font-semibold">The System Administrator declined your request.</p>
             {profile.review_note && <p className="mt-1">Reason: {profile.review_note}</p>}
-            <p className="mt-2">Contact your DPWH office if you believe this is a mistake. You can still view the public portal.</p>
+            <p className="mt-2">Contact your DPWH office if you believe this is a mistake. You can still browse the public portal, as anyone can.</p>
           </>
         ) : (
           <>
             <p className="mt-2 font-semibold">Your request for {ROLE_LABELS[profile.requested_role] || 'staff'} access is being reviewed.</p>
-            <p className="mt-1">You&rsquo;ll be able to open the staff workspace once the System Administrator approves it. Requested {dateTime(profile.requested_at)}.</p>
+            <p className="mt-1">You&rsquo;ll be able to open the staff workspace once the System Administrator approves it; until then you can browse the public portal only. Requested {dateTime(profile.requested_at)}.</p>
           </>
         )}
       </div>
       <div className="mt-6 flex flex-wrap gap-2">
-        <Button to="/portal" variant="secondary">Public portal</Button>
+        <Button to="/" variant="secondary">Public portal</Button>
         <Button
           variant="ghost"
           icon={LogOut}

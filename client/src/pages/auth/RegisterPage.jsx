@@ -1,4 +1,4 @@
-import { ClipboardCheck, Globe2, HardHat, MailCheck, UserPlus } from 'lucide-react';
+import { ClipboardCheck, HardHat, MailCheck, UserPlus } from 'lucide-react';
 import { useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import Button from '../../components/common/Button.jsx';
@@ -11,21 +11,21 @@ import PhotoPicker from '../../components/common/PhotoPicker.jsx';
 import { savePendingAvatar } from '../../lib/pendingAvatar.js';
 
 const ACCESS = [
-  { value: 'public', label: 'Public', icon: Globe2, hint: 'View projects, progress and finances. Ready right after you confirm your email.' },
   { value: 'dpwh_personnel', label: 'DPWH Personnel', icon: HardHat, hint: 'Register projects and submit progress. Needs administrator approval.' },
   { value: 'auditor', label: 'Auditor', icon: ClipboardCheck, hint: 'Review project records. Needs administrator approval.' },
 ];
 
 /**
  * WEEK 1 — Register page (Jonalyn Pagilagan, front-end).
- * Public accounts are approved automatically (view-only). DPWH Personnel and Auditor
- * requests wait for the System Administrator; the database never grants a staff role
- * from the sign-up form (trigger handle_new_user).
+ * Only DPWH Personnel and Auditors register (the public portal needs no account). Every
+ * registration is a request: the account has no role and can only browse the public portal
+ * until the System Administrator approves it. The database never grants a role from the
+ * sign-up form (trigger handle_new_user, migration 017).
  */
 export default function RegisterPage() {
   const { signUp, isAuthenticated } = useAuth();
   const { ref } = useReference();
-  const [form, setForm] = useState({ full_name: '', email: '', requested_role: 'public', agency_id: '', position: '', password: '', confirm: '' });
+  const [form, setForm] = useState({ full_name: '', email: '', requested_role: 'dpwh_personnel', agency_id: '', position: '', password: '', confirm: '' });
   const [error, setError] = useState(null);
   const [done, setDone] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -33,7 +33,6 @@ export default function RegisterPage() {
   const [photoError, setPhotoError] = useState(null);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
-  const isStaffRequest = form.requested_role !== 'public';
   if (isAuthenticated) return <Navigate to="/login" replace />;
 
   const submit = async (e) => {
@@ -46,10 +45,9 @@ export default function RegisterPage() {
         email: form.email.trim(),
         password: form.password,
         full_name: form.full_name.trim(),
-        // Public: no requested staff role → the database creates an approved Public account
-        requested_role: isStaffRequest ? form.requested_role : null,
-        agency_id: isStaffRequest ? form.agency_id : null,
-        position: isStaffRequest ? form.position.trim() : '',
+        requested_role: form.requested_role,
+        agency_id: form.agency_id,
+        position: form.position.trim(),
       });
       // Kept on this device; uploaded automatically the first time the person signs in.
       if (photo && res.userId) await savePendingAvatar(res.userId, photo);
@@ -64,20 +62,16 @@ export default function RegisterPage() {
   return (
     <AuthShell
       wide
-      title="Create an account"
-      subtitle="Public viewers register here to see the portal. Staff accounts are approved by the System Administrator."
+      title="Request a staff account"
+      subtitle="For DPWH personnel and auditors. Browsing the public portal needs no account. Your access starts once the System Administrator approves it."
     >
       {done ? (
         <div className="animate-scale-in rounded-lg border border-emerald-200 bg-emerald-50 p-5 text-sm text-emerald-900">
           <MailCheck className="h-6 w-6 text-emerald-600" aria-hidden />
           <p className="mt-2 font-semibold">Check your email</p>
           <p className="mt-1">
-            We sent a confirmation link to <strong>{form.email}</strong>. After confirming, sign in.{' '}
-            {isStaffRequest ? (
-              <>Your request will show as <strong>awaiting approval</strong> until the System Administrator grants access.</>
-            ) : (
-              <>Your Public account opens the public portal right away.</>
-            )}
+            We sent a confirmation link to <strong>{form.email}</strong>. After confirming, sign in. Your account shows as{' '}
+            <strong>awaiting approval</strong> until the System Administrator grants access; until then you can browse the public portal only.
           </p>
         </div>
       ) : (
@@ -91,7 +85,7 @@ export default function RegisterPage() {
           </Field>
           <fieldset className="sm:col-span-2">
             <legend className="mb-2 text-sm font-medium text-slate-700">Account type <span className="text-red-600">*</span></legend>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3" role="radiogroup">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2" role="radiogroup">
               {ACCESS.map(({ value, label, icon: Icon, hint }) => {
                 const active = form.requested_role === value;
                 return (
@@ -111,25 +105,21 @@ export default function RegisterPage() {
               })}
             </div>
           </fieldset>
-          {isStaffRequest && (
-            <>
-              <Field label="Office" required>
-                {(a) => (
-                  <Select {...a} value={form.agency_id} onChange={set('agency_id')} required>
-                    <option value="">Select your office</option>
-                    {ref?.agencies.map((x) => (
-                      <option key={x.id} value={x.id}>
-                        {x.name}
-                      </option>
-                    ))}
-                  </Select>
-                )}
-              </Field>
-              <Field label="Position / designation">
-                {(a) => <Input {...a} value={form.position} onChange={set('position')} placeholder="e.g. Project Engineer II" maxLength={120} />}
-              </Field>
-            </>
-          )}
+          <Field label="Office" required>
+            {(a) => (
+              <Select {...a} value={form.agency_id} onChange={set('agency_id')} required>
+                <option value="">Select your office</option>
+                {ref?.agencies.map((x) => (
+                  <option key={x.id} value={x.id}>
+                    {x.name}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+          <Field label="Position / designation">
+            {(a) => <Input {...a} value={form.position} onChange={set('position')} placeholder="e.g. Project Engineer II" maxLength={120} />}
+          </Field>
           <div className="sm:col-span-2 rounded-lg border border-slate-200 bg-slate-50/60 p-4">
             <p className="mb-3 text-sm font-medium text-slate-700">Profile photo <span className="font-normal text-slate-500">(optional)</span></p>
             <PhotoPicker
@@ -151,7 +141,7 @@ export default function RegisterPage() {
             {(a) => <PasswordInput {...a} value={form.confirm} onChange={set('confirm')} required minLength={8} autoComplete="new-password" />}
           </Field>
           <Button type="submit" icon={UserPlus} loading={loading} className="w-full sm:col-span-2">
-            {isStaffRequest ? 'Submit request' : 'Create account'}
+            Submit request
           </Button>
         </form>
       )}

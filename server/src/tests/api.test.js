@@ -55,10 +55,14 @@ describe('API guards (Weeks 1–3)', () => {
   it('Week 2: /projects/stats is not mistaken for a project id', async () => {
     assert.equal((await request(app).get('/api/projects/stats')).status, 401);
   });
-  it('Public portal requires sign-in for every endpoint (no anonymous reads)', async () => {
-    for (const path of ['/api/public/stats', '/api/public/projects', '/api/public/projects/9f343767-8d98-5863-903c-3bc97288d015']) {
-      assert.equal((await request(app).get(path)).status, 401, path);
+  it('Public portal needs no sign-in (reads run as the anonymous role; RLS decides what is returned)', async () => {
+    for (const path of ['/api/public/stats', '/api/public/projects', '/api/public/map', '/api/public/projects/9f343767-8d98-5863-903c-3bc97288d015']) {
+      const status = (await request(app).get(path)).status;
+      assert.notEqual(status, 401, path);
+      assert.notEqual(status, 403, path);
     }
+    // the old charts endpoint (it exposed flags) is gone
+    assert.equal((await request(app).get('/api/public/dashboard')).status, 404);
   });
   it('Week 3: requires sign-in for images, flags, findings, map, dashboards and reports', async () => {
     const id = '9f343767-8d98-5863-903c-3bc97288d015';

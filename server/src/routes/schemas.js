@@ -13,7 +13,7 @@ const money = z.coerce.number().finite().min(0).max(1e13);
 const text = (max) => z.string().trim().max(max);
 
 export const uuidParam = z.string().uuid();
-export const ROLES = ['admin', 'dpwh_personnel', 'auditor', 'public'];
+export const ROLES = ['admin', 'dpwh_personnel', 'auditor'];
 export const PROJECT_TYPES = ['road', 'bridge', 'flood_control', 'building', 'water_supply', 'other'];
 // Week 3: status is set automatically (Not started / Ongoing / Delayed / Completed).
 // Personnel may only set Suspended or Terminated; any other value means "automatic".
