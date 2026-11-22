@@ -70,25 +70,35 @@ export default function UsersPage() {
             <span className="rounded-full bg-amber-200 px-2 text-xs font-semibold text-amber-900">{pending.length}</span>
             <span className="ml-auto hidden text-xs text-amber-800 sm:block">New sign-ups have no staff access until approved.</span>
           </div>
-          <ul className="divide-y divide-slate-100">
-            {pending.map((u) => (
-              <li key={u.id} className="flex flex-col gap-3 px-5 py-4 transition-colors hover:bg-slate-50 sm:flex-row sm:items-center">
-                <div className="min-w-0 flex-1">
-                  <p className="font-semibold text-slate-900">{u.full_name || u.email}</p>
-                  <p className="text-xs text-slate-500">{u.email}</p>
-                  <p className="mt-1 text-xs text-slate-600">
-                    Requests <strong>{ROLE_LABELS[u.requested_role] || '—'}</strong>
-                    {u.agency?.name ? ` · ${u.agency.name}` : ''}
-                    {u.position ? ` · ${u.position}` : ''} · {dateTime(u.requested_at)}
-                  </p>
-                </div>
-                <div className="flex shrink-0 gap-2">
-                  <Button size="sm" icon={Check} onClick={() => setApproving(u)}>Approve</Button>
-                  <Button size="sm" variant="secondary" icon={X} onClick={() => setDeclining(u)}>Decline</Button>
-                </div>
-              </li>
-            ))}
-          </ul>
+          <div className="relative overflow-x-auto">
+            <table className="min-w-full divide-y divide-slate-200 text-sm">
+              <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <tr>
+                  <th scope="col" className="px-4 py-3">Name</th>
+                  <th scope="col" className="px-4 py-3">Email</th>
+                  <th scope="col" className="px-4 py-3">Requested role</th>
+                  <th scope="col" className="px-4 py-3">Requested</th>
+                  <th scope="col" className="w-px whitespace-nowrap px-4 py-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {pending.map((u) => (
+                  <tr key={u.id} className="hover:bg-slate-50">
+                    <td className="px-4 py-3">
+                      <span className="font-semibold text-slate-900">{u.full_name || '—'}</span>
+                      <span className="block text-xs text-slate-500">{[u.agency?.name, u.position].filter(Boolean).join(' · ')}</span>
+                    </td>
+                    <td className="break-all px-4 py-3 text-xs text-slate-600">{u.email}</td>
+                    <td className="px-4 py-3">{ROLE_LABELS[u.requested_role] || '—'}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-xs">{dateTime(u.requested_at)}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-right">
+                      <RowActions name={u.email} busy={rows.isBusy(u.id)} onApprove={() => setApproving(u)} onReject={() => setDeclining(u)} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </Card>
       )}
       <Card className="mb-4 flex flex-col gap-3 p-4 sm:flex-row">
@@ -128,7 +138,7 @@ export default function UsersPage() {
                 </div>
                 <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
                   <AccountStatus user={u} />
-                  <span className="text-slate-700">{ROLE_LABELS[u.role]}{u.position ? ` · ${u.position}` : ''}</span>
+                  <span className="text-slate-700">{ROLE_LABELS[u.role] || 'No role'}{u.position ? ` · ${u.position}` : ''}</span>
                 </div>
                 <SuspensionNote user={u} />
                 <p className="mt-1 text-xs text-slate-500">{u.agency?.name || 'No office'} · Created {date(u.created_at)}</p>
@@ -156,7 +166,7 @@ export default function UsersPage() {
                 {data.data.map((u) => (
                   <tr key={u.id} className={u.is_active ? '' : 'bg-slate-50 text-slate-500'}>
                     <td className="px-4 py-3"><span className="font-semibold text-slate-900">{u.full_name || '—'}</span>{u.id === profile.id && <span className="ml-1 text-xs text-slate-500">(you)</span>}<span className="block text-xs text-slate-500">{u.email}</span></td>
-                    <td className="px-4 py-3">{ROLE_LABELS[u.role]}<span className="block text-xs text-slate-500">{u.position}</span></td>
+                    <td className="px-4 py-3">{ROLE_LABELS[u.role] || 'No role'}<span className="block text-xs text-slate-500">{u.position}</span></td>
                     <td className="px-4 py-3 text-xs">{u.agency?.name || '—'}</td>
                     <td className="px-4 py-3"><AccountStatus user={u} /><SuspensionNote user={u} /></td>
                     <td className="whitespace-nowrap px-4 py-3 text-xs">{date(u.created_at)}</td>
@@ -170,8 +180,8 @@ export default function UsersPage() {
         </Card>
       )}
       <UserModal value={editing} self={profile} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reloadAll(); }} />
-      <ApproveModal user={approving} onClose={() => setApproving(null)} onSaved={() => { setApproving(null); reloadAll(); }} />
-      <DeclineModal user={declining} onClose={() => setDeclining(null)} onSaved={() => { setDeclining(null); reloadAll(); }} />
+      <ApproveModal user={approving} run={rows.run} onClose={() => setApproving(null)} onSaved={() => { setApproving(null); reloadAll(); }} />
+      <DeclineModal user={declining} run={rows.run} onClose={() => setDeclining(null)} onSaved={() => { setDeclining(null); reloadAll(); }} />
       <DeleteUserModal
         user={deleting}
         run={rows.run}
@@ -210,7 +220,7 @@ function UserModal({ value, self, onClose, onSaved }) {
     try {
       if (editing) {
         // Suspension is done only with the Suspend / Lift suspension buttons, not from this form.
-        await api.patch(`/users/${value.id}`, { full_name: form.full_name, role: form.role, agency_id: form.agency_id || null, position: form.position || null });
+        await api.patch(`/users/${value.id}`, { full_name: form.full_name, ...(value.approval_status === 'approved' ? { role: form.role } : {}), agency_id: form.agency_id || null, position: form.position || null });
       } else {
         await api.post('/users', { email: form.email, password: form.password, full_name: form.full_name, role: form.role, agency_id: form.agency_id || null, position: form.position || null });
       }
@@ -234,12 +244,10 @@ function UserModal({ value, self, onClose, onSaved }) {
           </>
         )}
         <Field label="Full name" required error={fe.full_name} className="sm:col-span-2">{(a) => <Input {...a} value={form.full_name} onChange={set('full_name')} required minLength={2} />}</Field>
-        <Field label="Role" required hint={isSelf ? 'You cannot change your own role.' : undefined}>
+        <Field label="Role" required hint={isSelf ? 'You cannot change your own role.' : editing && value.approval_status !== 'approved' ? 'Approve the access request to grant a role.' : undefined}>
           {(a) => (
-            <Select {...a} value={form.role} onChange={set('role')} disabled={isSelf}>
-              {Object.entries(ROLE_LABELS)
-                .filter(([k]) => k !== 'public' || value?.role === 'public')
-                .map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            <Select {...a} value={form.role} onChange={set('role')} disabled={isSelf || (editing && value.approval_status !== 'approved')}>
+              {Object.entries(ROLE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </Select>
           )}
         </Field>
@@ -250,7 +258,7 @@ function UserModal({ value, self, onClose, onSaved }) {
   );
 }
 
-function ApproveModal({ user, onClose, onSaved }) {
+function ApproveModal({ user, run, onClose, onSaved }) {
   const toast = useToast();
   const { ref } = useReference();
   const [form, setForm] = useState({});
@@ -267,7 +275,7 @@ function ApproveModal({ user, onClose, onSaved }) {
     e.preventDefault();
     setSaving(true);
     try {
-      await api.post(`/users/${user.id}/approve`, { role: form.role, agency_id: form.agency_id || null, position: form.position || null });
+      await run(user.id, () => api.post(`/users/${user.id}/approve`, { role: form.role, agency_id: form.agency_id || null, position: form.position || null }));
       toast.success(`${user.full_name || user.email} approved as ${ROLE_LABELS[form.role]}.`);
       onSaved();
     } catch (e2) {
@@ -305,7 +313,7 @@ function ApproveModal({ user, onClose, onSaved }) {
   );
 }
 
-function DeclineModal({ user, onClose, onSaved }) {
+function DeclineModal({ user, run, onClose, onSaved }) {
   const toast = useToast();
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
@@ -319,7 +327,7 @@ function DeclineModal({ user, onClose, onSaved }) {
   const submit = async () => {
     setSaving(true);
     try {
-      await api.post(`/users/${user.id}/reject`, { note: note || null });
+      await run(user.id, () => api.post(`/users/${user.id}/reject`, { note: note || null }));
       toast.success('Access request declined.');
       onSaved();
     } catch (e2) {

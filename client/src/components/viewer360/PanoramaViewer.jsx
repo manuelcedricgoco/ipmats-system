@@ -7,7 +7,14 @@ import { useEffect, useRef, useState } from 'react';
  * Interactive 360° viewer (Pannellum) for an equirectangular panorama.
  * Shows a clear notice when no image is available (spec §5).
  */
-export default function PanoramaViewer({ url, title, className = 'h-72', autoRotate = true, compact = false }) {
+export default function PanoramaViewer({
+  url,
+  title,
+  className = 'h-72',
+  autoRotate = true,
+  compact = false,
+  emptyHint = 'No panoramic site image has been uploaded for this project yet. Projects without documentation are flagged Yellow.',
+}) {
   const el = useRef(null);
   const viewer = useRef(null);
   const [error, setError] = useState(null);
@@ -45,7 +52,7 @@ export default function PanoramaViewer({ url, title, className = 'h-72', autoRot
       <div className={`flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-100 px-6 text-center ${className}`}>
         <ImageOff className="h-7 w-7 text-slate-400" aria-hidden />
         <p className="text-sm font-semibold text-slate-700">No 360° image available</p>
-        <p className="max-w-xs text-xs text-slate-500">No panoramic site image has been uploaded for this project yet. Projects without documentation are flagged Yellow.</p>
+        <p className="max-w-xs text-xs text-slate-500">{emptyHint}</p>
       </div>
     );
   }

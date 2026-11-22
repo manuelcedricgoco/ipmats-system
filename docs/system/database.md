@@ -1,0 +1,534 @@
+# Database
+
+The database is PostgreSQL 17, hosted by Supabase (project **IPMATS**). This page was written from the live
+database on 22 November 2026, not only from the migration files. Where the two differ, the live schema wins.
+
+- What each table is used for in the app: [features.md](features.md)
+- Who may read or change each table: [roles-and-permissions.md](roles-and-permissions.md)
+
+## Overview
+
+- **16 tables** in the `public` schema, plus one helper table in the `private` schema.
+- **2 views** that join projects with their place, office, contractor and totals.
+- **7 enum types** and several text columns limited by `CHECK` rules.
+- **4 private storage buckets** for files (photos, evidence, documents).
+- Row Level Security (RLS) is **on for every table**. All policies only allow reading. Every insert, update and
+  delete is done by the Node.js API with the service-role key, after the API has checked the user's role.
+
+## Entity-relationship diagram
+
+The diagram shows the business entities only. The "who did it" links to `profiles` (created by, uploaded by,
+reviewed by…) are listed in [Foreign keys](#foreign-keys-and-what-they-mean) instead, so the diagram stays readable.
+
+```mermaid
+erDiagram
+  MUNICIPALITIES ||--o{ BARANGAYS : "has"
+  MUNICIPALITIES ||--o{ PROJECTS : "location of"
+  BARANGAYS |o--o{ PROJECTS : "location of"
+  AGENCIES ||--o{ PROJECTS : "implements"
+  AGENCIES |o--o{ PROFILES : "employs"
+  CONTRACTORS |o--o{ PROJECTS : "builds"
+  PROJECTS ||--o{ PROJECT_PHASES : "divided into"
+  PROJECTS ||--o{ PROGRESS_UPDATES : "reported in"
+  PROJECTS ||--o{ FINANCIAL_RECORDS : "paid through"
+  PROJECTS ||--o{ SITE_IMAGES : "photographed in"
+  PROJECTS ||--o{ PROJECT_DOCUMENTS : "documented by"
+  PROJECTS ||--o{ FLAG_HISTORY : "evaluated in"
+  PROJECTS ||--o{ FLAG_REVIEWS : "reviewed in"
+  PROJECTS ||--o{ AUDIT_FINDINGS : "audited in"
+  PROJECTS |o--o{ ACTIVITY_LOGS : "mentioned in"
+  PROJECT_PHASES |o--o{ FINANCIAL_RECORDS : "allocated to"
+  PROJECT_PHASES |o--o{ SITE_IMAGES : "photo of"
+  PROJECT_PHASES |o--o{ PROJECT_DOCUMENTS : "document of"
+  PROJECT_PHASES |o--o{ AUDIT_FINDINGS : "finding about"
+  PROFILES ||--o{ FLAG_REVIEWS : "auditor decides"
+  PROFILES ||--o{ AUDIT_FINDINGS : "auditor records"
+  PROFILES |o--o{ AUDIT_FINDINGS : "assigned to"
+  PROFILES |o--o{ ACTIVITY_LOGS : "actor"
+```
+
+`SYSTEM_SETTINGS` has no relationship to other tables except `updated_by → profiles`.
+
+## Tables
+
+Notation: **Null** = whether the column may be empty. "—" in Default means no default.
+`timestamptz` = date and time with time zone. `jsonb` = structured data (JSON).
+
+### municipalities
+The 11 municipalities of Occidental Mindoro. A fixed lookup list, loaded by the seed.
+
+| Column | Type | Null | Default | Description |
+|---|---|---|---|---|
+| id | smallint | no | — | Primary key |
+| name | text | no | — | Municipality name (unique) |
+| is_capital | boolean | no | false | True for the provincial capital |
+| latitude | numeric | no | — | Centre point, used to pre-fill a project's location |
+| longitude | numeric | no | — | Centre point |
+| created_at | timestamptz | no | now() | When the row was added |
+
+### barangays
+Barangays of each municipality. A lookup list.
+
+| Column | Type | Null | Default | Description |
+|---|---|---|---|---|
+| id | integer | no | — | Primary key |
+| municipality_id | smallint | no | — | Municipality it belongs to. Name is unique within a municipality |
+| name | text | no | — | Barangay name |
+| latitude | numeric | yes | — | Centre point, if known |
+| longitude | numeric | yes | — | Centre point, if known |
+| created_at | timestamptz | no | now() | When the row was added |
+
+### agencies
+Implementing offices ("Offices & Agencies" in the app), for example a District Engineering Office.
+
+| Column | Type | Null | Default | Description |
+|---|---|---|---|---|
+| id | smallint | no | — | Primary key |
+| code | text | no | — | Short code, e.g. `DPWH-OMDEO` (unique) |
+| name | text | no | — | Full office name |
+| office_type | text | no | — | `district_engineering_office`, `field_office` or `other` |
+| address | text | yes | — | Office address |
+| created_at | timestamptz | no | now() | When the row was added |
+| updated_at | timestamptz | no | now() | Last change (set by a trigger) |
+| is_active | boolean | no | true | False = suspended: not offered for new projects; existing links stay |
+
+### profiles
+One row per user account. Linked one-to-one to the Supabase Auth user (`auth.users`).
+
+| Column | Type | Null | Default | Description |
+|---|---|---|---|---|
+| id | uuid | no | — | Same id as the Auth user. Deleting the Auth user deletes the profile |
+| email | text | no | — | Sign-in email |
+| full_name | text | no | `''` | Display name |
+| role | user_role | yes | — | Staff role. **Empty until the account is approved** |
+| agency_id | smallint | yes | — | Office the person works for |
+| position | text | yes | — | Job title |
+| is_active | boolean | no | true | False = deactivated or suspended; the API refuses every request |
+| requested_role | user_role | yes | — | Role asked for at registration (`dpwh_personnel` or `auditor` only) |
+| approval_status | text | no | `'approved'` | `pending`, `approved` or `rejected`. Self-registered accounts get `pending` or `rejected` from the sign-up trigger, not this default |
+| requested_at | timestamptz | yes | — | When the access request was made |
+| reviewed_by | uuid | yes | — | Administrator who approved or declined |
+| reviewed_at | timestamptz | yes | — | When it was reviewed |
+| review_note | text | yes | — | Reason given when declining |
+| avatar_path | text | yes | — | Profile photo file in the `avatars` bucket |
+| created_at | timestamptz | no | now() | When the account was created |
+| updated_at | timestamptz | no | now() | Last change (trigger) |
+| suspended_at | timestamptz | yes | — | When the account was suspended |
+| suspended_by | uuid | yes | — | Administrator who suspended it |
+| suspension_reason | text | yes | — | Required reason, 5–500 characters |
+
+Rules: a role can only be set when `approval_status = 'approved'` (`profiles_role_requires_approval`).
+
+### contractors
+Construction contractors and their PCAB licence.
+
+| Column | Type | Null | Default | Description |
+|---|---|---|---|---|
+| id | uuid | no | gen_random_uuid() | Primary key |
+| name | text | no | — | Company name (unique) |
+| pcab_license_no | text | yes | — | PCAB licence number (unique) |
+| classification | text | yes | — | PCAB classification |
+| address | text | yes | — | Business address |
+| contact_person | text | yes | — | Contact person |
+| contact_number | text | yes | — | Phone number |
+| email | text | yes | — | Email |
+| is_active | boolean | no | true | False = suspended / inactive |
+| created_by | uuid | yes | — | Who added it |
+| created_at | timestamptz | no | now() | When it was added |
+| updated_at | timestamptz | no | now() | Last change (trigger) |
+
+### projects
+The infrastructure projects: the centre of the system.
+
+| Column | Type | Null | Default | Description |
+|---|---|---|---|---|
+| id | uuid | no | gen_random_uuid() | Primary key |
+| project_code | text | no | — | Project ID, e.g. `26OM0332`. **Assigned by the database** on insert and cannot be changed |
+| name | text | no | — | Project title |
+| description | text | yes | — | Scope of work |
+| project_type | project_type | no | — | Road, bridge, flood control… |
+| agency_id | smallint | no | — | Implementing office |
+| contractor_id | uuid | yes | — | Contractor; empty = not yet awarded |
+| contract_ref_no | text | yes | — | Contract reference number (staff only) |
+| municipality_id | smallint | no | — | Municipality |
+| barangay_id | integer | yes | — | Barangay |
+| latitude | numeric | no | — | Site location; must be 12.0–14.05 |
+| longitude | numeric | no | — | Site location; must be 119.85–121.3 |
+| approved_budget | numeric | no | — | Approved Budget for the Contract (ABC), ≥ 0 |
+| contract_amount | numeric | yes | — | Awarded contract amount, ≥ 0 |
+| notice_to_proceed | date | yes | — | Notice to Proceed (NTP) date = start of works |
+| duration_days | integer | yes | — | Contract duration in calendar days, > 0 |
+| target_completion_date | date | yes | — | NTP + duration (computed by the API if not given); not before the NTP |
+| actual_completion_date | date | yes | — | Date the works finished; not before the NTP |
+| fund_source | text | yes | — | Source of funds (staff only) |
+| status | project_status | no | `'not_started'` | Lifecycle status, set automatically (see [workflows](workflows.md#project-lifecycle)) |
+| created_by | uuid | yes | — | Who registered it |
+| updated_by | uuid | yes | — | Who changed it last |
+| created_at | timestamptz | no | now() | When it was registered |
+| updated_at | timestamptz | no | now() | Last change (trigger) |
+| overall_progress | numeric | no | 0 | Physical progress 0–100 % (weighted phase accomplishment) |
+| completion_status | completion_status | no | `'not_completed'` | Completed only when every completion requirement is met |
+| planned_progress | numeric | no | 0 | Where the schedule says the project should be today, 0–100 % |
+| auto_flag | flag_color | yes | — | Latest automatic flag |
+| auto_flag_reasons | jsonb | no | `'[]'` | The reasons behind the automatic flag |
+| auto_flag_evaluated_at | timestamptz | yes | — | When the automatic check last ran |
+| current_flag | flag_color | yes | — | The flag users see: automatic, or the auditor's decision |
+| flag_review_status | flag_review_status | no | `'pending'` | Whether an auditor confirmed or overrode the current flag |
+| audit_status | audit_status | no | `'not_audited'` | Audit progress of the project |
+
+### project_phases
+Construction phases of a project (weights of one project total 100 %).
+
+| Column | Type | Null | Default | Description |
+|---|---|---|---|---|
+| id | uuid | no | gen_random_uuid() | Primary key |
+| project_id | uuid | no | — | Project |
+| sequence_no | smallint | no | — | Order, > 0, unique per project |
+| name | text | no | — | Phase name, at least 2 characters |
+| weight | numeric | no | — | Share of the whole project, > 0 and ≤ 100 |
+| planned_start | date | yes | — | Planned start |
+| planned_end | date | yes | — | Planned end, not before the planned start |
+| actual_start | date | yes | — | Actual start |
+| actual_end | date | yes | — | Actual end; only allowed at 100 % accomplishment |
+| accomplishment | numeric | no | 0 | Percent done, 0–100 |
+| remarks | text | yes | — | Notes |
+| created_at | timestamptz | no | now() | — |
+| updated_at | timestamptz | no | now() | Last change (trigger) |
+
+### progress_updates
+History of progress reports. One row each time personnel submit an update.
+
+| Column | Type | Null | Default | Description |
+|---|---|---|---|---|
+| id | uuid | no | gen_random_uuid() | Primary key |
+| project_id | uuid | no | — | Project |
+| report_date | date | no | — | "As of" date of the report |
+| overall_progress | numeric | no | — | Overall progress after this report, 0–100 |
+| phase_snapshot | jsonb | no | `'[]'` | Every phase's accomplishment at that moment |
+| remarks | text | yes | — | Explanation from the reporter |
+| submitted_by | uuid | yes | — | Who submitted it |
+| created_at | timestamptz | no | now() | When it was saved |
+
+### financial_records
+Money events of a project.
+
+| Column | Type | Null | Default | Description |
+|---|---|---|---|---|
+| id | uuid | no | gen_random_uuid() | Primary key |
+| project_id | uuid | no | — | Project |
+| record_type | text | no | — | `variation_order`, `obligation`, `disbursement` or `expense` |
+| amount | numeric | no | — | Never 0. Only a variation order may be negative |
+| reference_no | text | yes | — | Voucher or document number |
+| record_date | date | no | — | Date of the transaction |
+| description | text | yes | — | Notes |
+| created_by | uuid | yes | — | Who recorded it |
+| created_at | timestamptz | no | now() | When it was recorded |
+| phase_id | uuid | yes | — | Construction phase it belongs to (optional) |
+
+### site_images
+360° (and regular) site photos. The files are in the private `panoramas` bucket.
+
+| Column | Type | Null | Default | Description |
+|---|---|---|---|---|
+| id | uuid | no | gen_random_uuid() | Primary key |
+| project_id | uuid | no | — | Project |
+| phase_id | uuid | yes | — | Phase shown in the photo |
+| storage_path | text | no | — | File location in the bucket (unique) |
+| file_hash | text | no | — | SHA-256 of the uploaded file, used to detect reused photos |
+| mime_type | text | no | `'image/jpeg'` | File type |
+| size_bytes | bigint | yes | — | Stored file size |
+| width | integer | yes | — | Pixels |
+| height | integer | yes | — | Pixels |
+| caption | text | yes | — | Caption |
+| latitude | numeric | yes | — | Where the photo was taken |
+| longitude | numeric | yes | — | Where the photo was taken |
+| gps_source | text | no | `'none'` | `exif` (from the file), `manual` (typed) or `none` |
+| captured_at | timestamptz | yes | — | Capture time from the file |
+| inspection_date | date | no | — | Site inspection date |
+| is_final | boolean | no | false | True = final "as-built" photo (needed for completion) |
+| validation | jsonb | no | `'{}'` | Results of the GPS, time and reuse checks |
+| uploaded_by | uuid | yes | — | Who uploaded it |
+| created_at | timestamptz | no | now() | When it was uploaded |
+| is_public | boolean | no | false | True = approved for the public portal |
+| public_reviewed_by | uuid | yes | — | Auditor or Admin who approved or hid it |
+| public_reviewed_at | timestamptz | yes | — | When |
+
+### project_documents
+Supporting documents of a project. The files are in the private `project-documents` bucket.
+
+| Column | Type | Null | Default | Description |
+|---|---|---|---|---|
+| id | uuid | no | gen_random_uuid() | Primary key |
+| project_id | uuid | no | — | Project |
+| phase_id | uuid | yes | — | Phase (optional) |
+| title | text | no | — | 3–200 characters |
+| doc_type | text | no | — | See [lookup values](#text-columns-with-a-fixed-list-of-values) |
+| description | text | yes | — | Up to 2000 characters |
+| document_date | date | yes | — | Date on the document |
+| storage_path | text | no | — | File location (unique) |
+| file_name | text | no | — | Original file name |
+| mime_type | text | no | — | File type |
+| size_bytes | integer | no | — | Size, > 0 |
+| uploaded_by | uuid | yes | — | Who uploaded it |
+| created_at | timestamptz | no | now() | When |
+
+### system_settings
+Configuration values. The live database has one row: `flag_rules`, the thresholds of the automatic flags.
+
+| Column | Type | Null | Default | Description |
+|---|---|---|---|---|
+| key | text | no | — | Primary key, e.g. `flag_rules` |
+| value | jsonb | no | — | The settings |
+| description | text | yes | — | What the setting is |
+| updated_at | timestamptz | no | now() | Last change (trigger) |
+| updated_by | uuid | yes | — | Administrator who changed it |
+
+Current `flag_rules` values: slippage Green up to 5 %, Yellow up to 15 %; photo older than 30 days; photo GPS
+more than 500 m (Yellow) or 2000 m (Red) from the site; payments 10 % (Yellow) or 25 % (Red) ahead of the work;
+completion lateness tolerance 0 days; photo date tolerance 7 days.
+
+### flag_history
+Every automatic evaluation and every auditor decision. **Append-only**: a trigger refuses updates and deletes.
+
+| Column | Type | Null | Default | Description |
+|---|---|---|---|---|
+| id | uuid | no | gen_random_uuid() | Primary key |
+| project_id | uuid | no | — | Project |
+| source | text | no | — | `auto` or `auditor` |
+| trigger_event | text | no | — | What caused it, e.g. `progress_update`, `daily_check`, `review_override` |
+| flag | flag_color | no | — | Resulting flag |
+| completion_status | completion_status | no | — | At that moment |
+| project_status | project_status | no | — | At that moment |
+| reasons | jsonb | no | `'[]'` | Reasons found |
+| metrics | jsonb | no | `'{}'` | Numbers used (progress, slippage, amounts…) |
+| created_by | uuid | yes | — | Person who triggered it; empty for the scheduled check |
+| created_at | timestamptz | no | now() | When |
+
+### flag_reviews
+An auditor confirms or overrides a project's automatic flag. **Append-only.**
+
+| Column | Type | Null | Default | Description |
+|---|---|---|---|---|
+| id | uuid | no | gen_random_uuid() | Primary key |
+| project_id | uuid | no | — | Project |
+| decision | text | no | — | `confirm` or `override` |
+| auto_flag | flag_color | no | — | Automatic flag at the time |
+| final_flag | flag_color | no | — | Flag decided. Must equal `auto_flag` for confirm and differ for override |
+| reason | text | no | — | At least 10 characters |
+| evidence_path | text | yes | — | Evidence file in `audit-evidence`. **Required for an override** |
+| auditor_id | uuid | no | — | Who decided |
+| created_at | timestamptz | no | now() | When |
+
+### audit_findings
+Audit findings and their corrective actions.
+
+| Column | Type | Null | Default | Description |
+|---|---|---|---|---|
+| id | uuid | no | gen_random_uuid() | Primary key |
+| project_id | uuid | no | — | Project |
+| phase_id | uuid | yes | — | Phase concerned |
+| title | text | no | — | At least 5 characters |
+| description | text | no | — | At least 10 characters |
+| severity | text | no | `'medium'` | `low`, `medium`, `high` or `critical` |
+| recommendation | text | yes | — | Auditor's recommendation |
+| corrective_action | text | yes | — | What is being done about it |
+| action_status | text | no | `'open'` | `open`, `in_progress`, `resolved` or `closed` |
+| due_date | date | yes | — | Deadline for the corrective action |
+| evidence_path | text | yes | — | Evidence file in `audit-evidence` |
+| auditor_id | uuid | no | — | Auditor who recorded it |
+| created_at | timestamptz | no | now() | — |
+| updated_at | timestamptz | no | now() | Last change (trigger) |
+| is_public | boolean | no | false | Marked for disclosure (see [features: not yet implemented](features.md#not-yet-implemented)) |
+| published_by | uuid | yes | — | Who changed the disclosure |
+| published_at | timestamptz | yes | — | When |
+| assigned_to | uuid | yes | — | DPWH personnel responsible for the corrective action |
+| assigned_at | timestamptz | yes | — | When it was assigned |
+| action_updated_by | uuid | yes | — | Who last reported on the action |
+| action_updated_at | timestamptz | yes | — | When |
+
+### activity_logs
+Who did what, and when. **Append-only.** Name and role are copied in, so an entry stays readable later.
+
+| Column | Type | Null | Default | Description |
+|---|---|---|---|---|
+| id | uuid | no | gen_random_uuid() | Primary key |
+| actor_id | uuid | yes | — | Person; empty for automatic system jobs |
+| actor_name | text | yes | — | Name at that time ("System" for jobs) |
+| actor_role | text | yes | — | Role at that time (`system` for jobs) |
+| action | text | no | — | `area.verb`, e.g. `project.create`, `flag.override` |
+| entity_type | text | no | — | Kind of record, e.g. `project`, `user` |
+| entity_id | text | yes | — | Id of that record |
+| project_id | uuid | yes | — | Related project |
+| summary | text | no | — | One readable sentence, 3–500 characters |
+| details | jsonb | no | `'{}'` | Extra facts (changed fields, amounts…) |
+| created_at | timestamptz | no | now() | When |
+
+### private.project_code_counters
+A hidden helper table, not reachable through the API. It keeps the last Project ID number used per year, so
+two projects saved at the same moment never get the same ID. Created by migration 008.
+
+## Views
+
+Both views use `security_invoker`, so the reader's own permissions (RLS) apply.
+
+| View | Read by | What it adds |
+|---|---|---|
+| `v_project_summary` | Staff (authenticated) | Every project column plus names of its municipality, barangay, office and contractor; phase count; variation orders, revised contract amount, totals obligated / disbursed / spent, remaining balance and financial progress (computed live from `financial_records`); photo count and latest inspection date |
+| `v_public_projects` | Public visitors (anon) | Only public columns: code, name, description, type, status, contract amount, dates, location, progress, place / office / contractor names, and the count and latest date of **public** photos. No budget, flags, finance totals or internal references |
+
+## Foreign keys and what they mean
+
+"On delete" says what happens to this row when the row it points to is deleted.
+
+| From | To | On delete | Meaning |
+|---|---|---|---|
+| barangays.municipality_id | municipalities | restrict | A barangay is inside one municipality |
+| projects.municipality_id | municipalities | restrict | The project's municipality; a municipality in use cannot be deleted |
+| projects.barangay_id | barangays | set null | The project's barangay |
+| projects.agency_id | agencies | restrict | The implementing office; an office in use cannot be deleted |
+| projects.contractor_id | contractors | set null | The contractor building it |
+| profiles.id | auth.users | cascade | Every account has one profile |
+| profiles.agency_id | agencies | set null | The office a staff member works for |
+| project_phases.project_id | projects | cascade | Phases belong to one project |
+| progress_updates.project_id | projects | cascade | Reports belong to one project |
+| financial_records.project_id | projects | cascade | Records belong to one project |
+| financial_records.phase_id | project_phases | set null | Optional phase allocation |
+| site_images.project_id | projects | cascade | Photos belong to one project |
+| site_images.phase_id | project_phases | set null | Phase shown in the photo |
+| project_documents.project_id | projects | cascade | Documents belong to one project |
+| project_documents.phase_id | project_phases | set null | Phase of the document |
+| flag_history.project_id | projects | cascade | History of one project |
+| flag_reviews.project_id | projects | cascade | Reviews of one project |
+| audit_findings.project_id | projects | cascade | Findings on one project |
+| audit_findings.phase_id | project_phases | set null | Phase the finding is about |
+| activity_logs.project_id | projects | set null | The log entry stays when the project is deleted |
+| flag_reviews.auditor_id, audit_findings.auditor_id | profiles | restrict | An auditor with decisions or findings cannot be deleted |
+| audit_findings.assigned_to | profiles | set null | Person responsible for the corrective action |
+| "Who did it" columns: `*.created_by`, `updated_by`, `submitted_by`, `uploaded_by`, `reviewed_by`, `suspended_by`, `public_reviewed_by`, `published_by`, `action_updated_by`, `activity_logs.actor_id`, `system_settings.updated_by` | profiles | set null | Records who acted |
+
+Deleting a project removes its phases, reports, finances, photos, documents, flag history, reviews and findings
+(cascade). The append-only trigger allows this only as part of such a cascade. The API additionally refuses to
+delete a user who has any of these records ([roles-and-permissions](roles-and-permissions.md)).
+
+## Enums and lookup values
+
+### Enum types
+
+| Type | Allowed values |
+|---|---|
+| user_role | `admin`, `dpwh_personnel`, `auditor` |
+| project_type | `road`, `bridge`, `flood_control`, `building`, `water_supply`, `other` |
+| project_status | `not_started`, `ongoing`, `delayed`, `completed`, `suspended`, `terminated` |
+| completion_status | `completed`, `not_completed` |
+| flag_color | `green`, `yellow`, `red` |
+| flag_review_status | `pending`, `confirmed`, `overridden` |
+| audit_status | `not_audited`, `under_review`, `verified`, `for_investigation`, `closed` |
+
+### Text columns with a fixed list of values
+These are `text` columns limited by a `CHECK` rule, not enum types.
+
+| Column | Allowed values |
+|---|---|
+| agencies.office_type | `district_engineering_office`, `field_office`, `other` |
+| profiles.approval_status | `pending`, `approved`, `rejected` |
+| profiles.requested_role | `dpwh_personnel`, `auditor` (or empty) |
+| financial_records.record_type | `variation_order`, `obligation`, `disbursement`, `expense` |
+| site_images.gps_source | `exif`, `manual`, `none` |
+| flag_history.source | `auto`, `auditor` |
+| flag_reviews.decision | `confirm`, `override` |
+| audit_findings.severity | `low`, `medium`, `high`, `critical` |
+| audit_findings.action_status | `open`, `in_progress`, `resolved`, `closed` |
+| project_documents.doc_type | `contract`, `program_of_work`, `progress_report`, `inspection_report`, `variation_order`, `payment_document`, `as_built_plan`, `other` |
+| projects.project_code | Format `YY` + `OM` + 4 or more digits, e.g. `26OM0332` |
+
+### Lookup tables
+`municipalities`, `barangays` and `agencies` are the lookup lists. They are loaded by the seed
+(`database/seed/seed.sql`); offices are managed in the app by the System Administrator.
+
+## Database logic (triggers and functions)
+
+| Name | On | What it does |
+|---|---|---|
+| `handle_new_user` | after a new Auth user is created | Creates the profile with **no role**. A requested role of DPWH Personnel or Auditor makes the account `pending`; anything else makes it `rejected` |
+| `projects_assign_code` | before a project insert | Assigns the next Project ID for the year (Asia/Manila time) |
+| `projects_lock_code` | before a project update | Refuses any change to the Project ID |
+| `prevent_modification` | before update or delete on `flag_history`, `flag_reviews`, `activity_logs` | Makes them append-only (deletes allowed only through a project cascade) |
+| `set_updated_at` | before update on tables with `updated_at` | Sets `updated_at = now()` |
+| `private.app_role()` | used by RLS | The caller's role, only if the account is active **and approved** |
+| `private.is_staff()` | used by RLS | True when `app_role()` is admin, DPWH personnel or auditor |
+| `private.next_project_code()` | used by the code trigger | Increments the yearly counter and returns the next free code |
+
+## Row Level Security
+
+RLS is enabled on all 16 tables. There are **no insert, update or delete policies**, and the `anon` and
+`authenticated` roles have only `SELECT` privileges. So nothing can be written with the browser's key: every write
+goes through the API, which uses the service-role key (it bypasses RLS) after checking the user.
+
+`anon` = a visitor without an account (the publishable key). `authenticated` = any signed-in account.
+"Staff" = `private.is_staff()` is true: an active, approved admin, DPWH personnel or auditor.
+
+| Table | Policy | For | Allows reading |
+|---|---|---|---|
+| municipalities, barangays, agencies | reference: read all | anon, authenticated | Every row |
+| projects | projects: public read | anon | Every row, **but only 19 public columns** (column grants) |
+| projects | projects: staff read | authenticated | Every row and column, staff only |
+| contractors | contractors: public read | anon | Every row, **only `id` and `name`** |
+| contractors | contractors: staff read | authenticated | Every row and column, staff only |
+| site_images | images: public read | anon | Only rows with `is_public = true`, 7 columns (no GPS, hash, uploader) |
+| site_images | images: staff read | authenticated | Every row, staff only |
+| profiles | profiles: own or staff | authenticated | Your own profile; staff read all profiles |
+| project_phases, progress_updates, financial_records, project_documents, flag_history, flag_reviews, audit_findings, system_settings | "…: staff read" | authenticated | Every row, staff only |
+| activity_logs | activity: admin and auditor read | authenticated | Only admins and auditors |
+
+`anon` may also read the `v_public_projects` view. It cannot read any other table or view.
+A signed-in account that is pending or declined is not staff, so it can read only its own profile and the lookup
+tables, the same as a visitor.
+
+## File storage
+
+All four buckets are **private**, and there are no storage policies. Only the API (service role) can read or
+write files. It hands out signed links that expire (1 hour by default, `SIGNED_URL_TTL`).
+
+| Bucket | Holds | Size limit | File types |
+|---|---|---|---|
+| `panoramas` | 360° and regular site photos | 30 MB | JPEG, PNG, WebP |
+| `audit-evidence` | Evidence for flag overrides and findings | 20 MB | PDF, JPEG, PNG, WebP |
+| `project-documents` | Supporting documents | 25 MB | PDF, JPEG, PNG, WebP, Word, Excel |
+| `avatars` | Profile photos | 2 MB | JPEG, PNG, WebP |
+
+> **Drift between the files and the live database:** only `avatars` is created by a migration (003). Migrations
+> 007 and 010 only *update* the limits of `panoramas`, `audit-evidence` and `project-documents`; no file in the
+> repository creates those three buckets. They exist in the live project, so they were created another way
+> (probably the Supabase dashboard — not verified). A new database built from the migration files alone would not
+> have them.
+
+## Migrations
+
+The migration files are in `database/migrations/`. They are numbered and run in number order, `001` to `018`.
+The live database's migration history lists all 18 as applied, in that order.
+
+Rules the project follows:
+- An applied migration is never edited or deleted. A mistake is undone by a new migration (013 → 014, 006 → 016).
+- Numbers are never reused or renumbered.
+- Seed data is separate, in `database/seed/` (`seed.sql`, `seed_week2.sql` and the scripts that generate them).
+
+| No. | File | What it does |
+|---|---|---|
+| 001 | week1_core_schema | Lookup tables, offices, profiles, contractors, projects; first enums |
+| 002 | week1_access_control | Private role helpers, RLS policies, read grants, `v_project_summary` |
+| 003 | week1_profile_photos | `avatars` bucket |
+| 004 | week2_phases_finance | Phases, progress reports, financial records; financial totals in the summary view |
+| 005 | public_portal | First public (anon) read access with column grants |
+| 006 | public_requires_login | Removed anonymous access to project data (later reversed by 016) |
+| 007 | week3_images_flags_audit | Site photos, flag rules, flag history, flag reviews, audit findings; append-only triggers; flag columns on projects |
+| 008 | project_code_generation | Project ID assigned and locked by the database |
+| 009 | location_bounds | Latitude / longitude range matches the province |
+| 010 | gap_fixes | Activity logs, project documents, public approval of photos and findings, finance per phase, finding assignment, evidence required for overrides |
+| 011 | user_suspension | Suspension columns on profiles |
+| 012 | agency_status | `agencies.is_active` |
+| 013 | data_provenance | Columns marking real vs. sample data (reversed by 014) |
+| 014 | revert_data_provenance | Removes everything 013 added and restores the two views as they were |
+| 015 | office_restructure | New office list (OMDEO, San Jose and Lubang field offices) and office types `district_engineering_office` / `field_office` / `other`; projects and users moved before old offices were removed |
+| 016 | open_public_portal | Reverses 006: anon may read projects (public columns), contractor names, approved photos and `v_public_projects`. Phases, progress and finances stay staff-only |
+| 017 | remove_public_role | Removes the `public` role from `user_role`; role empty until approved; `app_role()` requires approval; new sign-up trigger; former public accounts deactivated |
+| 018 | fix_deactivated_ban | Replaces the "infinite" sign-in ban set by 017 (it broke sign-in) with a 100-year ban |

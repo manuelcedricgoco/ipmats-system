@@ -1,4 +1,4 @@
-import { Ban, Pencil, RotateCcw, Trash2 } from 'lucide-react';
+import { Ban, Check, Pencil, RotateCcw, Trash2, X } from 'lucide-react';
 import { forwardRef } from 'react';
 import { Spinner } from './Feedback.jsx';
 import Tooltip from './Tooltip.jsx';
@@ -34,7 +34,7 @@ const IconButton = forwardRef(function IconButton({ icon: Icon, label, ariaLabel
 });
 
 /**
- * Edit / Suspend (or Reactivate) / Delete for one table row or card. A button is shown only
+ * Approve / Reject (access requests), Edit / Suspend (or Reactivate) / Delete for one table row or card. A button is shown only
  * when its handler is given, so pages pass handlers according to the user's permissions.
  * `busy` disables every button while a request for this row is in flight.
  */
@@ -46,6 +46,8 @@ export default function RowActions({
   onSuspend,
   onReactivate,
   onDelete,
+  onApprove,
+  onReject,
   suspendIcon = Ban,
   reactivateIcon = RotateCcw,
   className = '',
@@ -53,6 +55,8 @@ export default function RowActions({
   const of = name ? ` ${name}` : '';
   return (
     <div className={`flex items-center justify-end gap-1 ${className}`}>
+      {onApprove && <IconButton icon={Check} label="Approve" ariaLabel={`Approve${of}`} tone="success" onClick={onApprove} loading={busy} />}
+      {onReject && <IconButton icon={X} label="Reject" ariaLabel={`Reject${of}`} tone="danger" onClick={onReject} disabled={busy} />}
       {onEdit && <IconButton icon={Pencil} label="Edit" ariaLabel={`Edit${of}`} onClick={onEdit} disabled={busy} />}
       {suspended
         ? onReactivate && <IconButton icon={reactivateIcon} label="Reactivate" ariaLabel={`Reactivate${of}`} tone="success" onClick={onReactivate} loading={busy} />

@@ -80,7 +80,7 @@ export default function ActivityLogPage() {
           </Select>
           <Select aria-label="Role" value={role} onChange={reset(setRole)}>
             <option value="">All roles</option>
-            {['admin', 'dpwh_personnel', 'auditor', 'public'].map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
+            {['admin', 'dpwh_personnel', 'auditor'].map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
             <option value="system">System (automatic)</option>
           </Select>
           <Input type="date" aria-label="From date" value={from} onChange={reset(setFrom)} />

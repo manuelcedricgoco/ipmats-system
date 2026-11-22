@@ -62,9 +62,24 @@ export async function createUser(req, res) {
   const { email, password, full_name, role, agency_id, position } = req.body;
   const { data, error } = await adminClient.auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { full_name } });
   if (error) throw badRequest(error.message);
-  // profile row is created by the on_auth_user_created trigger with role 'public'
+  // The on_auth_user_created trigger creates the profile without a role; an account made by the
+  // System Administrator is approved right away (a role may only be set on an approved account).
   const profile = unwrap(
-    await adminClient.from('profiles').update({ full_name, role, agency_id: agency_id ?? null, position: position ?? null }).eq('id', data.user.id).select('*').single(),
+    await adminClient
+      .from('profiles')
+      .update({
+        full_name,
+        role,
+        agency_id: agency_id ?? null,
+        position: position ?? null,
+        approval_status: 'approved',
+        reviewed_by: req.user.id,
+        reviewed_at: new Date().toISOString(),
+        review_note: null,
+      })
+      .eq('id', data.user.id)
+      .select('*')
+      .single(),
   );
   await logActivity(req, { action: 'user.create', entityType: 'user', entityId: profile.id, summary: `Created account ${email} (${role})` });
   res.status(201).json({ data: profile });
@@ -79,7 +94,7 @@ export async function updateUser(req, res) {
 
   const patch = { ...req.body };
   // Granting a staff role resolves any pending access request.
-  if (patch.role && patch.role !== 'public') Object.assign(patch, { approval_status: 'approved', reviewed_by: req.user.id, reviewed_at: new Date().toISOString() });
+  if (patch.role) Object.assign(patch, { approval_status: 'approved', reviewed_by: req.user.id, reviewed_at: new Date().toISOString() });
   // Reactivating an account also clears a suspension (normally done with POST /users/:id/unsuspend).
   if (patch.is_active === true) Object.assign(patch, { suspended_at: null, suspended_by: null, suspension_reason: null });
   const row = unwrap(await adminClient.from('profiles').update(patch).eq('id', userId).select('*').single());
@@ -90,7 +105,7 @@ export async function updateUser(req, res) {
     if (error) console.error('[users] ban toggle failed', error.message);
   }
   const what = [
-    req.body.role && req.body.role !== target.role ? `role ${target.role} → ${req.body.role}` : null,
+    req.body.role && req.body.role !== target.role ? `role ${target.role ?? 'none'} → ${req.body.role}` : null,
     req.body.is_active !== undefined && req.body.is_active !== target.is_active ? (req.body.is_active ? 'reactivated' : 'deactivated') : null,
   ].filter(Boolean);
   await logActivity(req, {
@@ -130,7 +145,7 @@ export async function approveUser(req, res) {
   res.json({ data: row });
 }
 
-/** Decline a staff access request. The account keeps public (read-only) access. */
+/** Decline a staff access request. The account gets no role: it can browse the public portal like any visitor. */
 export async function rejectUser(req, res) {
   const { userId } = req.params;
   if (userId === req.user.id) throw badRequest('You cannot decline your own account.');
@@ -140,7 +155,7 @@ export async function rejectUser(req, res) {
   const row = unwrap(
     await adminClient
       .from('profiles')
-      .update({ role: 'public', approval_status: 'rejected', reviewed_by: req.user.id, reviewed_at: new Date().toISOString(), review_note: req.body.note ?? null })
+      .update({ role: null, approval_status: 'rejected', reviewed_by: req.user.id, reviewed_at: new Date().toISOString(), review_note: req.body.note ?? null })
       .eq('id', userId)
       .select('*')
       .single(),

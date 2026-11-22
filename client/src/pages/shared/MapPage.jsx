@@ -14,14 +14,14 @@ const KEYS = ['municipality_id', 'barangay_id', 'agency_id', 'contractor_id', 's
  * WEEK 3 — Project map (Jonalyn Pagilagan, front-end): OpenStreetMap with flag-coloured markers
  * and filters by municipality, barangay, implementing office, contractor, status and flag. Selecting a marker opens the
  * project details with its latest 360° image (Tracy Ann Milaflores).
- * Staff: /app/map (current flags) · Public: /map (reviewed flags only).
+ * Staff workspace only (/app/map). The public portal has its own map without flags (pages/public/PublicMapPage.jsx).
  */
-export default function MapPage({ staff = false }) {
+export default function MapPage() {
   const [params, setParams] = useSearchParams();
   const filters = Object.fromEntries(KEYS.map((k) => [k, params.get(k) || '']).filter(([, v]) => v));
   const selectedId = params.get('project');
   const { ref } = useReference();
-  const { data: projects, loading, error } = useApi(staff ? '/map/projects' : '/public/map', filters, { select: (r) => r.data });
+  const { data: projects, loading, error } = useApi('/map/projects', filters, { select: (r) => r.data });
   const update = (next) => {
     const p = new URLSearchParams();
     Object.entries(next).forEach(([k, v]) => v && p.set(k, v));
@@ -32,7 +32,6 @@ export default function MapPage({ staff = false }) {
   const setMunicipality = (e) => update({ ...filters, municipality_id: e.target.value, barangay_id: '', project: selectedId });
   const barangays = (ref?.barangays || []).filter((b) => String(b.municipality_id) === String(filters.municipality_id));
   const count = projects?.length ?? 0;
-  const flagOf = staff ? (p) => p.current_flag : (p) => p.public_flag;
 
   return (
     <div>
@@ -44,7 +43,7 @@ export default function MapPage({ staff = false }) {
             {loading ? 'Loading projects…' : `${count} project${count === 1 ? '' : 's'} shown · select a marker to open its 360° view`}
           </p>
         </div>
-        <MapLegend extra={staff ? null : 'Under review'} />
+        <MapLegend />
       </div>
       <div className="mb-3 grid grid-cols-2 gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-card md:grid-cols-4 xl:grid-cols-7">
         <Select aria-label="Municipality" value={filters.municipality_id || ''} onChange={setMunicipality}>
@@ -70,7 +69,6 @@ export default function MapPage({ staff = false }) {
         <Select aria-label="Flag" value={filters.flag || ''} onChange={set('flag')}>
           <option value="">Any flag</option>
           {Object.entries(FLAG_META).map(([k, m]) => <option key={k} value={k}>{m.label} – {m.long}</option>)}
-          {!staff && <option value="under_review">Under review</option>}
         </Select>
         <button
           type="button"
@@ -83,7 +81,7 @@ export default function MapPage({ staff = false }) {
       </div>
       <div className="relative flex h-[calc(100vh-17rem)] min-h-[28rem] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-card">
         <div className="relative min-w-0 flex-1">
-          <ProjectMap projects={projects || []} selectedId={selectedId} onSelect={(id) => update({ ...filters, project: id })} flagOf={flagOf} emptyLabel={staff ? 'Not evaluated' : 'Under review'} className="h-full w-full" />
+          <ProjectMap projects={projects || []} selectedId={selectedId} onSelect={(id) => update({ ...filters, project: id })} className="h-full w-full" />
           {loading && (
             <div className="absolute left-1/2 top-4 z-[400] flex -translate-x-1/2 items-center gap-2 rounded-full bg-white px-4 py-2 text-sm shadow-panel"><Spinner className="h-4 w-4" /> Loading projects</div>
           )}
@@ -92,7 +90,7 @@ export default function MapPage({ staff = false }) {
         </div>
         {selectedId && (
           <div key={selectedId} className="absolute inset-x-0 bottom-0 z-[600] h-[80%] animate-slide-up overflow-hidden rounded-t-xl border-t border-slate-200 shadow-panel md:static md:h-auto md:w-[420px] md:animate-slide-in-right md:rounded-none md:border-l md:border-t-0 md:shadow-none">
-            <ProjectPanel projectId={selectedId} onClose={() => update({ ...filters })} isPublic={!staff} />
+            <ProjectPanel projectId={selectedId} onClose={() => update({ ...filters })} />
           </div>
         )}
       </div>

@@ -11,7 +11,7 @@ import AuthShell from './AuthShell.jsx';
 
 /**
  * WEEK 1 — Login page (Tracy Ann Milaflores, front-end): opens the right place for each role.
- * Staff → their dashboard · Public → the public portal (/portal) · pending/declined staff requests → request status.
+ * Staff → their dashboard · accounts waiting for approval (or declined) → the public portal, with a banner.
  * The entry splash starts the moment "Sign in" is clicked and lasts 5 seconds in total
  * (the sign-in itself happens while it plays; if it takes longer, the splash waits for it).
  */
@@ -31,11 +31,10 @@ export default function LoginPage() {
   }
 
   if (isAuthenticated) {
-    if (isPending) return <Navigate to="/account-pending" replace />;
     const from = location.state?.from?.pathname;
-    if (STAFF_ROLES.includes(role)) return <Navigate to={from && from.startsWith('/app') ? from : '/app'} replace />;
-    // Public accounts land on the portal Dashboard, unless they were sent here from a specific portal page.
-    return <Navigate to={from && from.startsWith('/portal/') ? from : '/portal/dashboard'} replace />;
+    if (!isPending && STAFF_ROLES.includes(role)) return <Navigate to={from && from.startsWith('/app') ? from : '/app'} replace />;
+    // Waiting for approval or declined: only the public portal (a banner explains the status).
+    return <Navigate to="/" replace />;
   }
 
   const submit = async (e) => {
@@ -66,10 +65,10 @@ export default function LoginPage() {
         <Button type="submit" icon={LogIn} loading={loading} className="w-full">Sign in</Button>
       </form>
       <p className="mt-6 text-center text-sm text-slate-600">
-        No account yet? <Link to="/register" className="font-semibold text-brand-700 hover:underline">Register</Link>
+        DPWH personnel or auditor without an account? <Link to="/register" className="font-semibold text-brand-700 hover:underline">Request one</Link>
       </p>
       <p className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-center text-xs text-slate-600">
-        The public portal of projects, progress and finances is for registered accounts. Register as <strong>Public</strong> to view it.
+        Sign-in is for DPWH staff and auditors. Anyone can <Link to="/" className="font-semibold text-brand-700 hover:underline">browse the public portal</Link> without an account.
       </p>
     </AuthShell>
   );
