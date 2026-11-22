@@ -24,5 +24,8 @@ r.post('/users', admin, requireWriteAccess, validate(s.userCreate), h(users.crea
 r.patch('/users/:userId', admin, requireWriteAccess, validate(s.userUpdate), h(users.updateUser));
 r.post('/users/:userId/approve', admin, requireWriteAccess, validate(s.userApprove), h(users.approveUser));
 r.post('/users/:userId/reject', admin, requireWriteAccess, validate(s.userReject), h(users.rejectUser));
+r.delete('/users/:userId', requireAuth, admin, requireWriteAccess, h(users.deleteUser));
+r.post('/users/:userId/suspend', requireAuth, admin, requireWriteAccess, validate(s.userSuspend), h(users.suspendUser));
+r.post('/users/:userId/unsuspend', requireAuth, admin, requireWriteAccess, h(users.unsuspendUser));
 
 export default r;

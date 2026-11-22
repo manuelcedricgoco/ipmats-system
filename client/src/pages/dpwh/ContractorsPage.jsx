@@ -1,16 +1,19 @@
-import { Pencil, Plus } from 'lucide-react';
+import { Ban, Plus, RotateCcw, Trash2 } from 'lucide-react';
 import { Fragment, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Pill, StatusBadge } from '../../components/common/Badges.jsx';
 import Button from '../../components/common/Button.jsx';
 import { Card, PageHeader } from '../../components/common/Card.jsx';
+import ConfirmDialog from '../../components/common/ConfirmDialog.jsx';
 import { Alert, ErrorState, PageLoader } from '../../components/common/Feedback.jsx';
 import { Checkbox, Field, Input, fieldErrors } from '../../components/common/Form.jsx';
 import Modal from '../../components/common/Modal.jsx';
+import RowActions from '../../components/common/RowActions.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
 import { useApi } from '../../hooks/useApi.js';
 import { invalidateReference } from '../../hooks/useReference.js';
+import { useRowBusy } from '../../hooks/useRowBusy.js';
 import { api } from '../../lib/api.js';
 import { pesoCompact } from '../../lib/format.js';
 
@@ -18,10 +21,27 @@ import { pesoCompact } from '../../lib/format.js';
 export default function ContractorsPage() {
   const { hasRole } = useAuth();
   const canEdit = hasRole('dpwh_personnel', 'admin');
+  const canDelete = hasRole('admin');
+  const toast = useToast();
   const { data, loading, error, reload } = useApi('/contractors', undefined, { select: (r) => r.data });
   const [editing, setEditing] = useState(null);
+  const [deleting, setDeleting] = useState(null);
+  const [suspending, setSuspending] = useState(null); // contractor whose active status is being toggled
   const [expanded, setExpanded] = useState(null);
   const detail = useApi(expanded ? `/contractors/${expanded}` : null, undefined, { select: (r) => r.data });
+  const rows = useRowBusy();
+  const colCount = canEdit ? 7 : 6;
+  const rowActions = (c) => (
+    <RowActions
+      name={c.name}
+      busy={rows.isBusy(c.id)}
+      suspended={!c.is_active}
+      onEdit={canEdit ? () => setEditing(c) : undefined}
+      onSuspend={canEdit ? () => setSuspending(c) : undefined}
+      onReactivate={canEdit ? () => setSuspending(c) : undefined}
+      onDelete={canDelete ? () => setDeleting(c) : undefined}
+    />
+  );
 
   return (
     <>
@@ -35,7 +55,40 @@ export default function ContractorsPage() {
       {error && <ErrorState error={error} onRetry={reload} />}
       {data && (
         <Card className="overflow-hidden">
-          <div className="overflow-x-auto">
+          {/* Phones: one card per contractor (a directory is read top to bottom, not compared across columns). */}
+          <ul className="divide-y divide-slate-100 md:hidden">
+            {data.length === 0 && <li className="px-4 py-10 text-center text-sm text-slate-500">No contractors found.</li>}
+            {data.map((c) => (
+              <li key={c.id} className="px-4 py-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <button type="button" onClick={() => setExpanded(expanded === c.id ? null : c.id)} aria-expanded={expanded === c.id} className="text-left font-semibold text-slate-900 hover:text-brand-700 hover:underline">{c.name}</button>
+                    {c.address && <p className="text-xs text-slate-500">{c.address}</p>}
+                    {!c.is_active && <Pill className="mt-1 bg-slate-800 text-white">Inactive</Pill>}
+                  </div>
+                  {canEdit && <div className="-mr-2 shrink-0">{rowActions(c)}</div>}
+                </div>
+                <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                  <div><dt className="text-slate-500">PCAB licence</dt><dd className="font-mono text-slate-800">{c.pcab_license_no || '—'}{c.classification && <span className="font-sans text-slate-500"> · Cat. {c.classification}</span>}</dd></div>
+                  <div><dt className="text-slate-500">Projects</dt><dd className="tabular-nums text-slate-800">{c.project_count} · {pesoCompact(c.total_contract)}</dd></div>
+                  <div className="col-span-2"><dt className="text-slate-500">Contact</dt><dd className="break-words text-slate-700">{[c.contact_person, c.contact_number].filter(Boolean).join(' · ') || '—'}{c.email && <span className="block break-all">{c.email}</span>}</dd></div>
+                  <div className="col-span-2"><dt className="sr-only">Status</dt><dd className="flex gap-3 tabular-nums"><span className="text-brand-700">{c.ongoing} ongoing</span><span className="text-emerald-700">{c.completed} completed</span></dd></div>
+                </dl>
+                {expanded === c.id && (
+                  <div className="mt-3 rounded-md bg-slate-50 p-2">
+                    {detail.loading ? <p className="text-sm text-slate-500">Loading projects…</p> : detail.data?.projects.length ? (
+                      <ul className="space-y-2">
+                        {detail.data.projects.map((p) => (
+                          <li key={p.id}><Link to={`/app/projects/${p.id}`} className="block rounded-md bg-white px-3 py-2 text-sm ring-1 ring-slate-200 hover:ring-brand-400"><span className="font-mono text-xs text-brand-700">{p.project_code}</span> {p.name}<span className="mt-1 block"><StatusBadge status={p.status} /></span></Link></li>
+                        ))}
+                      </ul>
+                    ) : <p className="text-sm text-slate-500">No assigned projects.</p>}
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+          <div className="relative hidden overflow-x-auto md:block">
             <table className="min-w-full divide-y divide-slate-200 text-sm">
               <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                 <tr>
@@ -45,10 +98,15 @@ export default function ContractorsPage() {
                   <th scope="col" className="px-4 py-3 text-right">Projects</th>
                   <th scope="col" className="px-4 py-3 text-right">Total contracts</th>
                   <th scope="col" className="px-4 py-3">Status</th>
-                  <th scope="col" className="px-4 py-3"><span className="sr-only">Actions</span></th>
+                  {canEdit && <th scope="col" className="w-px whitespace-nowrap px-4 py-3 text-right">Actions</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
+                {data.length === 0 && (
+                  <tr>
+                    <td colSpan={colCount} className="px-4 py-10 text-center text-sm text-slate-500">No contractors found.</td>
+                  </tr>
+                )}
                 {data.map((c) => (
                   <Fragment key={c.id}>
                     <tr className="hover:bg-slate-50">
@@ -65,15 +123,13 @@ export default function ContractorsPage() {
                         <span className="block whitespace-nowrap tabular-nums text-brand-700">{c.ongoing} ongoing</span>
                         <span className="block whitespace-nowrap tabular-nums text-emerald-700">{c.completed} completed</span>
                       </td>
-                      <td className="px-4 py-3 text-right">
-                        {canEdit && <button type="button" onClick={() => setEditing(c)} className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label={`Edit ${c.name}`}><Pencil className="h-4 w-4" /></button>}
-                      </td>
+                      {canEdit && <td className="whitespace-nowrap px-4 py-3 text-right">{rowActions(c)}</td>}
                     </tr>
                     {expanded === c.id && (
                       <tr>
-                        <td colSpan={7} className="bg-slate-50 px-4 py-3">
+                        <td colSpan={colCount} className="bg-slate-50 px-4 py-3">
                           {detail.loading ? <p className="text-sm text-slate-500">Loading projects…</p> : detail.data?.projects.length ? (
-                            <ul className="grid gap-2 sm:grid-cols-2">
+                            <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                               {detail.data.projects.map((p) => (
                                 <li key={p.id}><Link to={`/app/projects/${p.id}`} className="flex items-center justify-between gap-2 rounded-md bg-white px-3 py-2 text-sm ring-1 ring-slate-200 hover:ring-brand-400"><span className="truncate"><span className="font-mono text-xs text-brand-700">{p.project_code}</span> {p.name}</span><StatusBadge status={p.status} /></Link></li>
                               ))}
@@ -90,6 +146,66 @@ export default function ContractorsPage() {
         </Card>
       )}
       <ContractorModal value={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); invalidateReference(); reload(); }} />
+      <ConfirmDialog
+        open={Boolean(deleting)}
+        onClose={() => setDeleting(null)}
+        title="Delete contractor?"
+        confirmLabel="Delete contractor"
+        confirmIcon={Trash2}
+        onConfirm={async () => {
+          const c = deleting;
+          await rows.run(c.id, () => api.del(`/contractors/${c.id}`));
+          toast.success(`Contractor "${c.name}" deleted.`);
+          setDeleting(null);
+          if (expanded === c.id) setExpanded(null);
+          invalidateReference();
+          reload();
+        }}
+      >
+        {deleting && (
+          <>
+            <dl className="rounded-md bg-slate-50 px-3 py-2">
+              <dt className="sr-only">Contractor</dt>
+              <dd className="break-words font-semibold text-slate-900">{deleting.name}</dd>
+              <dt className="sr-only">PCAB licence</dt>
+              <dd className="text-xs text-slate-600">PCAB licence <span className="font-mono">{deleting.pcab_license_no || '—'}</span></dd>
+            </dl>
+            <p><strong>This cannot be undone.</strong> A contractor that is still assigned to projects cannot be deleted; mark it inactive instead.</p>
+          </>
+        )}
+      </ConfirmDialog>
+      <ConfirmDialog
+        open={Boolean(suspending)}
+        onClose={() => setSuspending(null)}
+        title={suspending?.is_active ? 'Suspend contractor?' : 'Reactivate contractor?'}
+        confirmLabel={suspending?.is_active ? 'Suspend contractor' : 'Reactivate contractor'}
+        confirmVariant={suspending?.is_active ? 'warning' : 'primary'}
+        confirmIcon={suspending?.is_active ? Ban : RotateCcw}
+        onConfirm={async () => {
+          const c = suspending;
+          await rows.run(c.id, () => api.patch(`/contractors/${c.id}`, { is_active: !c.is_active }));
+          toast.success(c.is_active ? `Contractor "${c.name}" suspended.` : `Contractor "${c.name}" reactivated.`);
+          setSuspending(null);
+          invalidateReference();
+          reload();
+        }}
+      >
+        {suspending && (
+          <>
+            <dl className="rounded-md bg-slate-50 px-3 py-2">
+              <dt className="sr-only">Contractor</dt>
+              <dd className="break-words font-semibold text-slate-900">{suspending.name}</dd>
+              <dt className="sr-only">PCAB licence</dt>
+              <dd className="text-xs text-slate-600">PCAB licence <span className="font-mono">{suspending.pcab_license_no || '—'}</span></dd>
+            </dl>
+            {suspending.is_active ? (
+              <p>The contractor is marked <strong>inactive</strong> and can no longer be assigned to new projects. Its current project assignments and records are kept.</p>
+            ) : (
+              <p>The contractor becomes active again and can be assigned to new projects.</p>
+            )}
+          </>
+        )}
+      </ConfirmDialog>
     </>
   );
 }
@@ -127,7 +243,7 @@ function ContractorModal({ value, onClose, onSaved }) {
   };
   return (
     <Modal open={open} onClose={onClose} title={editing ? 'Edit contractor' : 'Add contractor'} footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button type="submit" form="contractor-form" loading={saving}>Save</Button></>}>
-      <form id="contractor-form" onSubmit={submit} className="grid gap-4 sm:grid-cols-2">
+      <form id="contractor-form" onSubmit={submit} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {err && !err.details && <Alert tone="error" className="sm:col-span-2">{err.message}</Alert>}
         <Field label="Company name" required error={fe.name} className="sm:col-span-2">{(a) => <Input {...a} value={form.name || ''} onChange={set('name')} required minLength={3} />}</Field>
         <Field label="PCAB licence no." error={fe.pcab_license_no}>{(a) => <Input {...a} value={form.pcab_license_no || ''} onChange={set('pcab_license_no')} />}</Field>

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { addDays } from '../controllers/projectsController.js';
+import { addDays } from '../services/completion.js';
 import { contractorCreate, projectCreate, projectUpdate, userApprove } from '../routes/schemas.js';
 
 const valid = {
@@ -27,13 +27,18 @@ describe('project validation (Week 1)', () => {
     assert.equal(r.success, false);
     assert.equal(r.error.issues[0].path[0], 'contract_amount');
   });
-  it('rejects negative budgets and bad project codes', () => {
+  it('rejects negative budgets', () => {
     assert.equal(projectCreate.safeParse({ ...valid, approved_budget: -1 }).success, false);
-    assert.equal(projectCreate.safeParse({ ...valid, project_code: 'bad code!' }).success, false);
   });
-  it('only allows manual statuses (delayed is automatic in a later week)', () => {
-    assert.equal(projectUpdate.safeParse({ status: 'ongoing' }).success, true);
-    assert.equal(projectUpdate.safeParse({ status: 'delayed' }).success, false);
+  it('never accepts a Project ID from the client (the database assigns it and it cannot change)', () => {
+    assert.equal('project_code' in projectCreate.parse(valid), false);
+    assert.equal('project_code' in projectUpdate.parse({ project_code: '26OM0001', name: 'Renamed project' }), false);
+  });
+  it('Week 3: only Suspended / Terminated are manual; anything else means automatic status', () => {
+    assert.equal(projectUpdate.parse({ status: 'suspended' }).status, 'suspended');
+    assert.equal(projectUpdate.parse({ status: 'terminated' }).status, 'terminated');
+    assert.equal(projectUpdate.parse({ status: 'delayed' }).status, 'auto');
+    assert.equal(projectUpdate.parse({ status: 'auto' }).status, 'auto');
   });
   it('computes the target completion date from NTP + duration', () => {
     assert.equal(addDays('2026-01-01', 240), '2026-08-29');

@@ -1,7 +1,7 @@
 import { ArrowLeft, Pencil, Trash2 } from 'lucide-react';
-import { useState } from 'react';
-import { Link, NavLink, Outlet, useNavigate, useParams } from 'react-router-dom';
-import { Pill, StatusBadge } from '../../../components/common/Badges.jsx';
+import { useEffect, useRef, useState } from 'react';
+import { Link, NavLink, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { FlagBadge, Pill, StatusBadge } from '../../../components/common/Badges.jsx';
 import Button from '../../../components/common/Button.jsx';
 import { PageHeader } from '../../../components/common/Card.jsx';
 import { Alert, ErrorState, PageLoader } from '../../../components/common/Feedback.jsx';
@@ -17,6 +17,9 @@ const TABS = [
   { to: '', label: 'Overview', end: true },
   { to: 'progress', label: 'Phases & progress' }, // Week 2 — Objective 3
   { to: 'finance', label: 'Finance' }, // Week 2 — Objective 4
+  { to: 'images', label: '360° images' }, // Week 3 — Objective 2
+  { to: 'flags', label: 'Flag & audit' }, // Week 3 — Objective 5
+  { to: 'documents', label: 'Documents' }, // gap fix — supporting project documents
 ];
 
 /** Project page frame: header, tabs, and the selected tab (Overview / Phases & progress / Finance). */
@@ -27,6 +30,14 @@ export default function ProjectLayout() {
   const navigate = useNavigate();
   const { data: p, loading, error, reload } = useApi(`/projects/${id}`, undefined, { select: (r) => r.data });
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const tabsRef = useRef(null);
+  const { pathname } = useLocation();
+  useEffect(() => {
+    // Scroll only the tab strip sideways (not the page) so the open tab is centred.
+    const nav = tabsRef.current;
+    const active = nav?.querySelector('a[aria-current="page"]');
+    if (nav && active) nav.scrollLeft = active.offsetLeft - (nav.clientWidth - active.offsetWidth) / 2;
+  }, [pathname, p]);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState(null);
 
@@ -67,13 +78,16 @@ export default function ProjectLayout() {
         />
       </div>
       <div className="-mt-3 mb-5 flex flex-wrap items-center gap-x-4 gap-y-2">
+        <FlagBadge flag={p.current_flag} />
         <StatusBadge status={p.status} />
         <Pill>{PROJECT_TYPES[p.project_type]}</Pill>
         {!canEdit && <Pill className="bg-slate-800 text-white">Read-only</Pill>}
-        <ProgressBar value={p.overall_progress} size="sm" className="w-48" />
+        <ProgressBar value={p.overall_progress} size="sm" className="w-full max-w-[12rem]" />
       </div>
 
-      <nav aria-label="Project sections" className="mb-6 flex gap-1 overflow-x-auto border-b border-slate-200">
+      {/* On phones the five tabs scroll sideways: the fade on the right shows there is more, and the open tab is scrolled into view. */}
+      <div className="relative mb-6">
+      <nav ref={tabsRef} aria-label="Project sections" className="relative flex gap-1 overflow-x-auto border-b border-slate-200 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {TABS.map((t) => (
           <NavLink
             key={t.label}
@@ -92,6 +106,8 @@ export default function ProjectLayout() {
           </NavLink>
         ))}
       </nav>
+      <span className="pointer-events-none absolute inset-y-0 right-0 w-10 bg-gradient-to-l from-slate-50 to-transparent md:hidden" aria-hidden />
+      </div>
 
       {/* each tab gets the project and a reload function */}
       <Outlet context={{ project: p, reloadProject: reload, canEdit, canDelete }} />

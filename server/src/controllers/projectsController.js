@@ -6,7 +6,12 @@
  * role check in the route.
  */
 import { adminClient } from '../config/supabase.js';
-import { assertValid, checkContractAmountChange, checkStatusChange } from '../services/validationRules.js';
+import { addDays } from '../services/completion.js';
+import { pagination } from '../utils/pagination.js';
+import { changedFields, logActivity } from '../services/activityLog.js';
+import { reevaluate } from '../services/projectEvaluation.js';
+import { assertValid, checkContractAmountChange } from '../services/validationRules.js';
+import { OUTSIDE_PROVINCE_MESSAGE, isWithinOccidentalMindoro } from '../utils/geo.js';
 import { badRequest, notFound, unwrap } from '../utils/httpError.js';
 
 const LIST_COLUMNS =
@@ -14,19 +19,9 @@ const LIST_COLUMNS =
   'target_completion_date, actual_completion_date, municipality_id, municipality_name, barangay_id, barangay_name, ' +
   'agency_id, agency_name, contractor_id, contractor_name, updated_at, ' +
   // Week 2
-  'overall_progress, phase_count, revised_contract_amount, total_disbursed, remaining_balance';
-
-export function addDays(dateStr, days) {
-  const d = new Date(`${dateStr}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + Number(days || 0));
-  return d.toISOString().slice(0, 10);
-}
-
-function pagination(query, maxSize = 100) {
-  const page = Math.max(1, Number.parseInt(query.page, 10) || 1);
-  const pageSize = Math.min(maxSize, Math.max(1, Number.parseInt(query.pageSize, 10) || 25));
-  return { page, pageSize, from: (page - 1) * pageSize, to: page * pageSize - 1 };
-}
+  'overall_progress, phase_count, revised_contract_amount, total_disbursed, remaining_balance, ' +
+  // Week 3
+  'current_flag, flag_review_status, planned_progress, image_count';
 
 /** Filters shared by the list endpoint. */
 export function applyProjectFilters(query, f) {
@@ -92,6 +87,13 @@ async function assertBarangayInMunicipality(barangayId, municipalityId) {
   if (!b || b.municipality_id !== municipalityId) throw badRequest('The selected barangay does not belong to the selected municipality.');
 }
 
+/** Server-side location rule: the project must be inside Occidental Mindoro (not just the map's view). */
+function assertInsideProvince(latitude, longitude) {
+  if (!isWithinOccidentalMindoro(latitude, longitude)) {
+    throw badRequest(OUTSIDE_PROVINCE_MESSAGE, [{ field: 'latitude', message: OUTSIDE_PROVINCE_MESSAGE }]);
+  }
+}
+
 async function getProjectOrThrow(id, columns = '*') {
   const data = unwrap(await adminClient.from('projects').select(columns).eq('id', id).maybeSingle());
   if (!data) throw notFound('Project not found');
@@ -100,6 +102,9 @@ async function getProjectOrThrow(id, columns = '*') {
 
 export async function createProject(req, res) {
   const body = { ...req.body };
+  // Week 3: status is automatic unless Suspended / Terminated is chosen
+  if (body.status === 'auto') delete body.status;
+  assertInsideProvince(body.latitude, body.longitude);
   await assertBarangayInMunicipality(body.barangay_id, body.municipality_id);
   if (body.notice_to_proceed && body.duration_days && !body.target_completion_date) {
     body.target_completion_date = addDays(body.notice_to_proceed, body.duration_days);
@@ -111,17 +116,29 @@ export async function createProject(req, res) {
       .select('id, project_code')
       .single(),
   );
-  res.status(201).json({ data: project });
+  const evaluation = await reevaluate(project.id, 'project_created', req.user.id);
+  await logActivity(req, {
+    action: 'project.create',
+    entityType: 'project',
+    entityId: project.id,
+    projectId: project.id,
+    summary: `Registered project ${project.project_code} — ${body.name}`,
+    details: { flag: evaluation?.flag ?? null },
+  });
+  res.status(201).json({ data: { ...project, evaluation } });
 }
 
 export async function updateProject(req, res) {
   const { id } = req.params;
-  const current = await getProjectOrThrow(id, 'id, municipality_id, barangay_id, notice_to_proceed, duration_days');
+  const current = await getProjectOrThrow(id, 'id, municipality_id, barangay_id, notice_to_proceed, duration_days, status, latitude, longitude');
+  if (req.body.latitude !== undefined || req.body.longitude !== undefined) {
+    assertInsideProvince(req.body.latitude ?? current.latitude, req.body.longitude ?? current.longitude);
+  }
   const body = { ...req.body };
-  // Week 2: "Completed" is only accepted when every phase is at 100%.
-  if (body.status) {
-    const phases = unwrap(await adminClient.from('project_phases').select('name, accomplishment').eq('project_id', id));
-    assertValid(checkStatusChange({ status: body.status, phases }));
+  // Week 3: "auto" lifts a manual Suspended / Terminated status; the evaluation below sets the real status.
+  if (body.status === 'auto') {
+    if (['suspended', 'terminated'].includes(current.status)) body.status = 'ongoing';
+    else delete body.status;
   }
   if (body.contract_amount !== undefined) {
     const records = unwrap(await adminClient.from('financial_records').select('record_type, amount').eq('project_id', id));
@@ -135,12 +152,24 @@ export async function updateProject(req, res) {
   if ((body.notice_to_proceed || body.duration_days) && !body.target_completion_date && ntp && days) {
     body.target_completion_date = addDays(ntp, days);
   }
+  const before = unwrap(await adminClient.from('projects').select('*').eq('id', id).single());
   unwrap(await adminClient.from('projects').update({ ...body, updated_by: req.user.id }).eq('id', id));
-  res.json({ data: { id } });
+  const evaluation = await reevaluate(id, 'project_updated', req.user.id);
+  const changed = changedFields(before, body);
+  await logActivity(req, {
+    action: 'project.update',
+    entityType: 'project',
+    entityId: id,
+    projectId: id,
+    summary: `Updated project ${before.project_code}${changed.length ? ` (${changed.join(', ')})` : ''}`,
+    details: { changed },
+  });
+  res.json({ data: { id, evaluation } });
 }
 
 export async function deleteProject(req, res) {
-  const project = await getProjectOrThrow(req.params.id, 'id');
+  const project = await getProjectOrThrow(req.params.id, 'id, project_code, name');
   unwrap(await adminClient.from('projects').delete().eq('id', project.id));
+  await logActivity(req, { action: 'project.delete', entityType: 'project', entityId: project.id, summary: `Deleted project ${project.project_code} — ${project.name}` });
   res.status(204).end();
 }

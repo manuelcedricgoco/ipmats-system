@@ -1,5 +1,6 @@
 import { adminClient } from '../config/supabase.js';
-import { notFound, unwrap } from '../utils/httpError.js';
+import { logActivity } from '../services/activityLog.js';
+import { conflict, notFound, unwrap } from '../utils/httpError.js';
 
 export async function listContractors(req, res) {
   const contractors = unwrap(await req.db.from('contractors').select('*').order('name'));
@@ -32,11 +33,43 @@ export async function getContractor(req, res) {
 
 export async function createContractor(req, res) {
   const row = unwrap(await adminClient.from('contractors').insert({ ...req.body, created_by: req.user.id }).select('*').single());
+  await logActivity(req, { action: 'contractor.create', entityType: 'contractor', entityId: row.id, summary: `Added contractor "${row.name}"` });
   res.status(201).json({ data: row });
 }
 
 export async function updateContractor(req, res) {
   const row = unwrap(await adminClient.from('contractors').update(req.body).eq('id', req.params.contractorId).select('*').maybeSingle());
   if (!row) throw notFound('Contractor not found');
+  await logActivity(req, { action: 'contractor.update', entityType: 'contractor', entityId: row.id, summary: `Updated contractor "${row.name}" (${Object.keys(req.body).join(', ')})` });
   res.json({ data: row });
+}
+
+/**
+ * Delete a contractor (System Administrator). projects.contractor_id is ON DELETE SET NULL, so deleting a
+ * contractor that still has projects would silently remove it from them: that is refused instead.
+ */
+export async function deleteContractor(req, res) {
+  const { contractorId } = req.params;
+  const c = unwrap(await adminClient.from('contractors').select('id, name, pcab_license_no').eq('id', contractorId).maybeSingle());
+  if (!c) throw notFound('Contractor not found');
+  const { data: used, count, error } = await adminClient
+    .from('projects')
+    .select('project_code', { count: 'exact' })
+    .eq('contractor_id', contractorId)
+    .order('project_code')
+    .limit(5);
+  unwrap({ data: used, error });
+  if (count) {
+    const codes = used.map((p) => p.project_code).join(', ') + (count > used.length ? ', …' : '');
+    throw conflict(`This contractor is assigned to ${count} project(s) (${codes}). Reassign them or mark the contractor inactive instead.`);
+  }
+  unwrap(await adminClient.from('contractors').delete().eq('id', contractorId));
+  await logActivity(req, {
+    action: 'contractor.delete',
+    entityType: 'contractor',
+    entityId: c.id,
+    summary: `Deleted contractor "${c.name}"`,
+    details: { name: c.name, pcab_license_no: c.pcab_license_no },
+  });
+  res.status(204).end();
 }

@@ -1,15 +1,18 @@
-import { Landmark, Pencil, Plus } from 'lucide-react';
+import { Ban, Landmark, Plus, RotateCcw, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Pill } from '../../components/common/Badges.jsx';
 import Button from '../../components/common/Button.jsx';
 import { Card, PageHeader } from '../../components/common/Card.jsx';
+import ConfirmDialog from '../../components/common/ConfirmDialog.jsx';
 import { Alert, EmptyState, ErrorState, PageLoader } from '../../components/common/Feedback.jsx';
 import { Field, Input, Select, fieldErrors } from '../../components/common/Form.jsx';
 import Modal from '../../components/common/Modal.jsx';
+import RowActions from '../../components/common/RowActions.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
 import { useApi } from '../../hooks/useApi.js';
 import { invalidateReference } from '../../hooks/useReference.js';
+import { useRowBusy } from '../../hooks/useRowBusy.js';
 import { api } from '../../lib/api.js';
 import { pesoCompact } from '../../lib/format.js';
 import { OFFICE_TYPES } from '../../lib/constants.js';
@@ -20,9 +23,25 @@ import { OFFICE_TYPES } from '../../lib/constants.js';
 export default function AgenciesPage() {
   const { hasRole } = useAuth();
   const canEdit = hasRole('admin');
+  const toast = useToast();
   const ref = useApi('/reference', undefined, { select: (r) => r.data.agencies });
   const projects = useApi('/projects', { pageSize: 100 }, { select: (r) => r.data });
   const [editing, setEditing] = useState(null);
+  const [deleting, setDeleting] = useState(null);
+  const [suspending, setSuspending] = useState(null); // office whose active status is being toggled
+  const rows = useRowBusy();
+  const isActive = (a) => a.is_active !== false;
+  const rowActions = (a) => (
+    <RowActions
+      name={a.name}
+      busy={rows.isBusy(a.id)}
+      suspended={!isActive(a)}
+      onEdit={() => setEditing(a)}
+      onSuspend={() => setSuspending(a)}
+      onReactivate={() => setSuspending(a)}
+      onDelete={() => setDeleting(a)}
+    />
+  );
 
   // Projects and contract totals per office (only projects the user may see).
   const stats = useMemo(() => {
@@ -49,7 +68,28 @@ export default function AgenciesPage() {
       {ref.data && ref.data.length === 0 && <EmptyState icon={Landmark} title="No offices yet" action={canEdit && <Button icon={Plus} onClick={() => setEditing({})}>Add office</Button>} />}
       {ref.data && ref.data.length > 0 && (
         <Card className="overflow-hidden">
-          <div className="overflow-x-auto">
+          {/* Phones: one card per office. */}
+          <ul className="divide-y divide-slate-100 md:hidden">
+            {ref.data.map((a) => {
+              const s = stats.get(a.id) || { count: 0, total: 0 };
+              return (
+                <li key={a.id} className="px-4 py-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-slate-900">{a.name}</p>
+                      <p className="font-mono text-xs text-brand-700">{a.code}</p>
+                      {!isActive(a) && <Pill className="mt-1 bg-slate-800 text-white">Inactive</Pill>}
+                    </div>
+                    {canEdit && <div className="-mr-2 shrink-0">{rowActions(a)}</div>}
+                  </div>
+                  <Pill className="mt-2 bg-brand-50 text-brand-800">{OFFICE_TYPES[a.office_type] || a.office_type}</Pill>
+                  {a.address && <p className="mt-2 text-xs text-slate-600">{a.address}</p>}
+                  <p className="mt-2 text-xs tabular-nums text-slate-700">{s.count} project(s) · {pesoCompact(s.total)} total contracts</p>
+                </li>
+              );
+            })}
+          </ul>
+          <div className="relative hidden overflow-x-auto md:block">
             <table className="min-w-full divide-y divide-slate-200 text-sm">
               <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                 <tr>
@@ -58,29 +98,24 @@ export default function AgenciesPage() {
                   <th scope="col" className="px-4 py-3">Address</th>
                   <th scope="col" className="px-4 py-3 text-right">Projects</th>
                   <th scope="col" className="px-4 py-3 text-right">Total contracts</th>
-                  <th scope="col" className="px-4 py-3"><span className="sr-only">Edit</span></th>
+                  {canEdit && <th scope="col" className="w-px whitespace-nowrap px-4 py-3 text-right">Actions</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {ref.data.map((a) => {
                   const s = stats.get(a.id) || { count: 0, total: 0 };
                   return (
-                    <tr key={a.id} className="hover:bg-brand-50/40">
+                    <tr key={a.id} className={`hover:bg-brand-50/40 ${isActive(a) ? '' : 'bg-slate-50 text-slate-500'}`}>
                       <td className="px-4 py-3">
                         <span className="block font-semibold text-slate-900">{a.name}</span>
                         <span className="font-mono text-xs text-brand-700">{a.code}</span>
+                        {!isActive(a) && <Pill className="ml-2 bg-slate-800 text-white">Inactive</Pill>}
                       </td>
                       <td className="px-4 py-3"><Pill className="bg-brand-50 text-brand-800">{OFFICE_TYPES[a.office_type] || a.office_type}</Pill></td>
                       <td className="px-4 py-3 text-slate-600">{a.address || '—'}</td>
                       <td className="px-4 py-3 text-right tabular-nums">{s.count}</td>
                       <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums">{pesoCompact(s.total)}</td>
-                      <td className="px-4 py-3 text-right">
-                        {canEdit && (
-                          <button type="button" onClick={() => setEditing(a)} className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label={`Edit ${a.name}`}>
-                            <Pencil className="h-4 w-4" />
-                          </button>
-                        )}
-                      </td>
+                      {canEdit && <td className="whitespace-nowrap px-4 py-3 text-right">{rowActions(a)}</td>}
                     </tr>
                   );
                 })}
@@ -89,7 +124,7 @@ export default function AgenciesPage() {
           </div>
         </Card>
       )}
-      {!canEdit && ref.data && <p className="mt-3 text-xs text-slate-500">Only the System Administrator can add or edit offices.</p>}
+      {!canEdit && ref.data && <p className="mt-3 text-xs text-slate-500">Only the System Administrator can add, edit, suspend or delete offices.</p>}
       <AgencyModal
         value={editing}
         onClose={() => setEditing(null)}
@@ -99,6 +134,66 @@ export default function AgenciesPage() {
           ref.reload();
         }}
       />
+      <ConfirmDialog
+        open={Boolean(deleting)}
+        onClose={() => setDeleting(null)}
+        title="Delete office?"
+        confirmLabel="Delete office"
+        confirmIcon={Trash2}
+        onConfirm={async () => {
+          const a = deleting;
+          await rows.run(a.id, () => api.del(`/agencies/${a.id}`));
+          toast.success(`Office "${a.name}" deleted.`);
+          setDeleting(null);
+          invalidateReference();
+          ref.reload();
+        }}
+      >
+        {deleting && (
+          <>
+            <dl className="rounded-md bg-slate-50 px-3 py-2">
+              <dt className="sr-only">Office</dt>
+              <dd className="break-words font-semibold text-slate-900">{deleting.name}</dd>
+              <dt className="sr-only">Code</dt>
+              <dd className="font-mono text-xs text-brand-700">{deleting.code}</dd>
+            </dl>
+            <p><strong>This cannot be undone.</strong> An office that is used by projects or has user accounts cannot be deleted; move them to another office first.</p>
+          </>
+        )}
+      </ConfirmDialog>
+      <ConfirmDialog
+        open={Boolean(suspending)}
+        onClose={() => setSuspending(null)}
+        title={suspending && isActive(suspending) ? 'Suspend office?' : 'Reactivate office?'}
+        confirmLabel={suspending && isActive(suspending) ? 'Suspend office' : 'Reactivate office'}
+        confirmVariant={suspending && isActive(suspending) ? 'warning' : 'primary'}
+        confirmIcon={suspending && isActive(suspending) ? Ban : RotateCcw}
+        onConfirm={async () => {
+          const a = suspending;
+          const active = isActive(a);
+          await rows.run(a.id, () => api.patch(`/agencies/${a.id}`, { is_active: !active }));
+          toast.success(active ? `Office "${a.name}" suspended.` : `Office "${a.name}" reactivated.`);
+          setSuspending(null);
+          invalidateReference();
+          ref.reload();
+        }}
+      >
+        {suspending && (
+          <>
+            <dl className="rounded-md bg-slate-50 px-3 py-2">
+              <dt className="sr-only">Office</dt>
+              <dd className="break-words font-semibold text-slate-900">{suspending.name}</dd>
+              <dt className="sr-only">Code</dt>
+              <dd className="font-mono text-xs text-brand-700">{suspending.code}</dd>
+            </dl>
+            {isActive(suspending) ? (
+              <p>The office is marked <strong>inactive</strong> and can no longer be chosen as the implementing office of new projects. Existing projects and user accounts keep it.</p>
+            ) : (
+              <p>The office becomes active again and can be chosen for new projects.</p>
+            )}
+          </>
+        )}
+      </ConfirmDialog>
     </>
   );
 }
@@ -143,7 +238,7 @@ function AgencyModal({ value, onClose, onSaved }) {
       title={editing ? 'Edit office' : 'Add office'}
       footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button type="submit" form="agency-form" loading={saving}>Save</Button></>}
     >
-      <form id="agency-form" onSubmit={submit} className="grid gap-4 sm:grid-cols-2">
+      <form id="agency-form" onSubmit={submit} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {err && !err.details && <Alert tone="error" className="sm:col-span-2">{err.message}</Alert>}
         <Field label="Code" required error={fe.code} hint="Letters, digits and dashes, e.g. DPWH-OMDEO">
           {(a) => <Input {...a} value={form.code || ''} onChange={set('code')} required minLength={2} maxLength={30} pattern="[A-Za-z0-9-]+" />}

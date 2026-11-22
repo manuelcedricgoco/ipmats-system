@@ -14,6 +14,9 @@ export const env = Object.freeze({
   supabaseAnonKey: process.env.SUPABASE_ANON_KEY || '',
   supabaseServiceKey: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
   corsOrigins: list(process.env.CORS_ORIGINS, 'http://localhost:5173'),
+  // Week 3: daily automatic flag check (01:15 Philippine time)
+  dailyFlagCheckCron: process.env.DAILY_FLAG_CHECK_CRON || '15 1 * * *',
+  timezone: process.env.TZ_NAME || 'Asia/Manila',
 });
 
 export function assertEnv() {

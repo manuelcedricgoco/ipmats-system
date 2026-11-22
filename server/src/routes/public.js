@@ -11,4 +11,7 @@ r.use(requireAuth);
 r.get('/stats', h(c.publicStats));
 r.get('/projects', h(c.publicProjects));
 r.get('/projects/:id', h(c.publicProject));
+// Week 3
+r.get('/map', h(c.publicMap));
+r.get('/dashboard', h(c.publicDashboard));
 export default r;

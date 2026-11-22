@@ -12,3 +12,32 @@ export const uploadAvatar = multer({
     return cb(null, true);
   },
 }).single('avatar');
+
+// WEEK 3
+function make(maxBytes, mimeTypes, field) {
+  return multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: maxBytes, files: 1 },
+    fileFilter: (_req, file, cb) => {
+      if (!mimeTypes.includes(file.mimetype)) return cb(badRequest(`Unsupported file type: ${file.mimetype}`));
+      return cb(null, true);
+    },
+  }).single(field);
+}
+/** 360° panorama: JPEG / PNG / WebP up to 30 MB (field "file"). */
+export const uploadPanorama = make(30 * MB, ['image/jpeg', 'image/png', 'image/webp'], 'file');
+/** Audit evidence: PDF or image up to 20 MB (field "evidence"). */
+export const uploadEvidence = make(20 * MB, ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'], 'evidence');
+
+// Gap fix: supporting project documents — PDF, images, Word, Excel up to 25 MB (field "file").
+const DOCUMENT_MIME_TYPES = [
+  'application/pdf',
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+];
+export const uploadDocument = make(25 * MB, DOCUMENT_MIME_TYPES, 'file');

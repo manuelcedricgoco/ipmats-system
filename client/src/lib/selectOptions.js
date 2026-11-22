@@ -1,7 +1,7 @@
 import { Children, Fragment, isValidElement } from 'react';
 
 /** Plain text of React children (strings, numbers, nested arrays/elements). */
-export function childrenToText(children) {
+function childrenToText(children) {
   let out = '';
   Children.forEach(children, (c) => {
     if (c === null || c === undefined || typeof c === 'boolean') return;

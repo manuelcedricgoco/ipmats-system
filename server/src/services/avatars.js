@@ -42,7 +42,8 @@ export async function removeAvatarFile(path) {
 }
 
 export async function avatarUrl(path) {
-  if (!path) return null;
+  // Without the service key (read-only mode) there is no photo link, but signing in must still work.
+  if (!path || !adminClient) return null;
   const { data, error } = await adminClient.storage.from(BUCKET).createSignedUrl(path, SIGNED_URL_TTL);
   return error ? null : data.signedUrl;
 }

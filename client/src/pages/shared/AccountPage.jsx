@@ -4,7 +4,7 @@ import { Navigate } from 'react-router-dom';
 import { Card, CardBody, CardHeader, PageHeader } from '../../components/common/Card.jsx';
 import Button from '../../components/common/Button.jsx';
 import { Alert, PageLoader } from '../../components/common/Feedback.jsx';
-import { Field, Input } from '../../components/common/Form.jsx';
+import { Field, Input, PasswordInput } from '../../components/common/Form.jsx';
 import PhotoPicker from '../../components/common/PhotoPicker.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
@@ -123,7 +123,7 @@ function DetailsCard({ profile, onSaved }) {
     <Card>
       <CardHeader title="Personal details" />
       <CardBody>
-        <form onSubmit={submit} className="grid gap-4 sm:grid-cols-2">
+        <form onSubmit={submit} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {error && <Alert tone="error" className="sm:col-span-2">{error}</Alert>}
           <Field label="Full name" required className="sm:col-span-2">
             {(a) => <Input {...a} value={form.full_name} onChange={set('full_name')} required minLength={2} maxLength={120} />}
@@ -180,16 +180,16 @@ function PasswordCard({ email }) {
     <Card>
       <CardHeader title="Change password" description="Use at least 8 characters. Avoid passwords you use elsewhere." />
       <CardBody>
-        <form onSubmit={submit} className="grid gap-4 sm:grid-cols-2">
+        <form onSubmit={submit} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {error && <Alert tone="error" className="sm:col-span-2">{error}</Alert>}
           <Field label="Current password" required className="sm:col-span-2">
-            {(a) => <Input {...a} type="password" autoComplete="current-password" value={form.current} onChange={set('current')} required />}
+            {(a) => <PasswordInput {...a} autoComplete="current-password" value={form.current} onChange={set('current')} required />}
           </Field>
           <Field label="New password" required>
-            {(a) => <Input {...a} type="password" autoComplete="new-password" value={form.next} onChange={set('next')} required minLength={8} />}
+            {(a) => <PasswordInput {...a} autoComplete="new-password" value={form.next} onChange={set('next')} required minLength={8} />}
           </Field>
           <Field label="Confirm new password" required>
-            {(a) => <Input {...a} type="password" autoComplete="new-password" value={form.confirm} onChange={set('confirm')} required minLength={8} />}
+            {(a) => <PasswordInput {...a} autoComplete="new-password" value={form.confirm} onChange={set('confirm')} required minLength={8} />}
           </Field>
           <div className="flex items-center gap-2 text-xs text-slate-500 sm:col-span-2">
             <ShieldCheck className="h-4 w-4 text-emerald-600" aria-hidden /> Your current password is checked before it is changed.

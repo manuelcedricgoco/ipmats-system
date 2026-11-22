@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { api } from '../lib/api.js';
-import { STAFF_ROLES } from '../lib/constants.js';
+import { ACCOUNT_SUSPENDED_EVENT, api } from '../lib/api.js';
+import { STAFF_ROLES, SUSPENDED_MESSAGE, isSuspensionError } from '../lib/constants.js';
 import { supabase } from '../lib/supabaseClient.js';
 import { friendlyAuthError } from '../lib/imageFile.js';
 import { takePendingAvatar } from '../lib/pendingAvatar.js';
@@ -25,6 +25,8 @@ export function AuthProvider({ children }) {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [profileError, setProfileError] = useState(null);
+  // Why the user was signed out without asking (shown on the sign-in page), e.g. a suspension.
+  const [signOutNotice, setSignOutNotice] = useState(null);
 
   const loadProfile = useCallback(async (s) => {
     if (!s) {
@@ -39,8 +41,23 @@ export function AuthProvider({ children }) {
     } catch (err) {
       setProfile(null);
       setProfileError(err.message);
-      if (err.status === 401 || err.status === 403) await supabase.auth.signOut();
+      if (err.status === 401 || err.status === 403) {
+        if (isSuspensionError(err.message)) setSignOutNotice(SUSPENDED_MESSAGE);
+        await supabase.auth.signOut();
+      }
     }
+  }, []);
+
+  // Any API call answered "account suspended" (an Admin suspended this account mid-session) → sign out.
+  useEffect(() => {
+    const onSuspended = async () => {
+      setSignOutNotice(SUSPENDED_MESSAGE);
+      await supabase.auth.signOut();
+      setSession(null);
+      setProfile(null);
+    };
+    window.addEventListener(ACCOUNT_SUSPENDED_EVENT, onSuspended);
+    return () => window.removeEventListener(ACCOUNT_SUSPENDED_EVENT, onSuspended);
   }, []);
 
   useEffect(() => {
@@ -66,10 +83,20 @@ export function AuthProvider({ children }) {
     async (email, password) => {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw new Error(error.message === 'Invalid login credentials' ? 'Incorrect email or password.' : friendlyAuthError(error.message));
+      setSignOutNotice(null);
       setSession(data.session);
-      const res = await api.get('/me');
-      setProfile(res.data);
-      return res.data;
+      try {
+        const res = await api.get('/me');
+        setProfile(res.data);
+        return res.data;
+      } catch (err) {
+        // Signed in to Supabase but refused by the API (deactivated / suspended): do not keep a half session.
+        if (err.status === 401 || err.status === 403) {
+          await supabase.auth.signOut();
+          setSession(null);
+        }
+        throw err;
+      }
     },
     [],
   );
@@ -106,6 +133,8 @@ export function AuthProvider({ children }) {
       role,
       loading,
       profileError,
+      signOutNotice,
+      clearSignOutNotice: () => setSignOutNotice(null),
       isAuthenticated: Boolean(session && profile),
       isStaff: STAFF_ROLES.includes(role),
       isPending: ['pending', 'rejected'].includes(profile?.approval_status),
@@ -115,7 +144,7 @@ export function AuthProvider({ children }) {
       signOut,
       refreshProfile: () => loadProfile(session),
     };
-  }, [session, profile, loading, profileError, signIn, signUp, signOut, loadProfile]);
+  }, [session, profile, loading, profileError, signOutNotice, signIn, signUp, signOut, loadProfile]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

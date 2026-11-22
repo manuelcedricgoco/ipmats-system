@@ -19,15 +19,6 @@ export function dateTime(value) {
   return new Date(value).toLocaleString('en-PH', { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
-export function relativeDays(value) {
-  if (!value) return '';
-  const days = Math.round((new Date(`${String(value).slice(0, 10)}T00:00:00`) - new Date(new Date().toDateString())) / 86400000);
-  if (days === 0) return 'today';
-  if (days === -1) return 'yesterday';
-  if (days < 0) return `${-days} days ago`;
-  return `in ${days} days`;
-}
-
 export const titleCase = (s) => (s ? String(s).replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : '—');
 
 export const todayIso = () => {

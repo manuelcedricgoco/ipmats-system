@@ -11,7 +11,7 @@ export default function ProtectedRoute({ roles }) {
   if (roles && !roles.includes(role)) {
     // Pending/declined staff requests → request status; Public accounts → public portal; other staff → dashboard
     if (isPending) return <Navigate to="/account-pending" replace />;
-    return <Navigate to={role === 'public' ? '/' : '/app'} replace />;
+    return <Navigate to={role === 'public' ? '/portal/dashboard' : '/app'} replace />;
   }
   return <Outlet />;
 }

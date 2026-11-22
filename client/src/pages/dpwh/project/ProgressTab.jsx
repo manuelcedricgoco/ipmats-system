@@ -13,7 +13,7 @@ import { api } from '../../../lib/api.js';
 import { date, pct, todayIso } from '../../../lib/format.js';
 
 /** Same formula as the API (server/src/services/completion.js): Σ(weight × accomplishment) ÷ Σ(weight). */
-export const weightedProgress = (rows) => {
+const weightedProgress = (rows) => {
   const total = rows.reduce((s, p) => s + Number(p.weight || 0), 0);
   return total ? rows.reduce((s, p) => s + Number(p.weight || 0) * Math.min(100, Math.max(0, Number(p.accomplishment || 0))), 0) / total : 0;
 };
@@ -76,7 +76,7 @@ export default function ProgressTab() {
   const slipping = d.slippage < 0;
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="stagger grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard label="Overall completion" value={pct(d.overall_progress, 2)} hint="Weighted by phase" icon={TrendingUp} tone="green" />
         <StatCard label="Planned as of today" value={pct(d.planned_progress, 2)} hint="From the phase schedule" icon={ClipboardList} />
         <StatCard
@@ -102,8 +102,9 @@ export default function ProgressTab() {
             )
           }
         />
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-slate-200 text-sm">
+        <p className="px-4 pt-3 text-xs text-slate-500 md:hidden" aria-hidden>Swipe sideways to see all columns →</p>
+        <div className="relative overflow-x-auto">
+          <table className="table-sticky-first min-w-full divide-y divide-slate-200 text-sm">
             <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
               <tr>
                 <th scope="col" className="px-4 py-3">Phase</th>
@@ -149,8 +150,8 @@ export default function ProgressTab() {
         {reports.length === 0 ? (
           <p className="px-5 py-6 text-sm text-slate-500">No progress reports yet.</p>
         ) : (
-          <div className="max-h-[28rem] overflow-y-auto">
-            <table className="min-w-full divide-y divide-slate-200 text-sm">
+          <div className="relative max-h-[28rem] overflow-auto">
+            <table className="table-sticky-first min-w-full divide-y divide-slate-200 text-sm">
               <thead className="sticky top-0 z-10 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                 <tr>
                   <th scope="col" className="px-4 py-2.5">Report date</th>
@@ -184,7 +185,7 @@ export default function ProgressTab() {
                       {open && (
                         <tr>
                           <td colSpan={6} className="bg-slate-50 px-4 py-3">
-                            <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                            <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
                               {(u.phase_snapshot || []).map((s) => (
                                 <li key={s.sequence_no} className="rounded-md bg-white px-3 py-2 text-xs ring-1 ring-slate-200">
                                   <span className="font-medium text-slate-800">{s.sequence_no}. {s.name}</span> <span className="text-slate-500">({s.weight}%)</span>
@@ -222,7 +223,7 @@ function phasePlannedToday(ph) {
 }
 
 /** WEEK 2 — Progress update form for DPWH personnel (Tracy Ann Milaflores). */
-export function ProgressModal({ open, onClose, project, phases, lastReport, onSaved }) {
+function ProgressModal({ open, onClose, project, phases, lastReport, onSaved }) {
   const [rows, setRows] = useState([]);
   const [reportDate, setReportDate] = useState(todayIso());
   const [remarks, setRemarks] = useState('');
@@ -284,7 +285,7 @@ export function ProgressModal({ open, onClose, project, phases, lastReport, onSa
     >
       <form id="progress-form" onSubmit={submit} className="space-y-4">
         <ServerError err={err} title="The update was not saved" />
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Report date" required hint="Cannot be in the future or before the last report">
             {(a) => <Input {...a} type="date" value={reportDate} max={todayIso()} min={lastReport?.report_date || project.notice_to_proceed || undefined} onChange={(e) => setReportDate(e.target.value)} required />}
           </Field>
@@ -316,7 +317,7 @@ export function ProgressModal({ open, onClose, project, phases, lastReport, onSa
           </div>
         </fieldset>
         {all100 && (
-          <Field label="Actual completion date" hint="Every phase is at 100%. Enter the completion date to mark the project Completed.">
+          <Field label="Actual completion date" hint="Every phase is at 100%. Enter the completion date; the project becomes Completed once a final as-built 360° image is also uploaded.">
             {(a) => <Input {...a} type="date" value={completion} max={todayIso()} onChange={(e) => setCompletion(e.target.value)} />}
           </Field>
         )}

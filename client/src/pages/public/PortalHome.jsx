@@ -1,7 +1,7 @@
 import { Building2, CalendarClock, ChevronRight, MapPin, Search } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { StatusBadge } from '../../components/common/Badges.jsx';
+import { FlagBadge, StatusBadge } from '../../components/common/Badges.jsx';
 import { Card } from '../../components/common/Card.jsx';
 import { EmptyState, ErrorState, PageLoader } from '../../components/common/Feedback.jsx';
 import { Input, Select } from '../../components/common/Form.jsx';
@@ -34,21 +34,21 @@ export default function PortalHome() {
 
   return (
     <>
-      <section className="relative overflow-hidden bg-brand-950 text-white">
-        <img src="/auth-bg.webp" alt="" className="absolute inset-0 h-full w-full object-cover opacity-20" aria-hidden />
+      <section className="relative overflow-hidden rounded-2xl bg-brand-950 text-white shadow-panel">
+        <img src="/auth-bg.webp" alt="" className="absolute inset-0 h-full w-full animate-[authZoom_24s_ease-in-out_infinite_alternate] object-cover opacity-20 motion-reduce:animate-none" aria-hidden />
         <div className="absolute inset-0 bg-gradient-to-r from-brand-950 via-brand-950/90 to-brand-900/60" aria-hidden />
-        <div className="relative mx-auto max-w-7xl px-4 py-12 sm:px-6 sm:py-16">
+        <div className="relative px-5 py-10 sm:px-10 sm:py-12">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-accent-300">Public portal</p>
           <h1 className="mt-2 max-w-2xl text-3xl font-bold leading-tight sm:text-4xl">Infrastructure projects in Occidental Mindoro</h1>
           <p className="mt-3 max-w-2xl text-brand-100">See where public works are being built, who is building them, how far along they are, and how much of the budget has been paid.</p>
-          <dl className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-4">
+          <dl className="stagger mt-8 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
             {[
               ['Projects', s ? `${s.total_projects}` : '—', s ? `${s.ongoing} ongoing · ${s.completed} completed` : ''],
               ['Contract amount', s ? pesoCompact(s.total_contract_amount) : '—', s ? `ABC ${pesoCompact(s.total_approved_budget)}` : ''],
               ['Paid so far', s ? pesoCompact(s.total_disbursed) : '—', s && s.total_contract_amount ? `${((s.total_disbursed / s.total_contract_amount) * 100).toFixed(1)}% of contracts` : ''],
               ['Average completion', s ? `${s.average_progress.toFixed(1)}%` : '—', s ? `${s.municipalities} municipalities` : ''],
             ].map(([k, v, h]) => (
-              <div key={k} className="rounded-lg border border-white/10 bg-white/5 p-4 backdrop-blur-sm">
+              <div key={k} className="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur-sm transition-all duration-300 hover:-translate-y-0.5 hover:bg-white/10">
                 <dt className="text-xs uppercase tracking-wide text-brand-200">{k}</dt>
                 <dd className="mt-1 text-2xl font-bold tabular-nums">{v}</dd>
                 <dd className="mt-0.5 text-xs text-brand-200">{h}</dd>
@@ -58,9 +58,9 @@ export default function PortalHome() {
         </div>
       </section>
 
-      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
+      <div className="mt-6">
         <Card className="p-4">
-          <div className="grid gap-3 md:grid-cols-[2fr_1fr_1fr_1fr_1fr]">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-[2fr_1fr_1fr_1fr_1fr]">
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden />
               <Input type="search" value={search} onChange={(e) => { setSearch(e.target.value); setQuery({ search: e.target.value, page: '' }); }} placeholder="Search project, ID or contractor" aria-label="Search projects" className="pl-9" />
@@ -98,12 +98,12 @@ export default function PortalHome() {
                 {list.data.data.map((p) => (
                   <li key={p.id}>
                     <Link
-                      to={`/projects/${p.id}`}
+                      to={`/portal/projects/${p.id}`}
                       className="group flex h-full flex-col rounded-xl border border-slate-200 bg-white p-5 shadow-card transition-all duration-200 hover:-translate-y-0.5 hover:border-brand-300 hover:shadow-card-hover"
                     >
                       <div className="flex items-start justify-between gap-2">
                         <span className="font-mono text-xs text-brand-700">{p.project_code} · {PROJECT_TYPES[p.project_type]}</span>
-                        <StatusBadge status={p.status} />
+                        <span className="flex gap-1"><FlagBadge flag={p.public_flag} size="sm" emptyLabel="Under review" /><StatusBadge status={p.status} /></span>
                       </div>
                       <h2 className="mt-2 line-clamp-2 font-semibold text-slate-900 group-hover:text-brand-800">{p.name}</h2>
                       <p className="mt-2 flex items-center gap-1.5 text-xs text-slate-600"><MapPin className="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden />{p.barangay_name ? `Brgy. ${p.barangay_name}, ` : ''}{p.municipality_name}</p>

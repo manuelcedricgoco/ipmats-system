@@ -1,6 +1,8 @@
-import { ArrowRight, Banknote, Building2, ChevronRight, Coins, FolderKanban, Plus, TrendingUp, Users, Wallet } from 'lucide-react';
+import { ArrowRight, Banknote, ChevronRight, ClipboardCheck, Coins, FileBarChart, FolderKanban, Map, Plus, TrendingUp, Users, Wallet } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { StatusBadge } from '../../components/common/Badges.jsx';
+import { FlagBadge, StatusBadge } from '../../components/common/Badges.jsx';
+import DashboardCharts from './DashboardCharts.jsx';
+import AssignedFindings from '../../components/audit/AssignedFindings.jsx';
 import { Card, CardBody, CardHeader, PageHeader, StatCard } from '../../components/common/Card.jsx';
 import ProgressBar from '../../components/common/ProgressBar.jsx';
 import UtilizationBar from '../../components/common/UtilizationBar.jsx';
@@ -17,32 +19,32 @@ import { date, pesoCompact } from '../../lib/format.js';
 const ROLE_DASHBOARD = {
   admin: {
     eyebrow: 'Administrator dashboard',
-    description: 'Approve staff access requests, manage user accounts and keep office and contractor records up to date.',
+    description: 'Approve staff access requests, manage user accounts, and follow project performance, flags and finances.',
     actions: [
       { to: '/app/users', label: 'Access requests and users', icon: Users },
-      { to: '/app/projects/new', label: 'Register a project', icon: Plus },
-      { to: '/app/finance', label: 'Financial monitoring', icon: Coins },
-      { to: '/app/progress', label: 'Progress monitoring', icon: TrendingUp },
+      { to: '/app/audit', label: 'Flags and audit', icon: ClipboardCheck },
+      { to: '/app/map', label: 'Project map', icon: Map },
+      { to: '/app/reports', label: 'Reports', icon: FileBarChart },
     ],
   },
   dpwh_personnel: {
     eyebrow: 'DPWH Personnel dashboard',
-    description: 'Register projects, submit phase-by-phase progress updates and record disbursements and other financial records.',
+    description: 'Register projects, submit progress updates, upload 360° site photos and record disbursements.',
     actions: [
       { to: '/app/progress', label: 'Submit progress updates', icon: TrendingUp },
+      { to: '/app/map', label: 'Project map & 360° photos', icon: Map },
       { to: '/app/finance', label: 'Record disbursements', icon: Coins },
       { to: '/app/projects/new', label: 'Register a project', icon: Plus },
-      { to: '/app/contractors', label: 'Contractors', icon: Building2 },
     ],
   },
   auditor: {
     eyebrow: 'Auditor dashboard',
-    description: 'Review project records, phase progress and fund utilization (read-only).',
+    description: 'Review flagged projects, confirm or override flags, record findings and download audit reports.',
     actions: [
-      { to: '/app/finance', label: 'Review fund utilization', icon: Coins },
-      { to: '/app/progress', label: 'Review project progress', icon: TrendingUp },
-      { to: '/app/projects', label: 'Project records', icon: FolderKanban },
-      { to: '/app/contractors', label: 'Contractors', icon: Building2 },
+      { to: '/app/audit', label: 'Review flagged projects', icon: ClipboardCheck },
+      { to: '/app/map', label: 'Project map & 360° photos', icon: Map },
+      { to: '/app/reports', label: 'Audit reports', icon: FileBarChart },
+      { to: '/app/finance', label: 'Fund utilization', icon: Coins },
     ],
   },
 };
@@ -85,7 +87,7 @@ export default function DashboardPage() {
     <>
       <PageHeader eyebrow={view.eyebrow} title={`Good day, ${profile?.full_name?.split(' ')[0] || 'there'}`} description={view.description} />
 
-      <nav aria-label="Quick actions" className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <nav aria-label="Quick actions" className="stagger mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {view.actions.map(({ to, label, icon: Icon }) => (
           <Link
             key={to}
@@ -99,14 +101,20 @@ export default function DashboardPage() {
         ))}
       </nav>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="stagger grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard label="Registered projects" value={s.total_projects} hint={`${s.by_status.ongoing || 0} ongoing · ${s.by_status.completed || 0} completed`} icon={FolderKanban} />
         <StatCard label="Average completion" value={`${s.average_progress.toFixed(1)}%`} hint={s.projects_without_phases ? `${s.projects_without_phases} project(s) without phases` : 'Across all projects'} icon={TrendingUp} tone="green" />
         <StatCard label="Disbursed" value={pesoCompact(s.total_disbursed)} hint={`of ${pesoCompact(s.total_revised_contract)} contract amount`} icon={Banknote} tone="yellow" />
         <StatCard label="Remaining balance" value={pesoCompact(s.total_remaining_balance)} hint={`ABC ${pesoCompact(s.total_approved_budget)}`} icon={Wallet} tone="slate" />
       </div>
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-3">
+      {/* Gap fix: corrective actions assigned to this DPWH personnel account */}
+      {role === 'dpwh_personnel' && <AssignedFindings />}
+
+      {/* Week 3: Chart.js charts of project performance and financial records */}
+      <DashboardCharts />
+
+      <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader
             title="Recently updated projects"
@@ -129,7 +137,7 @@ export default function DashboardPage() {
                     <span className="block font-medium tabular-nums text-slate-800">{pesoCompact(p.remaining_balance)} left</span>
                     {p.duration_days ? `until ${date(p.target_completion_date)}` : 'No duration yet'}
                   </div>
-                  <StatusBadge status={p.status} />
+                  <FlagBadge flag={p.current_flag} size="sm" />
                   <ChevronRight className="hidden h-4 w-4 text-slate-300 transition-transform group-hover:translate-x-0.5 group-hover:text-brand-600 sm:block" aria-hidden />
                 </Link>
               </li>

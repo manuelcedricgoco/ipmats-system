@@ -14,7 +14,7 @@ export default function AccountPendingPage() {
   if (loading) return <PageLoader />;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   if (isStaff) return <Navigate to="/app" replace />;
-  if (!isPending) return <Navigate to="/" replace />; // approved Public account → portal
+  if (!isPending) return <Navigate to="/portal/dashboard" replace />; // approved Public account → portal Dashboard
 
   const declined = profile.approval_status === 'rejected';
   return (
@@ -35,7 +35,7 @@ export default function AccountPendingPage() {
         )}
       </div>
       <div className="mt-6 flex flex-wrap gap-2">
-        <Button to="/" variant="secondary">Public portal</Button>
+        <Button to="/portal" variant="secondary">Public portal</Button>
         <Button
           variant="ghost"
           icon={LogOut}

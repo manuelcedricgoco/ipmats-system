@@ -34,6 +34,11 @@ export const OFFICE_TYPES = {
 
 export const STAFF_ROLES = ['admin', 'dpwh_personnel', 'auditor'];
 
+// Suspended accounts: Supabase Auth refuses the sign-in ("User is banned") and the API answers 403.
+export const SUSPENDED_MESSAGE = 'Your account has been suspended by the System Administrator. Contact the System Administrator to lift the suspension.';
+/** True for Supabase's "banned" sign-in error and the API's "has been suspended" 403. */
+export const isSuspensionError = (message = '') => /banned|has been suspended/i.test(String(message));
+
 // Week 2 — financial record types
 export const RECORD_TYPES = {
   disbursement: 'Disbursement',
@@ -53,3 +58,28 @@ export const RECORD_TYPE_CLS = {
   variation_order: 'bg-amber-50 text-amber-800',
   expense: 'bg-violet-50 text-violet-800',
 };
+
+// ---------------------------------------------------------------------------
+// Week 3 — flags, audit and map
+// ---------------------------------------------------------------------------
+export const FLAG_META = {
+  green: { label: 'Green', long: 'On track / completed', color: '#1f8a4c', bg: 'bg-emerald-50', text: 'text-emerald-800', ring: 'ring-emerald-600/20', dot: 'bg-emerald-600' },
+  yellow: { label: 'Yellow', long: 'Needs attention', color: '#d39b0b', bg: 'bg-amber-50', text: 'text-amber-800', ring: 'ring-amber-600/25', dot: 'bg-amber-500' },
+  red: { label: 'Red', long: 'For investigation', color: '#c8372d', bg: 'bg-red-50', text: 'text-red-800', ring: 'ring-red-600/20', dot: 'bg-red-600' },
+};
+export const REVIEW_STATUS = { pending: 'Awaiting auditor review', confirmed: 'Confirmed by auditor', overridden: 'Overridden by auditor' };
+export const AUDIT_STATUS = {
+  not_audited: 'Not audited',
+  under_review: 'Under review',
+  verified: 'Verified',
+  for_investigation: 'For investigation',
+  closed: 'Closed',
+};
+export const SEVERITY_META = {
+  low: { label: 'Low', cls: 'bg-slate-100 text-slate-700' },
+  medium: { label: 'Medium', cls: 'bg-amber-50 text-amber-800' },
+  high: { label: 'High', cls: 'bg-orange-50 text-orange-800' },
+  critical: { label: 'Critical', cls: 'bg-red-50 text-red-800' },
+};
+export const ACTION_STATUS = { open: 'Open', in_progress: 'In progress', resolved: 'Resolved', closed: 'Closed' };
+export const OCC_MINDORO_CENTER = [13.0, 120.85];

@@ -15,11 +15,15 @@ const text = (max) => z.string().trim().max(max);
 export const uuidParam = z.string().uuid();
 export const ROLES = ['admin', 'dpwh_personnel', 'auditor', 'public'];
 export const PROJECT_TYPES = ['road', 'bridge', 'flood_control', 'building', 'water_supply', 'other'];
-// Week 1: personnel set the status manually ('delayed' is detected automatically in a later week)
-export const MANUAL_STATUSES = ['not_started', 'ongoing', 'completed', 'suspended', 'terminated'];
+// Week 3: status is set automatically (Not started / Ongoing / Delayed / Completed).
+// Personnel may only set Suspended or Terminated; any other value means "automatic".
+export const MANUAL_STATUSES = ['suspended', 'terminated'];
+const statusField = z.preprocess((v) => (v === undefined || v === '' ? undefined : MANUAL_STATUSES.includes(v) ? v : 'auto'), z.enum(['auto', 'suspended', 'terminated']).optional());
 
+// The Project ID (project_code) is NOT accepted from clients: the database assigns it on insert
+// (migration 008, e.g. 26OM0332) and blocks any change afterwards. zod drops unknown keys,
+// so a project_code sent by a client is ignored.
 const projectFields = {
-  project_code: text(40).min(3).regex(/^[A-Za-z0-9-]+$/, 'Letters, digits and dashes only'),
   name: text(300).min(5),
   description: nullable(text(4000)),
   project_type: z.enum(PROJECT_TYPES),
@@ -28,8 +32,10 @@ const projectFields = {
   contract_ref_no: nullable(text(80)),
   municipality_id: z.coerce.number().int().positive(),
   barangay_id: nullable(z.coerce.number().int().positive()),
-  latitude: z.coerce.number().min(12).max(14, 'Must be within Occidental Mindoro'),
-  longitude: z.coerce.number().min(119.9).max(121.4, 'Must be within Occidental Mindoro'),
+  // Quick range check here; the exact province-boundary check runs in the projects controller
+  // (it needs both coordinates, also when an edit changes only one of them).
+  latitude: z.coerce.number().min(12, 'Must be within Occidental Mindoro').max(14.05, 'Must be within Occidental Mindoro'),
+  longitude: z.coerce.number().min(119.85, 'Must be within Occidental Mindoro').max(121.3, 'Must be within Occidental Mindoro'),
   approved_budget: money,
   contract_amount: nullable(money),
   notice_to_proceed: nullable(isoDate),
@@ -37,7 +43,7 @@ const projectFields = {
   target_completion_date: nullable(isoDate),
   actual_completion_date: nullable(isoDate),
   fund_source: nullable(text(200)),
-  status: z.enum(MANUAL_STATUSES).optional(),
+  status: statusField,
 };
 
 const contractWithinBudget = (p) => p.contract_amount == null || p.approved_budget == null || p.contract_amount <= p.approved_budget;
@@ -71,6 +77,7 @@ export const agencyCreate = z.object({
   name: text(200).min(3),
   office_type: z.enum(['regional_office', 'district_engineering_office', 'lgu', 'other']),
   address: nullable(text(300)),
+  is_active: z.boolean().optional(),
 });
 export const agencyUpdate = agencyCreate.partial().refine((o) => Object.keys(o).length > 0, 'Nothing to update');
 
@@ -98,10 +105,10 @@ export const userApprove = z.object({
   position: nullable(text(120)),
 });
 export const userReject = z.object({ note: nullable(text(500)) });
+/** Suspending an account always needs a reason (kept on the profile and in the activity log). */
+export const userSuspend = z.object({ reason: text(500).min(5, 'Give a reason of at least 5 characters') });
 
 export const meUpdate = z.object({ full_name: text(120).min(2), position: nullable(text(120)) });
-
-export { opt };
 
 // ---------------------------------------------------------------------------
 // WEEK 2 — phases, progress updates and financial records
@@ -141,7 +148,7 @@ export const progressSubmit = z.object({
     .min(1, 'Report at least one phase'),
 });
 
-export const FINANCE_TYPES = ['variation_order', 'obligation', 'disbursement', 'expense'];
+const FINANCE_TYPES = ['variation_order', 'obligation', 'disbursement', 'expense'];
 export const financialRecord = z
   .object({
     record_type: z.enum(FINANCE_TYPES),
@@ -149,6 +156,99 @@ export const financialRecord = z
     record_date: isoDate,
     reference_no: nullable(text(80)),
     description: nullable(text(1000)),
+    // Gap fix: financial allocation per construction phase (optional)
+    phase_id: nullable(z.string().uuid()),
   })
   .refine((r) => r.amount !== 0, { message: 'Amount cannot be zero', path: ['amount'] })
   .refine((r) => r.record_type === 'variation_order' || r.amount > 0, { message: 'Amount must be positive (only a variation order can be negative)', path: ['amount'] });
+
+// ---------------------------------------------------------------------------
+// WEEK 3 — 360° images, flag reviews and audit findings
+// ---------------------------------------------------------------------------
+const bool = z.preprocess((v) => (v === 'true' ? true : v === 'false' ? false : v), z.boolean());
+export const FLAGS = ['green', 'yellow', 'red'];
+const AUDIT_STATUSES = ['not_audited', 'under_review', 'verified', 'for_investigation', 'closed'];
+
+// Multipart form fields arrive as strings, hence the coercion
+export const imageUpload = z.object({
+  inspection_date: isoDate,
+  phase_id: opt(z.string().uuid()),
+  latitude: opt(z.coerce.number().min(-90).max(90)),
+  longitude: opt(z.coerce.number().min(-180).max(180)),
+  captured_at: opt(z.string().datetime({ offset: true }).or(isoDate)),
+  is_final: z.preprocess(empty, bool.default(false)),
+  caption: opt(text(300)),
+});
+
+export const imageUpdate = z
+  .object({ caption: nullable(text(300)), is_final: z.boolean().optional() })
+  .refine((o) => Object.keys(o).length > 0, 'Nothing to update');
+
+export const flagReview = z
+  .object({
+    decision: z.enum(['confirm', 'override']),
+    final_flag: opt(z.enum(FLAGS)),
+    reason: text(2000).min(10, 'Give a reason of at least 10 characters'),
+    audit_status: opt(z.enum(AUDIT_STATUSES)),
+  })
+  .refine((r) => r.decision === 'confirm' || r.final_flag, { message: 'Choose the flag to apply when overriding', path: ['final_flag'] });
+
+const findingFields = {
+  title: text(200).min(5),
+  description: text(4000).min(10),
+  severity: z.enum(['low', 'medium', 'high', 'critical']).default('medium'),
+  recommendation: nullable(text(2000)),
+  corrective_action: nullable(text(2000)),
+  action_status: z.enum(['open', 'in_progress', 'resolved', 'closed']).default('open'),
+  due_date: nullable(isoDate),
+  phase_id: nullable(z.string().uuid()),
+  // Gap fix: the DPWH personnel account responsible for the corrective action
+  assigned_to: nullable(z.string().uuid()),
+};
+export const findingCreate = z.object(findingFields);
+export const findingUpdate = z
+  .object(Object.fromEntries(Object.entries(findingFields).map(([k, v]) => [k, v.optional()])))
+  .transform((o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)))
+  .refine((o) => Object.keys(o).length > 0, 'Nothing to update');
+
+// ---------------------------------------------------------------------------
+// Gap fixes (concept document): disclosure, assignments, documents, flag rules
+// ---------------------------------------------------------------------------
+/** Auditor / Admin: show a 360° photo or an audit finding to the public, or hide it again. */
+export const publicToggle = z.object({ is_public: z.boolean() });
+
+/** Assigned DPWH personnel: report progress on the corrective action of a finding. */
+export const findingAction = z
+  .object({
+    corrective_action: nullable(text(2000)),
+    action_status: z.enum(['in_progress', 'resolved']).optional(),
+  })
+  .refine((o) => o.corrective_action !== undefined || o.action_status !== undefined, 'Nothing to update');
+
+export const DOCUMENT_TYPES = ['contract', 'program_of_work', 'progress_report', 'inspection_report', 'variation_order', 'payment_document', 'as_built_plan', 'other'];
+/** Supporting project document (multipart fields). */
+export const documentUpload = z.object({
+  title: text(200).min(3, 'Give the document a title (at least 3 characters)'),
+  doc_type: z.enum(DOCUMENT_TYPES),
+  description: nullable(text(2000)),
+  document_date: nullable(isoDate),
+  phase_id: opt(z.string().uuid()),
+});
+
+/** Automatic flag thresholds (System Administrator). Same keys as DEFAULT_RULES. */
+const pct = (max = 100) => z.coerce.number().finite().min(0).max(max);
+export const flagRulesUpdate = z
+  .object({
+    slippage_green_max: pct(),
+    slippage_yellow_max: pct(),
+    image_max_age_days: z.coerce.number().int().min(1).max(365),
+    gps_tolerance_m: z.coerce.number().int().min(10).max(50000),
+    gps_red_m: z.coerce.number().int().min(10).max(100000),
+    financial_variance_yellow: pct(),
+    financial_variance_red: pct(),
+    late_completion_tolerance_days: z.coerce.number().int().min(0).max(365),
+    image_date_tolerance_days: z.coerce.number().int().min(0).max(365),
+  })
+  .refine((r) => r.slippage_green_max < r.slippage_yellow_max, { message: 'The Yellow slippage limit must be higher than the Green limit', path: ['slippage_yellow_max'] })
+  .refine((r) => r.gps_tolerance_m < r.gps_red_m, { message: 'The Red GPS distance must be larger than the Yellow distance', path: ['gps_red_m'] })
+  .refine((r) => r.financial_variance_yellow < r.financial_variance_red, { message: 'The Red payment gap must be larger than the Yellow gap', path: ['financial_variance_red'] });

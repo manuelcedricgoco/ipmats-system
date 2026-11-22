@@ -17,7 +17,7 @@ const today = (t) => isoDate(t || new Date());
 const peso = (n) => `₱${Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 /** Maximum total of variation orders: 10% of the original contract price (RA 9184 IRR, Annex E). */
-export const VARIATION_ORDER_LIMIT = 0.1;
+const VARIATION_ORDER_LIMIT = 0.1;
 
 /** Throw a 400 listing every problem, or do nothing when the list is empty. */
 export function assertValid(problems) {

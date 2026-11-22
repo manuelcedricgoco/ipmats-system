@@ -8,6 +8,8 @@
 import { anonClient, userClient } from '../config/supabase.js';
 import { forbidden, unauthorized } from '../utils/httpError.js';
 
+export const SUSPENDED_MESSAGE = 'This account has been suspended by the System Administrator. Contact the System Administrator to lift the suspension.';
+
 function bearer(req) {
   const h = req.headers.authorization || '';
   const [scheme, token] = h.split(' ');
@@ -27,11 +29,18 @@ export async function authenticate(req, _res, next) {
 
     const { data: profile, error: pErr } = await db
       .from('profiles')
-      .select('id, email, full_name, role, agency_id, position, is_active, approval_status, requested_role, requested_at, review_note, avatar_path')
+      .select('id, email, full_name, role, agency_id, position, is_active, approval_status, requested_role, requested_at, review_note, avatar_path, suspended_at')
       .eq('id', data.user.id)
       .single();
     if (pErr || !profile) throw unauthorized('No profile found for this account.');
-    if (!profile.is_active) throw forbidden('This account has been deactivated. Contact the System Administrator.');
+    if (!profile.is_active) {
+      // The client recognises "has been suspended" and shows it on the sign-in page after signing out.
+      throw forbidden(
+        profile.suspended_at
+          ? SUSPENDED_MESSAGE
+          : 'This account has been deactivated. Contact the System Administrator.',
+      );
+    }
 
     req.user = { id: data.user.id, email: data.user.email, role: profile.role, profile };
     req.db = db;

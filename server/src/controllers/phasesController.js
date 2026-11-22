@@ -7,7 +7,9 @@
  * Every write runs Manuel's checks (services/validationRules.js) before saving.
  */
 import { adminClient } from '../config/supabase.js';
+import { logActivity, projectCode } from '../services/activityLog.js';
 import { computeOverallProgress, computePlannedProgress, computeSlippage, planFromTemplate } from '../services/completion.js';
+import { reevaluate } from '../services/projectEvaluation.js';
 import { assertValid, checkPhasePlan, checkProgressUpdate } from '../services/validationRules.js';
 import { notFound, unwrap } from '../utils/httpError.js';
 
@@ -20,13 +22,11 @@ async function loadProject(db, id) {
 }
 const loadPhases = async (db, id) => unwrap(await db.from('project_phases').select('*').eq('project_id', id).order('sequence_no'));
 
-/** Recompute and store overall completion; also moves Not started → Ongoing once work is reported. */
+/** Recompute and store overall completion. (Week 3: the status is then set by the automatic evaluation.) */
 async function saveOverall(project, phases, extra = {}) {
   const overall = computeOverallProgress(phases);
-  const patch = { overall_progress: overall, ...extra };
-  if (overall > 0 && project.status === 'not_started') patch.status = 'ongoing';
-  unwrap(await adminClient.from('projects').update(patch).eq('id', project.id));
-  return { overall, status: patch.status || project.status };
+  unwrap(await adminClient.from('projects').update({ overall_progress: overall, ...extra }).eq('id', project.id));
+  return { overall };
 }
 
 export async function getPhases(req, res) {
@@ -66,7 +66,16 @@ export async function replacePhases(req, res) {
 
   const phases = await loadPhases(adminClient, id);
   const { overall } = await saveOverall(project, phases, { updated_by: req.user.id });
-  res.json({ data: { phases, overall_progress: overall } });
+  const evaluation = await reevaluate(id, 'phases_updated', req.user.id);
+  await logActivity(req, {
+    action: 'phases.update',
+    entityType: 'project',
+    entityId: id,
+    projectId: id,
+    summary: `Set up construction phases of ${await projectCode(id)} (${phases.length} phases${remove.length ? `, ${remove.length} removed` : ''})`,
+    details: { phases: phases.map((p) => ({ name: p.name, weight: Number(p.weight) })) },
+  });
+  res.json({ data: { phases, overall_progress: overall, evaluation } });
 }
 
 export async function listProgress(req, res) {
@@ -105,8 +114,8 @@ export async function submitProgress(req, res) {
   }
 
   const extra = { updated_by: req.user.id };
-  if (update.actual_completion_date) Object.assign(extra, { actual_completion_date: update.actual_completion_date, status: 'completed' });
-  const { overall, status } = await saveOverall(project, phases, extra);
+  if (update.actual_completion_date) extra.actual_completion_date = update.actual_completion_date;
+  const { overall } = await saveOverall(project, phases, extra);
 
   const row = unwrap(
     await adminClient
@@ -122,7 +131,23 @@ export async function submitProgress(req, res) {
       .select('id')
       .single(),
   );
+  const evaluation = await reevaluate(id, 'progress_update', req.user.id);
+  await logActivity(req, {
+    action: 'progress.submit',
+    entityType: 'progress_update',
+    entityId: row.id,
+    projectId: id,
+    summary: `Submitted progress report of ${await projectCode(id)} as of ${update.report_date}: ${Number(project.overall_progress)}% → ${overall}%`,
+    details: { report_date: update.report_date, previous: Number(project.overall_progress), overall, flag: evaluation?.flag ?? null },
+  });
   res.status(201).json({
-    data: { id: row.id, overall_progress: overall, previous_progress: Number(project.overall_progress), planned_progress: computePlannedProgress(project, phases, update.report_date), status },
+    data: {
+      id: row.id,
+      overall_progress: overall,
+      previous_progress: Number(project.overall_progress),
+      planned_progress: computePlannedProgress(project, phases, update.report_date),
+      status: evaluation?.status ?? project.status,
+      evaluation,
+    },
   });
 }

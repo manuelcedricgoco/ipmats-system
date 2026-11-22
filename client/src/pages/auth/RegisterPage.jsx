@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import Button from '../../components/common/Button.jsx';
 import { Alert } from '../../components/common/Feedback.jsx';
-import { Field, Input, Select } from '../../components/common/Form.jsx';
+import { Field, Input, Select, PasswordInput } from '../../components/common/Form.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useReference } from '../../hooks/useReference.js';
 import AuthShell from './AuthShell.jsx';
@@ -81,7 +81,7 @@ export default function RegisterPage() {
           </p>
         </div>
       ) : (
-        <form onSubmit={submit} className="grid gap-4 sm:grid-cols-2">
+        <form onSubmit={submit} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {error && <Alert tone="error" className="sm:col-span-2">{error}</Alert>}
           <Field label="Full name" required className="sm:col-span-2">
             {(a) => <Input {...a} value={form.full_name} onChange={set('full_name')} required minLength={2} autoComplete="name" />}
@@ -91,7 +91,7 @@ export default function RegisterPage() {
           </Field>
           <fieldset className="sm:col-span-2">
             <legend className="mb-2 text-sm font-medium text-slate-700">Account type <span className="text-red-600">*</span></legend>
-            <div className="grid gap-2 sm:grid-cols-3" role="radiogroup">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3" role="radiogroup">
               {ACCESS.map(({ value, label, icon: Icon, hint }) => {
                 const active = form.requested_role === value;
                 return (
@@ -145,10 +145,10 @@ export default function RegisterPage() {
             {photoError && <p className="mt-2 text-xs font-medium text-red-700">{photoError}</p>}
           </div>
           <Field label="Password" required hint="At least 8 characters">
-            {(a) => <Input {...a} type="password" value={form.password} onChange={set('password')} required minLength={8} autoComplete="new-password" />}
+            {(a) => <PasswordInput {...a} value={form.password} onChange={set('password')} required minLength={8} autoComplete="new-password" />}
           </Field>
           <Field label="Confirm password" required>
-            {(a) => <Input {...a} type="password" value={form.confirm} onChange={set('confirm')} required minLength={8} autoComplete="new-password" />}
+            {(a) => <PasswordInput {...a} value={form.confirm} onChange={set('confirm')} required minLength={8} autoComplete="new-password" />}
           </Field>
           <Button type="submit" icon={UserPlus} loading={loading} className="w-full sm:col-span-2">
             {isStaffRequest ? 'Submit request' : 'Create account'}

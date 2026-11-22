@@ -2,11 +2,14 @@
  * Thin fetch wrapper for the DPWH 360° API. Attaches the current Supabase
  * session token and normalises errors into ApiError.
  */
+import { isSuspensionError } from './constants.js';
 import { supabase } from './supabaseClient.js';
+
+export const ACCOUNT_SUSPENDED_EVENT = 'ipmats:account-suspended';
 
 const BASE = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '');
 
-export class ApiError extends Error {
+class ApiError extends Error {
   constructor(status, message, details) {
     super(message);
     this.status = status;
@@ -52,6 +55,8 @@ async function request(method, path, { body, query, signal, raw } = {}) {
   const data = isJson ? await res.json().catch(() => null) : null;
   if (!res.ok) {
     const message = data?.error?.message || `Request failed (${res.status})`;
+    // Suspended while signed in: AuthContext signs out and the sign-in page explains why.
+    if (res.status === 403 && isSuspensionError(message)) window.dispatchEvent(new CustomEvent(ACCOUNT_SUSPENDED_EVENT));
     throw new ApiError(res.status, message, data?.error?.details);
   }
   return data;
@@ -64,7 +69,7 @@ export const api = {
   patch: (path, body, opts) => request('PATCH', path, { ...opts, body }),
   del: (path, opts) => request('DELETE', path, opts),
 
-  /** Download a file (CSV/PDF) with auth and trigger a browser save. */
+  /** Download a file (PDF / Excel) with auth and trigger a browser save. */
   async download(path, query, fallbackName = 'download') {
     const res = await request('GET', path, { query, raw: true });
     const disposition = res.headers.get('content-disposition') || '';

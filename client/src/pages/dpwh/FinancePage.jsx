@@ -44,7 +44,7 @@ export default function FinancePage() {
         description="Approved budget, contract amount (with variation orders), money released and the remaining balance of each project."
       />
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="stagger grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard label="Approved budget (ABC)" value={pesoCompact(t.approved_budget)} hint={`${t.projects} project(s)`} icon={Landmark} tone="slate" />
         <StatCard label="Contract amount" value={pesoCompact(t.revised_contract_amount)} hint="Including variation orders" icon={Scale} />
         <StatCard label="Disbursed" value={pesoCompact(t.total_disbursed)} hint={`${pct(t.utilization_pct)} fund utilization`} icon={Banknote} tone="yellow" />
@@ -82,8 +82,9 @@ export default function FinancePage() {
         <div className="mt-4"><EmptyState title="No projects match these filters" /></div>
       ) : (
         <Card className={`mt-4 overflow-hidden transition-opacity ${loading ? 'opacity-60' : ''}`}>
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-200 text-sm">
+          <p className="px-4 pt-3 text-xs text-slate-500 md:hidden" aria-hidden>Swipe sideways to see all columns →</p>
+          <div className="relative overflow-x-auto">
+            <table className="table-sticky-first min-w-full divide-y divide-slate-200 text-sm">
               <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                 <tr>
                   <th scope="col" className="px-4 py-3">Project</th>

@@ -20,3 +20,11 @@ describe('processAvatar', () => {
     await assert.rejects(processAvatar(tiny), /at least 128/);
   });
 });
+
+// Regression: /api/me must not crash for an account with a photo when the API has no service key
+import { avatarUrl } from '../services/avatars.js';
+describe('avatarUrl without the service key', () => {
+  it('returns null instead of throwing', async () => {
+    assert.equal(await avatarUrl('some-user/photo.webp'), null);
+  });
+});

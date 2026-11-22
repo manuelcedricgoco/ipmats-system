@@ -45,12 +45,12 @@ export default function UserMenu({ dark = false }) {
             </MenuItem>
           )}
           <MenuItem>
-            <Link to={isStaff ? '/app/account' : '/account'} className={`${item} text-slate-700`}>
+            <Link to={isStaff ? '/app/account' : '/portal/account'} className={`${item} text-slate-700`}>
               <UserRound className="h-4 w-4 text-slate-400" aria-hidden /> My account
             </Link>
           </MenuItem>
           <MenuItem>
-            <Link to="/" className={`${item} text-slate-700`}>
+            <Link to="/portal" className={`${item} text-slate-700`}>
               <Globe2 className="h-4 w-4 text-slate-400" aria-hidden /> Public portal
             </Link>
           </MenuItem>

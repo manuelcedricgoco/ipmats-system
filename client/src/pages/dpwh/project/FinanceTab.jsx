@@ -47,14 +47,14 @@ export default function FinanceTab() {
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="stagger grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard label="Approved budget (ABC)" value={pesoCompact(s.approved_budget)} hint={peso(s.approved_budget)} icon={Landmark} tone="slate" />
         <StatCard label="Contract amount" value={pesoCompact(s.revised_contract_amount)} hint={s.variation_orders ? `Original ${pesoCompact(s.contract_amount)} ${s.variation_orders > 0 ? '+' : '−'} VO ${pesoCompact(Math.abs(s.variation_orders))}` : peso(s.contract_amount)} icon={Scale} />
         <StatCard label="Disbursed" value={pesoCompact(s.total_disbursed)} hint={`${pct(s.utilization_pct)} of the contract`} icon={Banknote} tone="yellow" />
         <StatCard label="Remaining balance" value={pesoCompact(s.remaining_balance)} hint={peso(s.remaining_balance)} icon={Wallet} tone="green" />
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-5">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
         <Card className="lg:col-span-3">
           <CardHeader title="Fund utilization" description="How much of the contract amount has been paid" />
           <CardBody className="space-y-5">
@@ -113,12 +113,15 @@ export default function FinanceTab() {
         {records.length === 0 ? (
           <p className="px-5 py-6 text-sm text-slate-500">No financial records yet.</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-200 text-sm">
+          <>
+          <p className="px-4 pt-3 text-xs text-slate-500 md:hidden" aria-hidden>Swipe sideways to see all columns →</p>
+          <div className="relative overflow-x-auto">
+            <table className="table-sticky-first min-w-full divide-y divide-slate-200 text-sm">
               <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                 <tr>
                   <th scope="col" className="px-4 py-2.5">Date</th>
                   <th scope="col" className="px-4 py-2.5">Type</th>
+                  <th scope="col" className="px-4 py-2.5">Phase</th>
                   <th scope="col" className="px-4 py-2.5">Reference no.</th>
                   <th scope="col" className="px-4 py-2.5">Description</th>
                   <th scope="col" className="px-4 py-2.5 text-right">Amount</th>
@@ -130,6 +133,7 @@ export default function FinanceTab() {
                   <tr key={r.id} className="transition-colors hover:bg-slate-50">
                     <td className="whitespace-nowrap px-4 py-2.5">{date(r.record_date)}</td>
                     <td className="px-4 py-2.5"><Pill className={RECORD_TYPE_CLS[r.record_type]}>{RECORD_TYPES[r.record_type]}</Pill></td>
+                    <td className="px-4 py-2.5 text-xs text-slate-600">{r.phase_name || '—'}</td>
                     <td className="px-4 py-2.5 font-mono text-xs">{r.reference_no || '—'}</td>
                     <td className="px-4 py-2.5 text-slate-600">{r.description || '—'}</td>
                     <td className={`whitespace-nowrap px-4 py-2.5 text-right font-semibold tabular-nums ${Number(r.amount) < 0 ? 'text-red-700' : ''}`}>{peso(r.amount)}</td>
@@ -145,10 +149,44 @@ export default function FinanceTab() {
               </tbody>
             </table>
           </div>
+          </>
         )}
       </Card>
 
-      <RecordModal open={adding} onClose={() => setAdding(false)} project={project} summary={s} onSaved={() => { setAdding(false); toast.success('Financial record saved.'); reload(); reloadProject(); }} />
+      {data.by_phase?.length > 0 && (
+        <Card className="overflow-hidden">
+          <CardHeader title="Financial allocation by phase" description="Obligations, disbursements and expenses recorded against each construction phase, next to the work done in that phase." />
+          <p className="px-4 pt-3 text-xs text-slate-500 md:hidden" aria-hidden>Swipe sideways to see all columns →</p>
+          <div className="relative overflow-x-auto">
+            <table className="table-sticky-first min-w-full divide-y divide-slate-200 text-sm">
+              <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <tr>
+                  <th scope="col" className="px-4 py-2.5">Phase</th>
+                  <th scope="col" className="px-4 py-2.5 text-right">Weight</th>
+                  <th scope="col" className="px-4 py-2.5 text-right">Work done</th>
+                  <th scope="col" className="px-4 py-2.5 text-right">Obligated</th>
+                  <th scope="col" className="px-4 py-2.5 text-right">Disbursed</th>
+                  <th scope="col" className="px-4 py-2.5 text-right">Expenses</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {data.by_phase.map((ph) => (
+                  <tr key={ph.phase_id || 'none'} className={ph.phase_id ? '' : 'bg-slate-50 text-slate-500'}>
+                    <td className="px-4 py-2.5 font-medium">{ph.sequence_no ? `${ph.sequence_no}. ` : ''}{ph.name}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums">{ph.weight != null ? pct(ph.weight, 0) : '—'}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums">{ph.accomplishment != null ? pct(ph.accomplishment, 1) : '—'}</td>
+                    <td className="whitespace-nowrap px-4 py-2.5 text-right tabular-nums">{peso(ph.obligated)}</td>
+                    <td className="whitespace-nowrap px-4 py-2.5 text-right font-semibold tabular-nums">{peso(ph.disbursed)}</td>
+                    <td className="whitespace-nowrap px-4 py-2.5 text-right tabular-nums">{peso(ph.expenses)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+
+      <RecordModal open={adding} onClose={() => setAdding(false)} project={project} summary={s} phases={(data.by_phase || []).filter((p) => p.phase_id)} onSaved={() => { setAdding(false); toast.success('Financial record saved.'); reload(); reloadProject(); }} />
       <Modal
         open={Boolean(removing)}
         onClose={() => setRemoving(null)}
@@ -173,10 +211,10 @@ function Meter({ label, value, cls }) {
   );
 }
 
-const EMPTY = { record_type: 'disbursement', amount: '', record_date: todayIso(), reference_no: '', description: '' };
+const EMPTY = { record_type: 'disbursement', amount: '', record_date: todayIso(), reference_no: '', description: '', phase_id: '' };
 
 /** WEEK 2 — Add a financial record. The API checks it against the contract before saving. */
-function RecordModal({ open, onClose, project, summary, onSaved }) {
+function RecordModal({ open, onClose, project, summary, phases = [], onSaved }) {
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState(null);
@@ -201,6 +239,7 @@ function RecordModal({ open, onClose, project, summary, onSaved }) {
         record_date: form.record_date,
         reference_no: form.reference_no.trim() || null,
         description: form.description.trim() || null,
+        phase_id: form.record_type === 'variation_order' ? null : form.phase_id || null,
       });
       onSaved();
     } catch (e2) {
@@ -219,7 +258,7 @@ function RecordModal({ open, onClose, project, summary, onSaved }) {
       description={`Remaining balance: ${peso(summary.remaining_balance)}`}
       footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button type="submit" form="finance-form" loading={saving}>Save record</Button></>}
     >
-      <form id="finance-form" onSubmit={submit} className="grid gap-4 sm:grid-cols-2">
+      <form id="finance-form" onSubmit={submit} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {err && (
           <Alert tone="error" title="The record was not saved" className="sm:col-span-2">
             <p>{err.message}</p>
@@ -236,6 +275,16 @@ function RecordModal({ open, onClose, project, summary, onSaved }) {
           {(a) => <Input {...a} type="date" value={form.record_date} max={todayIso()} onChange={set('record_date')} required />}
         </Field>
         {overBalance && <Alert tone="warning" className="sm:col-span-2">This is more than the remaining balance of {peso(summary.remaining_balance)}. The system will not accept it.</Alert>}
+        {form.record_type !== 'variation_order' && (
+          <Field label="Construction phase" hint="Optional: the phase this amount is for (financial allocation per phase)." className="sm:col-span-2">
+            {(a) => (
+              <Select {...a} value={form.phase_id} onChange={set('phase_id')}>
+                <option value="">Whole project / not phase-specific</option>
+                {phases.map((p) => <option key={p.phase_id} value={p.phase_id}>{p.sequence_no}. {p.name}</option>)}
+              </Select>
+            )}
+          </Field>
+        )}
         <Field label="Reference no." hint="e.g. DV-2026-11-0042, OB number or VO number" className="sm:col-span-2">
           {(a) => <Input {...a} value={form.reference_no} onChange={set('reference_no')} maxLength={80} />}
         </Field>

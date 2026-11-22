@@ -1,8 +1,10 @@
+import { ArrowLeft } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import Logo from '../../components/layout/Logo.jsx';
 
 export default function AuthShell({ title, subtitle, children, wide = false }) {
   return (
-    <div className="grid min-h-screen lg:grid-cols-2">
+    <div className="grid grid-cols-1 min-h-screen lg:grid-cols-2">
       <div className="relative hidden overflow-hidden bg-brand-950 lg:flex lg:flex-col">
         {/* DPWH seal over an aerial view, shown at its natural proportions (sharp) and fading into navy */}
         <div className="relative overflow-hidden">
@@ -32,6 +34,9 @@ export default function AuthShell({ title, subtitle, children, wide = false }) {
         </div>
         <div className={`relative w-full animate-page-in ${wide ? 'max-w-lg' : 'max-w-sm'}`}>
           <div className="mb-8 lg:hidden"><Logo light={false} /></div>
+          <Link to="/" className="group mb-6 inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 transition-colors hover:text-brand-700">
+            <ArrowLeft className="h-4 w-4 transition-transform duration-200 group-hover:-translate-x-1" aria-hidden /> Back to home
+          </Link>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">{title}</h1>
           {subtitle && <p className="mt-1 text-sm text-slate-600">{subtitle}</p>}
           <div className="mt-8">{children}</div>

@@ -15,11 +15,11 @@ before(async () => {
   app = createApp();
 });
 
-describe('API guards (Weeks 1–2)', () => {
-  it('health reports week 2 and read-only mode without a service key', async () => {
+describe('API guards (Weeks 1–3)', () => {
+  it('health reports week 3 and read-only mode without a service key', async () => {
     const res = await request(app).get('/api/health');
     assert.equal(res.status, 200);
-    assert.equal(res.body.week, 2);
+    assert.equal(res.body.week, 3);
     assert.equal(res.body.writes, false);
   });
   it('requires sign-in for every project, contractor and user endpoint', async () => {
@@ -60,8 +60,29 @@ describe('API guards (Weeks 1–2)', () => {
       assert.equal((await request(app).get(path)).status, 401, path);
     }
   });
+  it('Week 3: requires sign-in for images, flags, findings, map, dashboards and reports', async () => {
+    const id = '9f343767-8d98-5863-903c-3bc97288d015';
+    for (const path of [`/api/projects/${id}/images`, '/api/flags', `/api/projects/${id}/flags`, '/api/findings', '/api/map/projects', '/api/dashboard/performance', '/api/dashboard/financial', '/api/reports/flagged.pdf', '/api/reports/flagged.xlsx', '/api/reports/financial.xlsx', `/api/reports/projects/${id}/audit.pdf`]) {
+      assert.equal((await request(app).get(path)).status, 401, path);
+    }
+    assert.equal((await request(app).post(`/api/projects/${id}/images`)).status, 401);
+    assert.equal((await request(app).post(`/api/projects/${id}/flags/review`)).status, 401);
+    assert.equal((await request(app).post(`/api/projects/${id}/findings`)).status, 401);
+  });
+  it('Gap fixes: activity logs, settings, documents, assignments and publishing all require sign-in', async () => {
+    const id = '9f343767-8d98-5863-903c-3bc97288d015';
+    for (const path of ['/api/activity', '/api/settings/flag-rules', `/api/projects/${id}/documents`, '/api/findings/assigned', '/api/audit/assignees']) {
+      assert.equal((await request(app).get(path)).status, 401, path);
+    }
+    assert.equal((await request(app).put('/api/settings/flag-rules').send({})).status, 401);
+    assert.equal((await request(app).post(`/api/projects/${id}/documents`)).status, 401);
+    assert.equal((await request(app).delete(`/api/projects/${id}/documents/${id}`)).status, 401);
+    assert.equal((await request(app).patch(`/api/projects/${id}/images/${id}/public`).send({ is_public: true })).status, 401);
+    assert.equal((await request(app).patch(`/api/findings/${id}/public`).send({ is_public: true })).status, 401);
+    assert.equal((await request(app).patch(`/api/findings/${id}/action`).send({ action_status: 'resolved' })).status, 401);
+  });
   it('returns JSON 404 for routes that do not exist yet', async () => {
-    const res = await request(app).get('/api/flags');
+    const res = await request(app).get('/api/settings');
     assert.equal(res.status, 404);
     assert.ok(res.body.error.message);
   });

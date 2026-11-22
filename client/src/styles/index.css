@@ -37,6 +37,42 @@
   }
 }
 
+/* Leaflet: keep tooltips readable and controls on-brand */
+.leaflet-container {
+  font-family: inherit;
+  background: #dfe7ef;
+}
+.leaflet-tooltip {
+  border-radius: 6px;
+  border-color: #e2e8f0;
+  box-shadow: 0 6px 20px -8px rgba(11, 37, 69, 0.35);
+  padding: 6px 8px;
+}
+.leaflet-interactive:focus {
+  outline: none;
+}
+
+/* Pannellum: match the app's type and soften chrome */
+.pnlm-container {
+  font-family: inherit !important;
+  background: #0b2545 !important;
+}
+.pnlm-title-box {
+  font-size: 13px !important;
+}
+
+/* Leaflet zoom controls */
+.leaflet-bar a {
+  transition: background-color 150ms ease, color 150ms ease;
+}
+.leaflet-bar a:hover {
+  background-color: #eef4fb;
+  color: #142f57;
+}
+.leaflet-interactive {
+  transition: stroke-width 150ms ease;
+}
+
 /* Calendar (react-day-picker) themed to the DPWH palette */
 .dpwh-calendar .rdp-root {
   --rdp-accent-color: theme('colors.brand.700');
@@ -87,4 +123,95 @@
 }
 .dpwh-calendar .rdp-chevron {
   fill: theme('colors.brand.700');
+}
+
+/* Password fields: hide the browser's own reveal / clear icons (Edge, old IE) — PasswordInput has its own eye button. */
+input[type='password']::-ms-reveal,
+input[type='password']::-ms-clear {
+  display: none;
+}
+
+/*
+ * Comparison tables that scroll sideways on small screens keep their first column
+ * (project / finding / date) in view. Applied per table with the class "table-sticky-first".
+ */
+@media (max-width: 1023px) {
+  .table-sticky-first th:first-child,
+  .table-sticky-first td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    max-width: 12rem;
+    background-color: #fff;
+    box-shadow: inset -1px 0 0 #e2e8f0;
+  }
+  .table-sticky-first thead th:first-child {
+    background-color: #f8fafc;
+  }
+}
+
+/* Scroll-in animation (components/common/Reveal.jsx) */
+.reveal {
+  opacity: 0;
+  transform: translateY(18px);
+  transition: opacity 700ms cubic-bezier(0.22, 1, 0.36, 1), transform 700ms cubic-bezier(0.22, 1, 0.36, 1);
+  transition-delay: var(--reveal-delay, 0ms);
+}
+.reveal.is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+/* Children enter one after another (cards, stat tiles, lists) */
+.stagger > * {
+  animation: page-in 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.stagger > *:nth-child(2) { animation-delay: 60ms; }
+.stagger > *:nth-child(3) { animation-delay: 120ms; }
+.stagger > *:nth-child(4) { animation-delay: 180ms; }
+.stagger > *:nth-child(5) { animation-delay: 240ms; }
+.stagger > *:nth-child(6) { animation-delay: 300ms; }
+.stagger > *:nth-child(7) { animation-delay: 360ms; }
+.stagger > *:nth-child(8) { animation-delay: 420ms; }
+.stagger > *:nth-child(n + 9) { animation-delay: 480ms; }
+
+@keyframes page-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+  .stagger > * {
+    animation: none;
+  }
+}
+
+/* a line that draws itself when its section scrolls into view */
+.reveal .grow-on-reveal {
+  transform: scaleX(0);
+  transition: transform 1100ms cubic-bezier(0.22, 1, 0.36, 1) 300ms;
+}
+.reveal.is-visible .grow-on-reveal {
+  transform: scaleX(1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .reveal .grow-on-reveal {
+    transform: none;
+    transition: none;
+  }
+}
+
+/* Table rows ease their hover colour instead of flashing */
+tbody tr {
+  transition: background-color 160ms ease;
+}
+
+/* Landing page: a section focused after a smooth scroll does not show an outline */
+section[tabindex='-1']:focus {
+  outline: none;
 }

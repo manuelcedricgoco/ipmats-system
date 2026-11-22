@@ -14,7 +14,7 @@ import { useMemo, useState } from 'react';
 import { changeEvent, flattenOptions, widthClass } from '../../lib/selectOptions.js';
 
 const control =
-  'relative flex w-full items-center rounded-md bg-white text-left text-sm text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 transition-[box-shadow,background-color] duration-150 hover:ring-slate-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 data-[open]:ring-2 data-[open]:ring-brand-600 data-[disabled]:cursor-not-allowed data-[disabled]:bg-slate-50 data-[disabled]:text-slate-400 data-[disabled]:hover:ring-slate-300';
+  'relative flex w-full items-center rounded-lg bg-white text-left text-sm text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 transition-[box-shadow,background-color] duration-150 hover:ring-slate-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 data-[open]:ring-2 data-[open]:ring-brand-600 data-[disabled]:cursor-not-allowed data-[disabled]:bg-slate-50 data-[disabled]:text-slate-400 data-[disabled]:hover:ring-slate-300';
 
 const panel =
   'z-[1600] max-h-72 w-max min-w-[var(--button-width)] max-w-[min(34rem,calc(100vw-2rem))] overflow-y-auto rounded-lg border border-slate-200 bg-white p-1 text-sm shadow-popover [--anchor-gap:6px] [--anchor-padding:8px] focus:outline-none origin-top transition duration-150 ease-out data-[closed]:scale-95 data-[closed]:opacity-0';

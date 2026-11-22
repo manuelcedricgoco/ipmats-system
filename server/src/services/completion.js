@@ -66,7 +66,7 @@ export function computePlannedProgress(project, phases = [], todayInput = new Da
 export const computeSlippage = (actual, planned) => round2(Number(actual) - Number(planned));
 
 /** Default phases per project type, used when setting up a plan. Weights total 100. */
-export const PHASE_TEMPLATES = {
+const PHASE_TEMPLATES = {
   road: [['Site Preparation', 10], ['Earthworks', 20], ['Drainage Construction', 20], ['Road Concreting', 35], ['Finishing and Inspection', 15]],
   bridge: [['Mobilization and Site Preparation', 10], ['Substructure (Foundation and Piers)', 30], ['Superstructure (Girders and Deck)', 35], ['Approaches and Slope Protection', 15], ['Finishing and Inspection', 10]],
   flood_control: [['Site Preparation', 10], ['Excavation and Dewatering', 20], ['Revetment / Dike Construction', 45], ['Drainage Outlets', 15], ['Finishing and Inspection', 10]],
@@ -109,4 +109,27 @@ export function summarizeFinance(project, records = []) {
   };
 }
 
-export { DAY_MS };
+// ---------------------------------------------------------------------------
+// WEEK 3 — used by the automatic flag detection (services/flagDetection.js)
+// ---------------------------------------------------------------------------
+export function daysBetween(from, to) {
+  return Math.round((toDate(to) - toDate(from)) / DAY_MS);
+}
+
+/**
+ * A project counts as Completed only when
+ *   1. every construction phase is at 100%,
+ *   2. an actual completion date is recorded, and
+ *   3. a final (as-built) 360° image is on file.
+ */
+export function detectCompletion({ project, phases = [], images = [] }) {
+  const overallProgress = computeOverallProgress(phases);
+  const allPhasesComplete = phases.length > 0 && phases.every((p) => Number(p.accomplishment) >= 100);
+  const hasCompletionDate = Boolean(project.actual_completion_date);
+  const hasFinalImage = images.some((img) => img.is_final);
+  const missing = [];
+  if (!allPhasesComplete) missing.push('all phases at 100%');
+  if (!hasCompletionDate) missing.push('actual completion date');
+  if (!hasFinalImage) missing.push('final 360° image');
+  return { isCompleted: missing.length === 0, overallProgress, allPhasesComplete, hasCompletionDate, hasFinalImage, missing };
+}

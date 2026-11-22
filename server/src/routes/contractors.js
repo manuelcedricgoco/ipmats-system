@@ -16,5 +16,6 @@ r.get('/', h(c.listContractors));
 r.get('/:contractorId', h(c.getContractor));
 r.post('/', editors, requireWriteAccess, validate(s.contractorCreate), h(c.createContractor));
 r.patch('/:contractorId', editors, requireWriteAccess, validate(s.contractorUpdate), h(c.updateContractor));
+r.delete('/:contractorId', requireRole(ROLES.ADMIN), requireWriteAccess, h(c.deleteContractor));
 
 export default r;

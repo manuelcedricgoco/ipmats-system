@@ -1,16 +1,21 @@
-import { ArrowLeft, CalendarClock, Save } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { ArrowLeft, CalendarClock, CheckCircle2, Copy, Lock, Save } from 'lucide-react';
+import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import Button from '../../components/common/Button.jsx';
 import { Card, CardBody, CardHeader, PageHeader } from '../../components/common/Card.jsx';
 import { Alert, ErrorState, PageLoader } from '../../components/common/Feedback.jsx';
 import { Field, Input, Select, Textarea, fieldErrors } from '../../components/common/Form.jsx';
+import Modal from '../../components/common/Modal.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
 import { useApi } from '../../hooks/useApi.js';
 import { useReference } from '../../hooks/useReference.js';
 import { api } from '../../lib/api.js';
 import { MANUAL_STATUSES, PROJECT_TYPES, STATUS_META } from '../../lib/constants.js';
 import { date, peso } from '../../lib/format.js';
+import { OUTSIDE_PROVINCE_MESSAGE, PROVINCE_BOUNDS, isWithinOccidentalMindoro } from '../../lib/geo.js';
+
+// Leaflet loads only when the form opens (separate "map" bundle).
+const LocationPicker = lazy(() => import('../../components/map/LocationPicker.jsx'));
 
 /** Target completion = Notice to Proceed + duration (calendar days). Same rule as the API. */
 export const addDays = (d, n) => {
@@ -23,7 +28,7 @@ export const addDays = (d, n) => {
 const EMPTY = {
   project_code: '', name: '', description: '', project_type: 'road', agency_id: '', contractor_id: '', contract_ref_no: '',
   municipality_id: '', barangay_id: '', latitude: '', longitude: '', approved_budget: '', contract_amount: '',
-  notice_to_proceed: '', duration_days: '', target_completion_date: '', actual_completion_date: '', fund_source: '', status: 'not_started',
+  notice_to_proceed: '', duration_days: '', target_completion_date: '', actual_completion_date: '', fund_source: '', status: 'auto',
 };
 
 /**
@@ -44,14 +49,15 @@ export default function ProjectFormPage() {
 
   useEffect(() => {
     const p = existing.data;
-    if (p) setForm(Object.fromEntries(Object.keys(EMPTY).map((k) => [k, p[k] ?? ''])));
+    // Week 3: only Suspended / Terminated are set by hand; every other status is automatic
+    if (p) setForm({ ...Object.fromEntries(Object.keys(EMPTY).map((k) => [k, p[k] ?? ''])), status: MANUAL_STATUSES.includes(p.status) ? p.status : 'auto' });
   }, [existing.data]);
 
   const set = (k) => (e) => {
     const v = e.target.value;
     setForm((f) => {
       const next = { ...f, [k]: v };
-      // Choosing a place fills in its coordinates (the map picker comes in a later week).
+      // Choosing a place moves the map pin to its centre; personnel then drag the pin to the exact site.
       if (k === 'municipality_id') {
         next.barangay_id = '';
         const m = ref?.municipalities.find((x) => String(x.id) === v);
@@ -65,20 +71,53 @@ export default function ProjectFormPage() {
     });
   };
 
+  const [locError, setLocError] = useState('');
+  const setLocation = (latitude, longitude) => {
+    setLocError('');
+    setForm((f) => ({ ...f, latitude: Number(latitude).toFixed(6), longitude: Number(longitude).toFixed(6) }));
+  };
+  const checkTypedLocation = () => {
+    if (form.latitude === '' || form.longitude === '') return;
+    setLocError(isWithinOccidentalMindoro(form.latitude, form.longitude) ? '' : OUTSIDE_PROVINCE_MESSAGE);
+  };
+  const places = useMemo(() => {
+    if (!ref) return [];
+    const town = Object.fromEntries(ref.municipalities.map((m) => [m.id, m.name]));
+    return [
+      ...ref.municipalities.map((m) => ({ id: `m-${m.id}`, label: `${m.name} (town centre)`, latitude: Number(m.latitude), longitude: Number(m.longitude) })),
+      ...ref.barangays.filter((b) => b.latitude != null).map((b) => ({ id: `b-${b.id}`, label: `${b.name}, ${town[b.municipality_id] || ''}`, latitude: Number(b.latitude), longitude: Number(b.longitude) })),
+    ];
+  }, [ref]);
+
   const barangays = useMemo(() => (ref?.barangays || []).filter((b) => String(b.municipality_id) === String(form.municipality_id)), [ref, form.municipality_id]);
   const computedTarget = addDays(form.notice_to_proceed, form.duration_days);
   const fe = fieldErrors(err);
   const contractOverBudget = form.contract_amount !== '' && form.approved_budget !== '' && Number(form.contract_amount) > Number(form.approved_budget);
   const savings = form.contract_amount !== '' && form.approved_budget !== '' && !contractOverBudget ? Number(form.approved_budget) - Number(form.contract_amount) : null;
 
+  const [registered, setRegistered] = useState(null);
+  const copyCode = async () => {
+    try {
+      await navigator.clipboard.writeText(registered.project_code);
+      toast.success('Project ID copied.');
+    } catch {
+      toast.error('Copy is not available in this browser.');
+    }
+  };
+
   const submit = async (e) => {
     e.preventDefault();
     if (contractOverBudget) return setErr({ message: 'Contract amount cannot exceed the approved budget (ABC).' });
+    if (!isWithinOccidentalMindoro(form.latitude, form.longitude)) {
+      setLocError(OUTSIDE_PROVINCE_MESSAGE);
+      setErr({ message: OUTSIDE_PROVINCE_MESSAGE });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
     setSaving(true);
     setErr(null);
     const num = (v) => (v === '' || v === null ? null : Number(v));
     const body = {
-      project_code: form.project_code.trim(),
       name: form.name.trim(),
       description: form.description || null,
       project_type: form.project_type,
@@ -104,9 +143,9 @@ export default function ProjectFormPage() {
         toast.success('Project record updated.');
         navigate(`/app/projects/${id}`);
       } else {
+        // The database assigns the Project ID; show it before leaving the form.
         const res = await api.post('/projects', body);
-        toast.success(`Project ${res.data.project_code} registered.`);
-        navigate(`/app/projects/${res.data.id}`);
+        setRegistered(res.data);
       }
     } catch (e2) {
       setErr(e2);
@@ -141,13 +180,18 @@ export default function ProjectFormPage() {
         </Alert>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="space-y-6 lg:col-span-2">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="min-w-0 space-y-6 lg:col-span-2">
           <Card>
             <CardHeader title="Project information" />
-            <CardBody className="grid gap-4 sm:grid-cols-2">
-              <Field label="Project ID" required error={fe.project_code} hint="e.g. 26OM0123">
-                {(a) => <Input {...a} value={form.project_code} onChange={set('project_code')} required pattern="[A-Za-z0-9\-]{3,40}" />}
+            <CardBody className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field label="Project ID" hint={editing ? 'Assigned at registration and cannot be changed.' : 'Assigned automatically by the system when you register the project.'}>
+                {(a) => (
+                  <div className="relative">
+                    <Input {...a} value={editing ? form.project_code : ''} placeholder={editing ? '' : 'Auto-generated (e.g. 26OM0332)'} readOnly aria-readonly="true" className="cursor-not-allowed bg-slate-50 pr-9 font-mono text-slate-700" />
+                    <Lock className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden />
+                  </div>
+                )}
               </Field>
               <Field label="Project type" required>
                 {(a) => <Select {...a} value={form.project_type} onChange={set('project_type')}>{Object.entries(PROJECT_TYPES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</Select>}
@@ -157,7 +201,7 @@ export default function ProjectFormPage() {
               </Field>
               <Field label="Description" className="sm:col-span-2">{(a) => <Textarea {...a} value={form.description} onChange={set('description')} />}</Field>
               <Field label="Implementing office / agency" required error={fe.agency_id} hint={<Link className="text-brand-700 hover:underline" to="/app/agencies">Manage offices</Link>}>
-                {(a) => <Select {...a} value={form.agency_id} onChange={set('agency_id')} required><option value="">Select office</option>{ref?.agencies.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</Select>}
+                {(a) => <Select {...a} value={form.agency_id} onChange={set('agency_id')} required><option value="">Select office</option>{ref?.agencies.filter((x) => x.is_active !== false || String(x.id) === String(form.agency_id)).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</Select>}
               </Field>
               <Field label="Contractor" error={fe.contractor_id} hint={<Link className="text-brand-700 hover:underline" to="/app/contractors">Manage contractors</Link>}>
                 {(a) => <Select {...a} value={form.contractor_id} onChange={set('contractor_id')}><option value="">Not yet awarded</option>{ref?.contractors.filter((c) => c.is_active || c.id === form.contractor_id).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select>}
@@ -168,21 +212,30 @@ export default function ProjectFormPage() {
           </Card>
 
           <Card>
-            <CardHeader title="Location" description="Choose the municipality and barangay; the coordinates are filled in automatically and must be within Occidental Mindoro." />
-            <CardBody className="grid gap-4 sm:grid-cols-2">
+            <CardHeader title="Location" description="Choose the municipality and barangay, then search, click the map or drag the pin to the exact site. Only locations inside Occidental Mindoro are accepted." />
+            <CardBody className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field label="Municipality" required error={fe.municipality_id}>
                 {(a) => <Select {...a} value={form.municipality_id} onChange={set('municipality_id')} required><option value="">Select municipality</option>{ref?.municipalities.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</Select>}
               </Field>
               <Field label="Barangay" error={fe.barangay_id}>
                 {(a) => <Select {...a} value={form.barangay_id} onChange={set('barangay_id')} disabled={!form.municipality_id}><option value="">Select barangay</option>{barangays.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</Select>}
               </Field>
-              <Field label="Latitude" required error={fe.latitude}>{(a) => <Input {...a} type="number" step="0.000001" min="12" max="14" value={form.latitude} onChange={set('latitude')} required />}</Field>
-              <Field label="Longitude" required error={fe.longitude}>{(a) => <Input {...a} type="number" step="0.000001" min="119.9" max="121.4" value={form.longitude} onChange={set('longitude')} required />}</Field>
+              <div className="sm:col-span-2">
+                <Suspense fallback={<div className="flex h-72 items-center justify-center rounded-lg bg-slate-100 text-sm text-slate-500 sm:h-80 lg:h-96">Loading map…</div>}>
+                  <LocationPicker latitude={form.latitude} longitude={form.longitude} onChange={setLocation} places={places} error={locError || fe.latitude || fe.longitude} />
+                </Suspense>
+              </div>
+              <Field label="Latitude" required hint="Filled in from the map pin; you may also type it.">
+                {(a) => <Input {...a} type="number" inputMode="decimal" step="0.000001" min={PROVINCE_BOUNDS.minLat.toFixed(4)} max={PROVINCE_BOUNDS.maxLat.toFixed(4)} value={form.latitude} onChange={set('latitude')} onBlur={checkTypedLocation} required invalid={Boolean(locError)} />}
+              </Field>
+              <Field label="Longitude" required hint="Filled in from the map pin; you may also type it.">
+                {(a) => <Input {...a} type="number" inputMode="decimal" step="0.000001" min={PROVINCE_BOUNDS.minLng.toFixed(4)} max={PROVINCE_BOUNDS.maxLng.toFixed(4)} value={form.longitude} onChange={set('longitude')} onBlur={checkTypedLocation} required invalid={Boolean(locError)} />}
+              </Field>
             </CardBody>
           </Card>
         </div>
 
-        <div className="space-y-6">
+        <div className="min-w-0 space-y-6">
           <Card>
             <CardHeader title="Budget" />
             <CardBody className="space-y-4">
@@ -207,10 +260,19 @@ export default function ProjectFormPage() {
                   {(a) => <Input {...a} type="date" value={form.target_completion_date} onChange={set('target_completion_date')} />}
                 </Field>
               )}
-              <Field label="Status" required>
-                {(a) => <Select {...a} value={form.status} onChange={set('status')}>{MANUAL_STATUSES.map((s) => <option key={s} value={s}>{STATUS_META[s].label}</option>)}</Select>}
+              <Field
+                label="Status"
+                required
+                hint={editing && existing.data ? `Now: ${STATUS_META[existing.data.status]?.label}. Not started, Ongoing, Delayed and Completed are set automatically.` : 'Not started, Ongoing, Delayed and Completed are set automatically.'}
+              >
+                {(a) => (
+                  <Select {...a} value={form.status} onChange={set('status')}>
+                    <option value="auto">Automatic</option>
+                    {MANUAL_STATUSES.map((s) => <option key={s} value={s}>{STATUS_META[s].label}</option>)}
+                  </Select>
+                )}
               </Field>
-              {(form.status === 'completed' || form.actual_completion_date) && (
+              {(editing || form.actual_completion_date) && (
                 <Field label="Actual completion date" error={fe.actual_completion_date}>{(a) => <Input {...a} type="date" value={form.actual_completion_date || ''} onChange={set('actual_completion_date')} />}</Field>
               )}
             </CardBody>
@@ -218,6 +280,28 @@ export default function ProjectFormPage() {
           <Button type="submit" icon={Save} loading={saving} className="w-full">{editing ? 'Save changes' : 'Register project'}</Button>
         </div>
       </div>
+
+      <Modal
+        open={Boolean(registered)}
+        onClose={() => navigate(`/app/projects/${registered.id}`)}
+        title="Project registered"
+        size="sm"
+        footer={
+          <div className="flex w-full flex-col-reverse gap-2 sm:w-auto sm:flex-row sm:justify-end">
+            <Button variant="secondary" icon={Copy} onClick={copyCode}>Copy ID</Button>
+            <Button onClick={() => navigate(`/app/projects/${registered.id}`)}>Open project</Button>
+          </div>
+        }
+      >
+        {registered && (
+          <div className="text-center">
+            <CheckCircle2 className="mx-auto h-10 w-10 text-emerald-600" aria-hidden />
+            <p className="mt-3 text-sm text-slate-600">The system assigned this Project ID:</p>
+            <p className="mt-1 select-all font-mono text-2xl font-bold tracking-wider text-brand-900" data-testid="new-project-code">{registered.project_code}</p>
+            <p className="mt-3 text-xs text-slate-500">Use it on site photos, reports and documents. It cannot be changed.</p>
+          </div>
+        )}
+      </Modal>
     </form>
   );
 }

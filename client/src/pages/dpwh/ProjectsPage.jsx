@@ -1,7 +1,7 @@
 import { ChevronRight, Plus, Search, SlidersHorizontal } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { StatusBadge } from '../../components/common/Badges.jsx';
+import { FlagBadge, StatusBadge } from '../../components/common/Badges.jsx';
 import Button from '../../components/common/Button.jsx';
 import { Card, PageHeader } from '../../components/common/Card.jsx';
 import { EmptyState, ErrorState, PageLoader } from '../../components/common/Feedback.jsx';
@@ -101,7 +101,7 @@ export default function ProjectsPage() {
 
         {data && data.data.length > 0 && (
           <Card className={`overflow-hidden transition-opacity duration-200 ${loading ? 'opacity-60' : ''}`} aria-busy={loading}>
-            <div className="hidden overflow-x-auto md:block">
+            <div className="relative hidden overflow-x-auto md:block">
               <table className="min-w-full divide-y divide-slate-200 text-sm">
                 <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                   <tr>
@@ -110,7 +110,7 @@ export default function ProjectsPage() {
                     <th scope="col" className="px-4 py-3">Office &amp; contractor</th>
                     <th scope="col" className="px-4 py-3">Budget</th>
                     <th scope="col" className="px-4 py-3">Duration</th>
-                    <th scope="col" className="w-40 px-4 py-3">Status &amp; progress</th>
+                    <th scope="col" className="w-44 px-4 py-3">Flag, status &amp; progress</th>
                     <th scope="col" className="px-4 py-3"><span className="sr-only">Open</span></th>
                   </tr>
                 </thead>
@@ -140,7 +140,7 @@ export default function ProjectsPage() {
                         <span className="mt-0.5 block text-xs text-slate-500">{p.target_completion_date ? `until ${date(p.target_completion_date)}` : 'No target date'}</span>
                       </td>
                       <td className="px-4 py-3">
-                        <StatusBadge status={p.status} />
+                        <div className="flex flex-wrap gap-1"><FlagBadge flag={p.current_flag} size="sm" /><StatusBadge status={p.status} /></div>
                         {Number(p.phase_count) > 0 ? <ProgressBar value={p.overall_progress} size="sm" className="mt-2" /> : <span className="mt-1 block text-[11px] text-slate-400">No phases yet</span>}
                       </td>
                       <td className="px-4 py-3 text-right">
@@ -159,7 +159,7 @@ export default function ProjectsPage() {
                   <Link to={`/app/projects/${p.id}`} className="block space-y-1.5 px-4 py-4 transition-colors hover:bg-slate-50 active:bg-slate-100">
                     <div className="flex items-start justify-between gap-3">
                       <p className="font-semibold text-slate-900">{p.name}</p>
-                      <StatusBadge status={p.status} />
+                      <div className="flex shrink-0 gap-1"><FlagBadge flag={p.current_flag} size="sm" /><StatusBadge status={p.status} /></div>
                     </div>
                     <p className="text-xs text-slate-500"><span className="font-mono">{p.project_code}</span> · {p.municipality_name} · {p.duration_days ? `${p.duration_days} days` : 'no duration'}</p>
                     <p className="text-xs text-slate-600">{p.contractor_name || 'Not yet awarded'} · ABC {pesoCompact(p.approved_budget)} · Contract {pesoCompact(p.contract_amount)}</p>

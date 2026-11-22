@@ -1,5 +1,5 @@
-export const AVATAR_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
-export const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
+const AVATAR_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
 
 /** Returns an error message for an unsuitable photo, or null. */
 export function checkAvatarFile(file) {

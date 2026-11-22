@@ -1,7 +1,7 @@
 export function Card({ children, className = '', as: As = 'section', interactive = false, ...props }) {
-  const hover = interactive ? 'transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-card-hover' : '';
+  const hover = interactive ? 'transition-all duration-300 ease-out hover:-translate-y-1 hover:border-brand-200 hover:shadow-card-hover' : '';
   return (
-    <As className={`rounded-lg border border-slate-200 bg-white shadow-card ${hover} ${className}`} {...props}>
+    <As className={`rounded-xl border border-slate-200/80 bg-white shadow-card ${hover} ${className}`} {...props}>
       {children}
     </As>
   );
@@ -14,7 +14,7 @@ export function CardHeader({ title, description, actions, className = '' }) {
         <h2 className="text-sm font-semibold text-slate-900">{title}</h2>
         {description && <p className="mt-0.5 text-sm text-slate-500">{description}</p>}
       </div>
-      {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
+      {actions && <div className="flex max-w-full flex-wrap items-center gap-2">{actions}</div>}
     </div>
   );
 }
@@ -36,11 +36,11 @@ export function StatCard({ label, value, hint, icon: Icon, tone = 'brand' }) {
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
-          <p className="mt-1.5 truncate text-2xl font-bold tabular-nums text-slate-900">{value}</p>
+          <p className="mt-1.5 break-words text-xl font-bold leading-tight tabular-nums text-slate-900 sm:text-2xl">{value}</p>
           {hint && <p className="mt-1 text-xs text-slate-500">{hint}</p>}
         </div>
         {Icon && (
-          <span className={`rounded-md p-2 transition-transform duration-200 group-hover:scale-110 ${tones[tone]}`}>
+          <span className={`hidden rounded-md p-2 transition-transform duration-200 group-hover:scale-110 sm:inline-flex ${tones[tone]}`}>
             <Icon className="h-5 w-5" aria-hidden />
           </span>
         )}

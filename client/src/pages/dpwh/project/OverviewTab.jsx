@@ -13,14 +13,14 @@ export default function OverviewTab() {
   return (
     <>
       {p.description && <p className="mb-6 max-w-3xl text-sm text-slate-600">{p.description}</p>}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Summary icon={Wallet} label="Approved budget (ABC)" value={peso(p.approved_budget)} />
         <Summary icon={Wallet} label="Contract amount" value={p.contract_amount != null ? peso(p.contract_amount) : 'Not yet awarded'} hint={savings > 0 ? `${peso(savings)} below ABC` : null} />
         <Summary icon={CalendarClock} label="Duration" value={p.duration_days ? `${p.duration_days} calendar days` : '—'} hint={p.target_completion_date ? `Target ${date(p.target_completion_date)}` : null} />
         <Summary icon={Building2} label="Contractor" value={p.contractor_name || 'Not yet awarded'} />
       </div>
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-2">
+      <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader title="Implementation" />
           <CardBody>
@@ -88,7 +88,7 @@ function Summary({ icon: Icon, label, value, hint }) {
         <span className="rounded-md bg-brand-50 p-2 text-brand-700"><Icon className="h-4 w-4" aria-hidden /></span>
         <div className="min-w-0">
           <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
-          <p className="mt-1 truncate font-semibold text-slate-900">{value}</p>
+          <p className="mt-1 break-words font-semibold text-slate-900">{value}</p>
           {hint && <p className="mt-0.5 text-xs text-slate-500">{hint}</p>}
         </div>
       </div>

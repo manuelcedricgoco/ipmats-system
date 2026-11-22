@@ -20,6 +20,8 @@ export function unwrap({ data, error }, { notFoundMessage } = {}) {
     if (error.code === '23503') throw badRequest('A referenced record does not exist.');
     if (error.code === '23514') throw badRequest('The data violates a validation rule.', error.message);
     if (error.code === '42501') throw forbidden();
+    // Business-rule errors raised by our own database triggers (e.g. the Project ID cannot change).
+    if (error.code === 'P0001') throw badRequest(error.message);
     const err = new HttpError(500, 'Database error');
     err.cause = error;
     throw err;
