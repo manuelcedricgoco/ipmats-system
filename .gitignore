@@ -6,6 +6,11 @@ dist/
 *.log
 .DS_Store
 coverage/
-
-# Team notes (video scripts, change lists) – kept local, not pushed
-docs/
+/docs/*
+!/docs/system/
+/docs/system/*
+!/docs/system/database.md
+!/docs/system/features.md
+!/docs/system/README.md
+!/docs/system/roles-and-permissions.md
+!/docs/system/tech-stack.md
