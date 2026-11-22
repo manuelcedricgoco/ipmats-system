@@ -26,9 +26,8 @@ export const ROLE_LABELS = {
 };
 
 export const OFFICE_TYPES = {
-  regional_office: 'Regional Office',
   district_engineering_office: 'District Engineering Office',
-  lgu: 'Local Government Unit',
+  field_office: 'Field Office',
   other: 'Other',
 };
 

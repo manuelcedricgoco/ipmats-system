@@ -46,7 +46,7 @@ const PROG = [];
 const q = (v) => (v === null || v === undefined ? 'null' : typeof v === 'number' ? String(v) : `'${String(v).replace(/'/g, "''")}'`);
 const pid = (code) => `(select id from public.projects where project_code = ${q(code)})`;
 const submitter = (code) =>
-  `(select pr.id from public.profiles pr where pr.email = (select case when a.code = 'DPWH-OMSDEO' then 'personnel.south@dpwh360.local' else 'personnel@dpwh360.local' end from public.projects p join public.agencies a on a.id = p.agency_id where p.project_code = ${q(code)}))`;
+  `(select pr.id from public.profiles pr where pr.email = (select case when a.code = 'DPWH-SJFO' then 'personnel.south@dpwh360.local' else 'personnel@dpwh360.local' end from public.projects p join public.agencies a on a.id = p.agency_id where p.project_code = ${q(code)}))`;
 const min = (a, b) => (a < b ? a : b);
 
 /** Planned % on a date from the phase windows (same idea as computePlannedProgress). */
@@ -157,7 +157,7 @@ for (const [code, type, ntp, days, target, actualDone, contract, pace, extra = {
 }
 const P = 'join public.projects p on p.project_code = v.code';
 const SUB = `(select pr.id from public.profiles pr join public.agencies a on a.id = p.agency_id
-    where pr.email = case when a.code = 'DPWH-OMSDEO' then 'personnel.south@dpwh360.local' else 'personnel@dpwh360.local' end)`;
+    where pr.email = case when a.code = 'DPWH-SJFO' then 'personnel.south@dpwh360.local' else 'personnel@dpwh360.local' end)`;
 out.push(
   `insert into public.project_phases (project_id, sequence_no, name, weight, planned_start, planned_end, actual_start, actual_end, accomplishment)
 select p.id, v.seq, v.name, v.weight, v.ps::date, v.pe::date, v.as_::date, v.ae::date, v.acc

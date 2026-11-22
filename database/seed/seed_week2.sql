@@ -94,7 +94,7 @@ select p.id, v.d::date, v.overall,
   (select jsonb_agg(jsonb_build_object('phase_id', ph.id, 'sequence_no', ph.sequence_no, 'name', ph.name, 'weight', ph.weight, 'accomplishment', (v.acc::numeric[])[ph.sequence_no]) order by ph.sequence_no)
      from public.project_phases ph where ph.project_id = p.id),
   v.remarks, (select pr.id from public.profiles pr join public.agencies a on a.id = p.agency_id
-    where pr.email = case when a.code = 'DPWH-OMSDEO' then 'personnel.south@dpwh360.local' else 'personnel@dpwh360.local' end)
+    where pr.email = case when a.code = 'DPWH-SJFO' then 'personnel.south@dpwh360.local' else 'personnel@dpwh360.local' end)
 from (values
 ('25OM0101','2025-10-01',12.5,'{100,12.5,0,0,0}',null),
 ('25OM0101','2025-10-31',25,'{100,75,0,0,0}',null),
@@ -218,7 +218,7 @@ from (values
 ) v(code, d, overall, acc, remarks) join public.projects p on p.project_code = v.code;
 insert into public.financial_records (project_id, record_type, amount, reference_no, record_date, description, created_by)
 select p.id, v.t, v.amount, v.ref, v.d::date, v.descr, (select pr.id from public.profiles pr join public.agencies a on a.id = p.agency_id
-    where pr.email = case when a.code = 'DPWH-OMSDEO' then 'personnel.south@dpwh360.local' else 'personnel@dpwh360.local' end)
+    where pr.email = case when a.code = 'DPWH-SJFO' then 'personnel.south@dpwh360.local' else 'personnel@dpwh360.local' end)
 from (values
 ('25OM0101','obligation',46948000,'OB-25OM0101-01','2025-08-22','Obligation of the full contract amount'),
 ('25OM0101','disbursement',7042200,'DV-25OM0101-01','2025-09-15','15% advance payment'),

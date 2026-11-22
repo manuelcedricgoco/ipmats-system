@@ -75,7 +75,7 @@ export const contractorUpdate = z
 export const agencyCreate = z.object({
   code: text(30).min(2).regex(/^[A-Za-z0-9-]+$/),
   name: text(200).min(3),
-  office_type: z.enum(['regional_office', 'district_engineering_office', 'lgu', 'other']),
+  office_type: z.enum(['district_engineering_office', 'field_office', 'other']),
   address: nullable(text(300)),
   is_active: z.boolean().optional(),
 });

@@ -79,9 +79,9 @@ for (const [muni, lat, lng, iLat, iLng, , brgys] of MUNICIPALITIES) {
 }
 
 const AGENCIES = [
-  { code: 'DPWH-RO4B', name: 'DPWH MIMAROPA Regional Office (Region IV-B)', office_type: 'regional_office', address: 'Calapan City, Oriental Mindoro' },
   { code: 'DPWH-OMDEO', name: 'DPWH Occidental Mindoro District Engineering Office', office_type: 'district_engineering_office', address: 'Mamburao, Occidental Mindoro' },
-  { code: 'DPWH-OMSDEO', name: 'DPWH Occidental Mindoro Sub-District Engineering Office (South)', office_type: 'district_engineering_office', address: 'San Jose, Occidental Mindoro' },
+  { code: 'DPWH-SJFO', name: 'DPWH San Jose Field Office', office_type: 'field_office', address: 'San Jose, Occidental Mindoro' },
+  { code: 'DPWH-LBFO', name: 'DPWH Lubang Field Office', office_type: 'field_office', address: 'Lubang, Occidental Mindoro' },
 ];
 
 // Fictional contractors
@@ -107,10 +107,10 @@ const CONTRACTORS = [
 
 // --------------------------------------------------------- demo accounts
 const USERS = [
-  { key: 'admin', email: 'admin@dpwh360.local', full_name: 'Maria Santos', role: 'admin', agency: 'DPWH-RO4B', position: 'System Administrator' },
+  { key: 'admin', email: 'admin@dpwh360.local', full_name: 'Maria Santos', role: 'admin', agency: 'DPWH-OMDEO', position: 'System Administrator' },
   { key: 'personnel', email: 'personnel@dpwh360.local', full_name: 'Engr. Jose Reyes', role: 'dpwh_personnel', agency: 'DPWH-OMDEO', position: 'Project Engineer' },
-  { key: 'personnel2', email: 'personnel.south@dpwh360.local', full_name: 'Engr. Ana Lim', role: 'dpwh_personnel', agency: 'DPWH-OMSDEO', position: 'Project Engineer' },
-  { key: 'auditor', email: 'auditor@dpwh360.local', full_name: 'Carlos Mendoza, CPA', role: 'auditor', agency: 'DPWH-RO4B', position: 'Technical Auditor' },
+  { key: 'personnel2', email: 'personnel.south@dpwh360.local', full_name: 'Engr. Ana Lim', role: 'dpwh_personnel', agency: 'DPWH-SJFO', position: 'Project Engineer' },
+  { key: 'auditor', email: 'auditor@dpwh360.local', full_name: 'Carlos Mendoza, CPA', role: 'auditor', agency: 'DPWH-OMDEO', position: 'Technical Auditor' },
   { key: 'applicant', email: 'applicant@dpwh360.local', full_name: 'Rosa Villareal', role: 'public', requested: 'dpwh_personnel', agency: 'DPWH-OMDEO', position: 'Engineer II' },
 ].map((u) => ({ ...u, id: uuid(`user:${u.email}`) }));
 const userId = (k) => USERS.find((u) => u.key === k).id;
@@ -120,19 +120,19 @@ const PROJECTS = [
   { key: 'mam-fmr', code: '25OM0101', type: 'road', muni: 'Mamburao', brgy: 'Talabaan', agency: 'DPWH-OMDEO', c: 6,
     name: 'Concreting of Talabaan–Tangkalan Farm-to-Market Road', budget: 48_500_000, bid: 0.968, ntp: '2025-09-01', days: 240,
     complete: { offset: -9 }, images: [{ at: 'ntp+30' }, { at: 'ntp+130' }, { at: 'done', final: true }], finance: { pct: 95 }, pub: true, fund: 'GAA 2025 – Local Program' },
-  { key: 'sj-bridge', code: '26OM0207', type: 'bridge', muni: 'San Jose', brgy: 'Murtha', agency: 'DPWH-OMSDEO', c: 0,
+  { key: 'sj-bridge', code: '26OM0207', type: 'bridge', muni: 'San Jose', brgy: 'Murtha', agency: 'DPWH-SJFO', c: 0,
     name: 'Construction of Murtha Bridge along San Jose–Rizal Road', budget: 96_000_000, bid: 0.975, ntp: '2026-05-04', days: 365,
     delta: 1.5, images: [{ ago: 150 }, { ago: 70 }, { ago: 9 }], finance: { ratio: 0.88 }, pub: true, fund: 'GAA 2026 – Regular Infrastructure' },
   { key: 'sab-road', code: '26OM0115', type: 'road', muni: 'Sablayan', brgy: 'Claudio Salgado', agency: 'DPWH-OMDEO', c: 1,
     name: 'Road Widening of Sablayan–Claudio Salgado Section, K0201+000–K0203+400', budget: 72_300_000, bid: 0.981, ntp: '2026-03-02', days: 300,
     delta: -9.2, images: [{ ago: 120 }, { ago: 14 }], finance: { ratio: 0.9 }, pub: true, fund: 'GAA 2026 – Regular Infrastructure' },
-  { key: 'cal-flood', code: '25OM0319', type: 'flood_control', muni: 'Calintaan', brgy: 'Iriron', agency: 'DPWH-OMSDEO', c: 3,
+  { key: 'cal-flood', code: '25OM0319', type: 'flood_control', muni: 'Calintaan', brgy: 'Iriron', agency: 'DPWH-SJFO', c: 3,
     name: 'Construction of Flood Control Structure along Iriron River', budget: 65_000_000, bid: 0.972, ntp: '2025-06-02', days: 300,
     fixedActual: 78, images: [{ ago: 300 }, { ago: 170 }, { ago: 25 }], finance: { ratio: 0.92 }, pub: true, fund: 'GAA 2025 – Flood Management Program' },
-  { key: 'riz-road', code: '26OM0122', type: 'road', muni: 'Rizal', brgy: 'Magsikap', agency: 'DPWH-OMSDEO', c: 3,
+  { key: 'riz-road', code: '26OM0122', type: 'road', muni: 'Rizal', brgy: 'Magsikap', agency: 'DPWH-SJFO', c: 3,
     name: 'Concreting of Magsikap–Salvacion Access Road', budget: 29_800_000, bid: 0.965, ntp: '2026-08-03', days: 210,
     delta: 0.8, images: [], finance: { ratio: 0.85 }, pub: true, fund: 'GAA 2026 – Local Program' },
-  { key: 'mag-flood', code: '26OM0331', type: 'flood_control', muni: 'Magsaysay', brgy: 'Caguray', agency: 'DPWH-OMSDEO', c: 5,
+  { key: 'mag-flood', code: '26OM0331', type: 'flood_control', muni: 'Magsaysay', brgy: 'Caguray', agency: 'DPWH-SJFO', c: 5,
     name: 'Construction of Revetment along Caguray River (Phase II)', budget: 85_000_000, bid: 0.99, ntp: '2026-05-18', days: 330,
     delta: -3, images: [{ ago: 150 }, { ago: 12 }], finance: { pct: 82 }, pub: false, fund: 'GAA 2026 – Flood Management Program' },
   { key: 'sc-road', code: '26OM0130', type: 'road', muni: 'Santa Cruz', brgy: 'Barahan', agency: 'DPWH-OMDEO', c: 2,
@@ -144,13 +144,13 @@ const PROJECTS = [
   { key: 'pal-bridge', code: '25OM0214', type: 'bridge', muni: 'Paluan', brgy: 'Harrison', agency: 'DPWH-OMDEO', c: 2,
     name: 'Construction of Harrison Bridge and Approaches', budget: 54_000_000, bid: 0.963, ntp: '2025-04-07', days: 360,
     complete: { offset: -4 }, images: [{ at: 'ntp+60' }, { at: 'ntp+200' }, { at: 'done', final: true }], finance: { pct: 96 }, pub: true, fund: 'GAA 2025 – Regular Infrastructure' },
-  { key: 'lub-road', code: '26OM0141', type: 'road', muni: 'Lubang', brgy: 'Tilik', agency: 'DPWH-OMDEO', c: 4,
+  { key: 'lub-road', code: '26OM0141', type: 'road', muni: 'Lubang', brgy: 'Tilik', agency: 'DPWH-LBFO', c: 4,
     name: 'Concreting of Tilik Port Access Road', budget: 24_500_000, bid: 0.958, ntp: '2026-06-01', days: 200,
     delta: -2, images: [{ ago: 80 }, { ago: 6, gps: [700, 520] }], finance: { ratio: 0.9 }, pub: true, fund: 'GAA 2026 – Local Program' },
-  { key: 'looc-flood', code: '27OM0302', type: 'flood_control', muni: 'Looc', brgy: 'Agkawayan', agency: 'DPWH-OMDEO', c: 4,
+  { key: 'looc-flood', code: '27OM0302', type: 'flood_control', muni: 'Looc', brgy: 'Agkawayan', agency: 'DPWH-LBFO', c: 4,
     name: 'Construction of Seawall at Barangay Agkawayan', budget: 41_000_000, bid: 0.974, ntp: '2026-12-07', days: 240,
     notStarted: true, images: [], finance: { pct: 0 }, pub: false, fund: 'GAA 2027 – Flood Management Program' },
-  { key: 'sj-flood', code: '26OM0308', type: 'flood_control', muni: 'San Jose', brgy: 'Bubog', agency: 'DPWH-OMSDEO', c: 0,
+  { key: 'sj-flood', code: '26OM0308', type: 'flood_control', muni: 'San Jose', brgy: 'Bubog', agency: 'DPWH-SJFO', c: 0,
     name: 'Construction of Flood Control Structure along Pandurucan River, Bubog Section', budget: 134_500_000, bid: 0.982, ntp: '2026-02-16', days: 420,
     delta: -22, images: [{ ago: 200 }, { ago: 18 }], finance: { ratio: 1.05 }, pub: true, fund: 'GAA 2026 – Flood Management Program' },
   { key: 'sab-evac', code: '25OM0405', type: 'building', muni: 'Sablayan', brgy: 'Buenavista', agency: 'DPWH-OMDEO', c: 5,
@@ -159,7 +159,7 @@ const PROJECTS = [
   { key: 'mam-flood', code: '26OM0315', type: 'flood_control', muni: 'Mamburao', brgy: 'Payompon', agency: 'DPWH-OMDEO', c: 6,
     name: 'Construction of Flood Control Dike along Mamburao River, Payompon Section', budget: 78_000_000, bid: 0.976, ntp: '2026-04-20', days: 360,
     delta: 0.7, images: [{ ago: 150 }, { ago: 60 }, { ago: 11 }], finance: { ratio: 0.9 }, pub: true, fund: 'GAA 2026 – Flood Management Program' },
-  { key: 'mag-road', code: '26OM0138', type: 'road', muni: 'Magsaysay', brgy: 'Lourdes', agency: 'DPWH-OMSDEO', c: 1,
+  { key: 'mag-road', code: '26OM0138', type: 'road', muni: 'Magsaysay', brgy: 'Lourdes', agency: 'DPWH-SJFO', c: 1,
     name: 'Concreting of Lourdes–Nicolas Barangay Road', budget: 19_900_000, bid: 0.955, ntp: '2026-04-13', days: 230,
     reported100: true, images: [{ ago: 150 }, { ago: 20 }], finance: { ratio: 0.9 }, pub: true, fund: 'GAA 2026 – Local Program' },
   { key: 'sc-bridge', code: '26OM0219', type: 'bridge', muni: 'Santa Cruz', brgy: 'Dayap', agency: 'DPWH-OMDEO', c: 1,
@@ -202,7 +202,7 @@ const projectRows = PROJECTS.map((p) => {
     actual_completion_date: status === 'completed' ? iso(actual) : null,
     fund_source: p.fund,
     status,
-    created_by: { raw: `(select id from public.profiles where email = ${q(p.agency === 'DPWH-OMSDEO' ? 'personnel.south@dpwh360.local' : 'personnel@dpwh360.local')})` },
+    created_by: { raw: `(select id from public.profiles where email = ${q(p.agency === 'DPWH-SJFO' ? 'personnel.south@dpwh360.local' : 'personnel@dpwh360.local')})` },
   };
 });
 
@@ -247,7 +247,7 @@ ${u.requested
 }
 sql += `-- The project owner's existing login becomes System Administrator
 insert into public.profiles (id, email, full_name, role, position, agency_id)
-select u.id, u.email, coalesce(nullif(u.raw_user_meta_data ->> 'full_name', ''), 'Manuel Cedric Goco'), 'admin', 'Project Leader', (select id from public.agencies where code = 'DPWH-RO4B')
+select u.id, u.email, coalesce(nullif(u.raw_user_meta_data ->> 'full_name', ''), 'Manuel Cedric Goco'), 'admin', 'Project Leader', (select id from public.agencies where code = 'DPWH-OMDEO')
 from auth.users u where u.email = ${q(OWNER_EMAIL)}
 on conflict (id) do update set role = 'admin', approval_status = 'approved';
 
