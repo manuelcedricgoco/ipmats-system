@@ -57,7 +57,7 @@ export default function LoginPage() {
   const message = error || signOutNotice;
 
   return (
-    <AuthShell title="Sign in" subtitle="For registered public viewers, DPWH personnel, auditors and system administrators.">
+    <AuthShell title="Sign in" subtitle="For registered  DPWH personnel, auditors and system administrators.">
       <form onSubmit={submit} className="space-y-4">
         {message && <Alert tone="error" title={message === SUSPENDED_MESSAGE ? 'Account suspended' : undefined}>{message}</Alert>}
         <Field label="Email" required>{(a) => <Input {...a} type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus />}</Field>
