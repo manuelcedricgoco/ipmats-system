@@ -32,7 +32,7 @@ export const DEFAULT_RULES = Object.freeze({
 
 const RANK = { info: -1, green: 0, yellow: 1, red: 2 };
 
-function maxFlag(a, b) {
+export function maxFlag(a, b) {
   return RANK[b] > RANK[a] ? b : a;
 }
 
@@ -46,6 +46,7 @@ const peso = (n) =>
  * @param {object[]} input.images       site_images rows for the project
  * @param {object[]} input.financials   financial_records rows for the project
  * @param {Set<string>} [input.hashesUsedElsewhere] file hashes that also appear in OTHER projects
+ * @param {Set<string>} [input.nearDuplicateIds] ids of images that look almost identical to another project's / an earlier photo
  * @param {object}   [input.rules]      flag rules (merged over DEFAULT_RULES)
  * @param {Date|string} [input.today]
  */
@@ -55,6 +56,7 @@ export function evaluateProject({
   images = [],
   financials = [],
   hashesUsedElsewhere = new Set(),
+  nearDuplicateIds = new Set(),
   rules: rulesInput = {},
   today: todayInput = new Date(),
 }) {
@@ -90,17 +92,12 @@ export function evaluateProject({
   // ------------------------------------------------------------------ schedule
   const plannedProgress = isCompleted ? 100 : computePlannedProgress(project, phases, today);
   const slippage = isCompleted ? 0 : round2(plannedProgress - overallProgress); // + = behind schedule
-  let status;
+  let scheduledStatus;
 
-  if (manualStatus) {
-    status = manualStatus;
-    if (manualStatus === 'suspended') {
-      add('schedule', 'yellow', 'SUSPENDED', 'Project is suspended; work is not progressing.');
-    } else if (!isCompleted) {
-      add('schedule', 'red', 'TERMINATED_INCOMPLETE', `Contract terminated at ${overallProgress}% accomplishment.`);
-    }
-  } else if (isCompleted) {
-    status = 'completed';
+  // The schedule checks run for every project, so a manual Suspended / Terminated
+  // status never hides an overdue or slipping project.
+  if (isCompleted) {
+    scheduledStatus = 'completed';
     const actual = toDate(project.actual_completion_date);
     if (target && actual) {
       const lateDays = daysBetween(target, actual);
@@ -109,11 +106,11 @@ export function evaluateProject({
       }
     }
   } else if (!hasStarted) {
-    status = 'not_started';
+    scheduledStatus = 'not_started';
     if (!ntp) add('schedule', 'info', 'NO_NTP', 'No Notice to Proceed date recorded yet.');
     else add('schedule', 'info', 'NOT_STARTED', `Works have not started; Notice to Proceed effective ${project.notice_to_proceed}.`);
   } else if (target && today > target) {
-    status = 'delayed';
+    scheduledStatus = 'delayed';
     const overdue = daysBetween(target, today);
     add(
       'schedule',
@@ -122,13 +119,20 @@ export function evaluateProject({
       `Target completion date passed ${overdue} day(s) ago without completion (${overallProgress}% accomplished).`,
     );
   } else if (slippage > rules.slippage_yellow_max) {
-    status = 'delayed';
+    scheduledStatus = 'delayed';
     add('schedule', 'red', 'SLIPPAGE_SEVERE', `Slippage of ${slippage}% (planned ${plannedProgress}%, actual ${overallProgress}%).`);
   } else if (slippage > rules.slippage_green_max) {
-    status = 'delayed';
+    scheduledStatus = 'delayed';
     add('schedule', 'yellow', 'SLIPPAGE_MINOR', `Slippage of ${slippage}% (planned ${plannedProgress}%, actual ${overallProgress}%).`);
   } else {
-    status = 'ongoing';
+    scheduledStatus = 'ongoing';
+  }
+
+  const status = manualStatus ?? scheduledStatus;
+  if (manualStatus === 'suspended') {
+    add('schedule', 'yellow', 'SUSPENDED', 'Project is suspended; work is not progressing.');
+  } else if (manualStatus === 'terminated' && !isCompleted) {
+    add('schedule', 'red', 'TERMINATED_INCOMPLETE', `Contract terminated at ${overallProgress}% accomplishment.`);
   }
 
   // ------------------------------------------------------------- documentation
@@ -165,6 +169,11 @@ export function evaluateProject({
     add('documentation', 'red', 'IMAGE_REUSED', `${reused.size} 360° image(s) appear to be reused (identical file found elsewhere).`);
   }
 
+  const nearCount = images.filter((img) => nearDuplicateIds.has(img.id)).length;
+  if (nearCount) {
+    add('documentation', 'yellow', 'IMAGE_NEAR_DUPLICATE', `${nearCount} 360° image(s) look almost identical to a photo from another project or an earlier inspection.`);
+  }
+
   // GPS consistency
   let maxDistance = 0;
   let farCount = 0;
@@ -185,6 +194,10 @@ export function evaluateProject({
   }
   if (farCount) {
     add('documentation', 'yellow', 'GPS_MISMATCH', `${farCount} image(s) were taken more than ${rules.gps_tolerance_m} m from the project site.`);
+  }
+  const manualGps = images.filter((img) => img.gps_source === 'manual').length;
+  if (manualGps) {
+    add('documentation', 'yellow', 'GPS_MANUAL', `${manualGps} image(s) use coordinates typed by the uploader instead of GPS stored in the photo.`);
   }
   if (noGpsCount) {
     add('documentation', 'yellow', 'GPS_MISSING', `${noGpsCount} image(s) have no GPS coordinates.`);
@@ -213,6 +226,10 @@ export function evaluateProject({
       'IMAGE_DATE_MISMATCH',
       `${dateMismatch} image(s) were taken more than ${rules.image_date_tolerance_days} days away from their inspection date.`,
     );
+  }
+  const manualDate = images.filter((img) => img.validation?.timestamp_source === 'manual').length;
+  if (manualDate) {
+    add('documentation', 'yellow', 'IMAGE_DATE_MANUAL', `${manualDate} image(s) use a capture time typed by the uploader.`);
   }
   if (undated) {
     add('documentation', 'yellow', 'IMAGE_UNDATED', `${undated} image(s) have no capture date in the file.`);

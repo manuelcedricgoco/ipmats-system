@@ -10,11 +10,31 @@ const project = {
 };
 // Planned on TODAY ≈ 88.5% (straight line); weights total 100
 const phases = (acc) => [{ weight: 40, accomplishment: Math.min(100, acc * 2.5) }, { weight: 60, accomplishment: Math.max(0, (acc - 40) / 0.6) }];
-const image = (o = {}) => ({ file_hash: 'h1', latitude: 13.4001, longitude: 120.7001, captured_at: '2026-11-10T09:00:00+08:00', inspection_date: '2026-11-10', is_final: false, ...o });
+const image = (o = {}) => ({ id: 'img1', file_hash: 'h1', gps_source: 'exif', latitude: 13.4001, longitude: 120.7001, captured_at: '2026-11-10T09:00:00+08:00', inspection_date: '2026-11-10', is_final: false, ...o });
 const codes = (r) => r.reasons.map((x) => x.code);
 const run = (o = {}) => evaluateProject({ project, phases: phases(88), images: [image()], financials: [], today: TODAY, ...o });
 
 describe('evaluateProject', () => {
+  it('manual coordinates make the project YELLOW', () => {
+    const r = run({ images: [image({ gps_source: 'manual' })] });
+    assert.equal(r.flag, 'yellow');
+    assert.ok(codes(r).includes('GPS_MANUAL'));
+  });
+  it('a typed capture time is YELLOW', () => {
+    const r = run({ images: [image({ validation: { timestamp_source: 'manual' } })] });
+    assert.equal(r.flag, 'yellow');
+    assert.ok(codes(r).includes('IMAGE_DATE_MANUAL'));
+  });
+  it('a near-duplicate photo is YELLOW', () => {
+    const r = run({ images: [image({ id: 'a' })], nearDuplicateIds: new Set(['a']) });
+    assert.equal(r.flag, 'yellow');
+    assert.ok(codes(r).includes('IMAGE_NEAR_DUPLICATE'));
+  });
+  it('photos with EXIF GPS stay GREEN', () => {
+    const r = run({ images: [image({ validation: { timestamp_source: 'exif' } })] });
+    assert.equal(r.flag, 'green');
+    assert.ok(!codes(r).some((c) => ['GPS_MANUAL', 'IMAGE_DATE_MANUAL', 'IMAGE_NEAR_DUPLICATE'].includes(c)));
+  });
   it('is Green / Ongoing when on schedule with a recent photo at the site', () => {
     const r = run();
     assert.equal(r.flag, 'green');
@@ -67,6 +87,24 @@ describe('evaluateProject', () => {
   it('keeps manual Suspended / Terminated status', () => {
     assert.equal(run({ project: { ...project, status: 'suspended' } }).status, 'suspended');
     assert.equal(run({ project: { ...project, status: 'terminated' } }).flag, 'red');
+  });
+  it('a suspended project past its target date stays RED', () => {
+    const r = run({ project: { ...project, status: 'suspended', target_completion_date: '2026-10-01' } });
+    assert.equal(r.flag, 'red');
+    assert.equal(r.status, 'suspended');
+    assert.ok(codes(r).includes('SUSPENDED'));
+    assert.ok(codes(r).includes('TARGET_DATE_PASSED'));
+  });
+  it('a suspended project with severe slippage stays RED', () => {
+    const r = run({ project: { ...project, status: 'suspended' }, phases: phases(50) });
+    assert.equal(r.flag, 'red');
+    assert.equal(r.status, 'suspended');
+    assert.ok(codes(r).includes('SLIPPAGE_SEVERE'));
+  });
+  it('a suspended project on schedule is YELLOW (suspension only)', () => {
+    const r = run({ project: { ...project, status: 'suspended' } });
+    assert.equal(r.flag, 'yellow');
+    assert.equal(r.status, 'suspended');
   });
   it('is Not started before the Notice to Proceed', () => {
     const r = run({ project: { ...project, notice_to_proceed: '2026-12-15', target_completion_date: '2027-06-01' }, phases: phases(0), images: [] });

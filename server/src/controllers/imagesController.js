@@ -12,9 +12,11 @@
 import { randomUUID } from 'node:crypto';
 import sharp from 'sharp';
 import { adminClient } from '../config/supabase.js';
+import { assertImageFormat } from '../services/imageFormat.js';
 import { sha256, validateImage } from '../services/imageValidation.js';
+import { dHash, findNearDuplicates } from '../services/perceptualHash.js';
 import { logActivity, projectCode } from '../services/activityLog.js';
-import { reevaluate } from '../services/projectEvaluation.js';
+import { loadHashedImages, reevaluate } from '../services/projectEvaluation.js';
 import { getFlagRules } from '../services/settings.js';
 import { signedUrls } from '../services/storage.js';
 import { badRequest, notFound, unwrap } from '../utils/httpError.js';
@@ -70,6 +72,7 @@ export async function listImages(req, res) {
 
 export async function uploadImage(req, res) {
   if (!req.file) throw badRequest('Attach a 360° panorama in the "file" field.');
+  const format = assertImageFormat(req.file.buffer);
   const { id } = req.params;
   const project = await getProject(id);
   const body = req.body;
@@ -84,6 +87,15 @@ export async function uploadImage(req, res) {
   const rules = await getFlagRules(adminClient);
   const buffer = req.file.buffer;
   const existingWithHash = unwrap(await adminClient.from('site_images').select('project_id').eq('file_hash', sha256(buffer)));
+  let phash;
+  try {
+    phash = await dHash(buffer);
+  } catch {
+    throw badRequest('The photo file is damaged or incomplete. Upload the original file again.');
+  }
+  const candidates = await loadHashedImages(adminClient);
+  const probe = { id: 'new', project_id: project.id, phash, inspection_date: body.inspection_date, created_at: new Date().toISOString() };
+  const nearDuplicateIn = candidates.filter((c) => findNearDuplicates([probe], [c]).size).map((c) => c.project_id);
   const v = await validateImage({
     buffer,
     project,
@@ -92,12 +104,13 @@ export async function uploadImage(req, res) {
     capturedAt: body.captured_at ?? null,
     inspectionDate: body.inspection_date,
     existingWithHash,
+    nearDuplicateIn,
     rules,
   });
   if (v.problems.length) throw badRequest(v.problems[0], v.problems.map((message) => ({ field: 'file', message })));
 
   // Validation (EXIF GPS / time, reuse hash) has used the original file; store a smaller copy when it is large.
-  const stored = await compressPanorama(buffer, req.file.mimetype, v.width);
+  const stored = await compressPanorama(buffer, `image/${format}`, v.width);
   const storagePath = `${id}/${body.inspection_date}_${randomUUID()}.${EXT[stored.mimetype]}`;
   const up = await adminClient.storage.from(BUCKET).upload(storagePath, stored.buffer, { contentType: stored.mimetype, upsert: false });
   if (up.error) throw Object.assign(new Error('Storage upload failed'), { cause: up.error });
@@ -109,6 +122,7 @@ export async function uploadImage(req, res) {
       phase_id: body.phase_id || null,
       storage_path: storagePath,
       file_hash: v.fileHash,
+      phash,
       mime_type: stored.mimetype,
       size_bytes: stored.buffer.length,
       width: v.width,

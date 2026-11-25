@@ -1,7 +1,7 @@
 // WEEK 2 — server-side checks for phase progress and financial records (services/validationRules.js)
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { checkContractAmountChange, checkFinancialRecord, checkPhasePlan, checkProgressUpdate, checkStatusChange } from '../services/validationRules.js';
+import { checkContractAmountChange, checkFinancialRecord, checkPhasePlan, checkProgressUpdate, checkStatusChange, isLocationChange } from '../services/validationRules.js';
 
 const project = { id: 'p', notice_to_proceed: '2026-03-01', target_completion_date: '2026-12-31', contract_amount: 1000000, approved_budget: 1100000 };
 const NOW = '2026-11-18';
@@ -94,4 +94,15 @@ describe('checkStatusChange / checkContractAmountChange', () => {
     assert.match(messages(checkContractAmountChange({ contractAmount: 400, records })), /already disbursed/);
     assert.deepEqual(checkContractAmountChange({ contractAmount: 600, records }), []);
   });
+});
+
+describe('isLocationChange', () => {
+  const current = { latitude: 13.4, longitude: 120.7 };
+  it('re-sending the same coordinates is not a change', () => {
+    assert.equal(isLocationChange(current, { latitude: '13.400000', longitude: 120.7 }), false);
+  });
+  it('a moved site is a change', () => {
+    assert.equal(isLocationChange(current, { latitude: 13.41 }), true);
+  });
+  it('omitting the coordinates is not a change', () => assert.equal(isLocationChange(current, {}), false));
 });

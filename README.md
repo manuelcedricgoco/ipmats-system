@@ -89,6 +89,10 @@ npm run install:all
 | `DAILY_FLAG_CHECK_CRON` | `15 1 * * *` | When the daily flag check runs (default 01:15) |
 | `TZ_NAME` | `Asia/Manila` | Time zone of the daily check (default Asia/Manila) |
 | `SIGNED_URL_TTL` | `3600` | Lifetime in seconds of signed links to private photos and files (default 3600) |
+| `TRUST_PROXY` | `1` | Number of proxy hops in front of the API, used for the client IP in rate limits (default 1; a non-integer falls back to 1) |
+| `DEBUG_PROXY` | `1` | Logs `req.ip` and the `X-Forwarded-For` entry count for the first 20 requests |
+
+**Verifying the client IP (Render):** rate limits are keyed per user, and per IP for anonymous requests, so `req.ip` must be the visitor's public IP. Deploy once with `DEBUG_PROXY=1`, open the site from mobile data and from Wi-Fi, and check the Render logs for `[proxy-debug]`. If `req.ip` shows a Vercel or Render address, raise `TRUST_PROXY` by 1 and redeploy; then remove `DEBUG_PROXY`.
 
 Used only by the scripts in `server/scripts/`: `API_URL` (default `http://localhost:4000/api`), `SEED_EMAIL`, `SEED_PASSWORD`, `SEED_ADMIN`, `SEED_AUDITOR` (demo accounts the scripts sign in with).
 
@@ -104,13 +108,24 @@ Used only by the scripts in `server/scripts/`: `API_URL` (default `http://localh
 
 ### Database migrations
 
-There is no migration runner in this repository. Apply the files in `database/migrations/` **in numeric order** in the Supabase SQL Editor (or with the Supabase CLI / MCP). The IPMATS project already has `001`–`018` applied. Never edit or renumber a migration that has been applied; write a new one that changes or reverses it.
+There is no migration runner in this repository. Apply the files in `database/migrations/` **in numeric order** in the Supabase SQL Editor (or with the Supabase CLI / MCP). The IPMATS project already has `001`–`018` applied; `019` and `020` are new and must be applied before the matching API is deployed (see below). Never edit or renumber a migration that has been applied; write a new one that changes or reverses it.
+
+#### Upgrading to this version
+
+1. Apply migrations `019` and `020` in the Supabase SQL Editor **before** deploying the API (before merging, if Render auto-deploys on push). The new API reads and writes `phash` and `reviewed_flag`, so it fails against a database without them.
+2. Deploy the API, then the web client.
+3. From `server/`, run `node --env-file=.env scripts/backfill-phash.mjs` to hash the existing photos.
+4. From `server/`, run `npm run flags:recheck` to re-evaluate every project.
+5. Check the client IP the API sees with `DEBUG_PROXY=1`, set `TRUST_PROXY` to match, then remove `DEBUG_PROXY`.
+
+Expect some changes after step 4: projects with typed GPS or time will turn yellow, and reviewed flags may go back to pending.
 
 ### Seed data (fictional demo data)
 
 1. `database/seed/seed.sql` — municipalities, barangays, offices, demo accounts, contractors and projects (`npm run seed:generate` rebuilds it from `generate-seed.mjs`).
 2. `database/seed/seed_week2.sql` — phases, monthly progress reports and financial records (`node database/seed/week2-seed.mjs` rebuilds it).
 3. With the API running, in `server/`: `npm run seed:images` uploads placeholder 360° panoramas (labelled "SAMPLE – NOT A REAL PHOTO") through the upload API.
+4. After applying migration `020`, in `server/`: `node --env-file=.env scripts/backfill-phash.mjs` computes the perceptual hash of photos uploaded earlier (prints `updated N / skipped M`).
 
 Demo accounts (password `Dpwh360!Demo2026`; change or delete them before real use): `admin@dpwh360.local` (System Administrator), `personnel@dpwh360.local` and `personnel.south@dpwh360.local` (DPWH Personnel), `auditor@dpwh360.local` (Auditor), `applicant@dpwh360.local` (pending registration).
 
@@ -158,7 +173,7 @@ ipmats-system/
 │   ├── src/tests/          server tests
 │   └── scripts/            demo-data scripts (placeholder panoramas, sample project, cleanup)
 ├── database/
-│   ├── migrations/         schema, Row Level Security and data migrations 001–018
+│   ├── migrations/         schema, Row Level Security and data migrations 001–020
 │   └── seed/               fictional demo data
 └── docker-compose.yml      API + web containers
 ```
@@ -183,7 +198,7 @@ ipmats-system/
 | `v_project_summary` | Staff view: project with names, progress, finance totals and flags |
 | `v_public_projects` | Public view: only the columns the portal shows, no flags or finances |
 
-Migrations are numbered in the order they were applied: `001`–`006` Weeks 1–2 and the first public portal, `007`–`011` Week 3 and later improvements, `012` office status, `013` and `014` a data-provenance experiment and its reversal, `015` office restructure, `016` reopens the public portal to the anonymous role (reverses `006`), `017` removes the Public role and adds admin approval, `018` fixes the sign-in ban set by `017`.
+Migrations are numbered in the order they were applied: `001`–`006` Weeks 1–2 and the first public portal, `007`–`011` Week 3 and later improvements, `012` office status, `013` and `014` a data-provenance experiment and its reversal, `015` office restructure, `016` reopens the public portal to the anonymous role (reverses `006`), `017` removes the Public role and adds admin approval, `018` fixes the sign-in ban set by `017`, `019` keeps an auditor's flag decision from being lowered automatically, `020` adds the perceptual photo hash.
 
 ## Known limitations and unfinished work
 

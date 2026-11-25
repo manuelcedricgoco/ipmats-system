@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import * as users from '../controllers/usersController.js';
 import { requireAuth } from '../middleware/auth.js';
-import { requireRole, requireWriteAccess, ROLES } from '../middleware/role.js';
+import { requireApproved, requireRole, requireWriteAccess, ROLES } from '../middleware/role.js';
+import { uploadLimiter } from '../middleware/rateLimits.js';
 import { uploadAvatar } from '../middleware/upload.js';
 import { validate } from '../middleware/validate.js';
 import { asyncHandler as h } from '../utils/asyncHandler.js';
@@ -15,7 +16,7 @@ const admin = requireRole(ROLES.ADMIN);
 // Current user (any signed-in account, including pending applicants)
 r.get('/me', requireAuth, h(users.me));
 r.patch('/me', requireAuth, requireWriteAccess, validate(s.meUpdate), h(users.updateMe));
-r.post('/me/avatar', requireAuth, requireWriteAccess, uploadAvatar, h(users.uploadMyAvatar));
+r.post('/me/avatar', requireAuth, requireApproved, uploadLimiter, requireWriteAccess, uploadAvatar, h(users.uploadMyAvatar));
 r.delete('/me/avatar', requireAuth, requireWriteAccess, h(users.deleteMyAvatar));
 
 // User management and staff access requests (System Administrator)

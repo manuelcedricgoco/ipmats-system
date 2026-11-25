@@ -32,6 +32,13 @@ describe('360° image validation', () => {
     assert.ok(late.validation.date_gap_days > 30);
     assert.ok(late.validation.warnings.some((w) => /days away from the inspection date/.test(w)));
   });
+  it('records near-duplicate projects as a warning', async () => {
+    const v = await validateImage({ buffer: await make(), project, inspectionDate: '2026-11-10', nearDuplicateIn: ['p2', 'p3'], rules: DEFAULT_RULES });
+    assert.deepEqual(v.validation.near_duplicate_in_projects, ['p2', 'p3']);
+    assert.ok(v.validation.warnings.some((w) => /almost identical/.test(w)));
+    const none = await validateImage({ buffer: await make(), project, inspectionDate: '2026-11-10', rules: DEFAULT_RULES });
+    assert.deepEqual(none.validation.near_duplicate_in_projects, []);
+  });
   it('refuses a capture time in the future', async () => {
     const v = await validateImage({ buffer: await make({ capturedAt: '2099-01-01 10:00:00' }), project, inspectionDate: '2026-11-10', rules: DEFAULT_RULES });
     assert.ok(v.problems.some((p) => /future/.test(p)));

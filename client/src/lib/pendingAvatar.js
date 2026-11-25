@@ -1,6 +1,6 @@
 /**
  * A photo chosen during sign-up is kept on this device (IndexedDB) until the
- * person confirms their email and signs in for the first time, then uploaded.
+ * person confirms their email, the account is approved and they sign in, then uploaded.
  * Supabase issues no session until email confirmation, so it can't be uploaded earlier.
  */
 const DB = 'dpwh360';
@@ -25,6 +25,9 @@ async function tx(mode, fn) {
     t.onerror = () => reject(t.error);
   });
 }
+
+/** The photo is uploaded only after an administrator approves the account; until then it stays on this device. */
+export const shouldUploadPendingPhoto = (profile) => profile?.approval_status === 'approved';
 
 export const savePendingAvatar = (userId, file) => tx('readwrite', (s) => s.put(file, userId)).catch(() => {});
 export const takePendingAvatar = (userId) =>

@@ -135,6 +135,8 @@ Sidebar items appear only for the roles that can use them. "All staff" = Admin, 
     - The target completion date is computed as NTP + duration.
     - The contract amount cannot exceed the approved budget.
     - The status is **automatic**. Staff can only set Suspended or Terminated, or put it back to automatic.
+      A Suspended or Terminated project still shows that status, but its schedule reasons (target date passed,
+      slippage) still count toward the flag, together with a Suspended (Yellow) or Terminated (Red) reason.
   - **Project page tabs:** Overview, Phases & progress, Finance, 360° images, Flag & audit, Documents (described
     below). Non-editors see a "Read-only" label.
   - **Delete:** an Admin can delete a project, which also deletes all of its records.
@@ -242,7 +244,9 @@ Sidebar items appear only for the roles that can use them. "All staff" = Admin, 
   - **Flag review queue:** counters (Red, Yellow, Green, awaiting review), filters by flag, review status and
     municipality, worst projects first.
   - **Review:** confirm the flag, or override it with another colour. A reason is always required. An override
-    also needs an evidence file (PDF or photo).
+    also needs an evidence file (PDF or photo). The auditor's decision is sticky: editing the project can never
+    lower a reviewed flag. If the automatic flag changes later, the flag becomes the worse of the new automatic
+    flag and the auditor's decision, and goes back to "pending" for another review.
   - **Audit findings:** severity, description, recommendation and due date, and an optional assignment of the
     corrective action to a DPWH personnel account. The assigned person reports progress on their dashboard; the
     auditor closes the finding.

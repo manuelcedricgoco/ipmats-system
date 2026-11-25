@@ -210,3 +210,17 @@ export function checkContractAmountChange({ contractAmount, records = [] }) {
   }
   return [];
 }
+
+const COORDINATE_TOLERANCE = 1e-6;
+
+/**
+ * True when a coordinate in `patch` differs from the current one by more than 1e-6 degrees.
+ * The edit form re-sends unchanged coordinates, and the database stores numeric(9,6),
+ * so values (numbers or numeric strings) are compared numerically with a tolerance.
+ */
+export function isLocationChange(current, patch) {
+  return ['latitude', 'longitude'].some((key) => {
+    if (patch[key] === undefined || patch[key] === null) return false;
+    return Math.abs(Number(patch[key]) - Number(current[key])) > COORDINATE_TOLERANCE;
+  });
+}

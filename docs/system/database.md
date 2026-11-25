@@ -174,6 +174,7 @@ The infrastructure projects: the centre of the system.
 | auto_flag_evaluated_at | timestamptz | yes | — | When the automatic check last ran |
 | current_flag | flag_color | yes | — | The flag users see: automatic, or the auditor's decision |
 | flag_review_status | flag_review_status | no | `'pending'` | Whether an auditor confirmed or overrode the current flag |
+| reviewed_flag | flag_color | yes | — | The auditor's last decision. The flag shown never drops below it automatically |
 | audit_status | audit_status | no | `'not_audited'` | Audit progress of the project |
 
 ### project_phases
@@ -235,6 +236,7 @@ Money events of a project.
 | phase_id | uuid | yes | — | Phase shown in the photo |
 | storage_path | text | no | — | File location in the bucket (unique) |
 | file_hash | text | no | — | SHA-256 of the uploaded file, used to detect reused photos |
+| phash | text | yes | — | 64-bit difference hash (16 hex characters), used to detect near-duplicate photos |
 | mime_type | text | no | `'image/jpeg'` | File type |
 | size_bytes | bigint | yes | — | Stored file size |
 | width | integer | yes | — | Pixels |
@@ -504,8 +506,8 @@ write files. It hands out signed links that expire (1 hour by default, `SIGNED_U
 
 ## Migrations
 
-The migration files are in `database/migrations/`. They are numbered and run in number order, `001` to `018`.
-The live database's migration history lists all 18 as applied, in that order.
+The migration files are in `database/migrations/`. They are numbered and run in number order, `001` to `020`.
+The live database's migration history lists all 18 of the first migrations as applied (019 and 020 are applied by hand before the matching API is deployed), in that order.
 
 Rules the project follows:
 - An applied migration is never edited or deleted. A mistake is undone by a new migration (013 → 014, 006 → 016).
@@ -532,3 +534,5 @@ Rules the project follows:
 | 016 | open_public_portal | Reverses 006: anon may read projects (public columns), contractor names, approved photos and `v_public_projects`. Phases, progress and finances stay staff-only |
 | 017 | remove_public_role | Removes the `public` role from `user_role`; role empty until approved; `app_role()` requires approval; new sign-up trigger; former public accounts deactivated |
 | 018 | fix_deactivated_ban | Replaces the "infinite" sign-in ban set by 017 (it broke sign-in) with a 100-year ban |
+| 019 | sticky_flag_reviews | Adds `projects.reviewed_flag`: the auditor's decision, which the shown flag never drops below automatically |
+| 020 | image_perceptual_hash | Adds `site_images.phash` for near-duplicate photo detection |

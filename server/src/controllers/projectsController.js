@@ -10,9 +10,9 @@ import { addDays } from '../services/completion.js';
 import { pagination } from '../utils/pagination.js';
 import { changedFields, logActivity } from '../services/activityLog.js';
 import { reevaluate } from '../services/projectEvaluation.js';
-import { assertValid, checkContractAmountChange } from '../services/validationRules.js';
+import { assertValid, checkContractAmountChange, isLocationChange } from '../services/validationRules.js';
 import { OUTSIDE_PROVINCE_MESSAGE, isWithinOccidentalMindoro } from '../utils/geo.js';
-import { badRequest, notFound, unwrap } from '../utils/httpError.js';
+import { badRequest, forbidden, notFound, unwrap } from '../utils/httpError.js';
 
 const LIST_COLUMNS =
   'id, project_code, name, project_type, status, approved_budget, contract_amount, notice_to_proceed, duration_days, ' +
@@ -134,6 +134,13 @@ export async function updateProject(req, res) {
   if (req.body.latitude !== undefined || req.body.longitude !== undefined) {
     assertInsideProvince(req.body.latitude ?? current.latitude, req.body.longitude ?? current.longitude);
   }
+  // Decision D3: once 360° photos exist, only a System Administrator may move the project site.
+  const locationChanged = isLocationChange(current, req.body);
+  if (locationChanged && req.user.role !== 'admin') {
+    const { count, error } = await adminClient.from('site_images').select('id', { count: 'exact', head: true }).eq('project_id', id);
+    unwrap({ data: null, error });
+    if (count > 0) throw forbidden('The project location can only be changed by a System Administrator once 360° photos are on file.');
+  }
   const body = { ...req.body };
   // Week 3: "auto" lifts a manual Suspended / Terminated status; the evaluation below sets the real status.
   if (body.status === 'auto') {
@@ -162,7 +169,15 @@ export async function updateProject(req, res) {
     entityId: id,
     projectId: id,
     summary: `Updated project ${before.project_code}${changed.length ? ` (${changed.join(', ')})` : ''}`,
-    details: { changed },
+    details: {
+      changed,
+      ...(locationChanged && {
+        location: {
+          from: { latitude: current.latitude, longitude: current.longitude },
+          to: { latitude: body.latitude ?? current.latitude, longitude: body.longitude ?? current.longitude },
+        },
+      }),
+    },
   });
   res.json({ data: { id, evaluation } });
 }

@@ -26,7 +26,7 @@ which are the real enforcement point for every write.
 | Feature or record | Admin | DPWH Personnel | Auditor | Public visitor / applicant |
 |---|---|---|---|---|
 | Public portal (dashboard, projects, map, public 360° photos) | V | V | V | V |
-| Projects | V C E D | V C E | V | V (public fields only) |
+| Projects | V C E D | V C E⁷ | V | V (public fields only) |
 | Project status: set Suspended / Terminated | E | E | — | — |
 | Construction phases (plan) | V C E D¹ | V C E D¹ | V | — |
 | Progress reports | V C | V C | V | — (only the overall %) |
@@ -47,7 +47,7 @@ which are the real enforcement point for every write.
 | Contractors | V C E D⁴ | V C E (incl. suspend) | V | — (only names, on projects) |
 | Offices and agencies | V C E D⁵ | V | V | V (lists only) |
 | User accounts and access requests | V C E D (approve, decline, suspend) | — | — | — |
-| Own account (name, position, photo, password) | V E | V E | V E | E (applicants only) |
+| Own account (name, position, photo after approval, password) | V E | V E | V E | E (applicants only) |
 | Activity logs | V | — | V | — |
 | Flag rules (System Settings) | V E | V⁶ | V⁶ | — |
 
@@ -57,6 +57,7 @@ which are the real enforcement point for every write.
 4. A contractor still assigned to a project cannot be deleted; suspend it instead.
 5. An office used by any project or user account cannot be deleted.
 6. The API lets every staff role read the rules, but the System Settings page is shown to admins only.
+7. Personnel cannot change a project's location once 360° photos have been uploaded for it. Only a System Administrator can, and the move is recorded in the activity log.
 
 Other limits enforced by the API:
 - An admin cannot change their own role, or deactivate, suspend, decline or delete their own account.

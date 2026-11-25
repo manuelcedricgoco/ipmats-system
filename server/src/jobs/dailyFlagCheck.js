@@ -9,7 +9,7 @@ import { pathToFileURL } from 'node:url';
 import { adminClient } from '../config/supabase.js';
 import { env } from '../config/env.js';
 import { logActivity } from '../services/activityLog.js';
-import { evaluateAndSave } from '../services/projectEvaluation.js';
+import { evaluateAndSave, loadHashedImages } from '../services/projectEvaluation.js';
 import { getFlagRules } from '../services/settings.js';
 
 export async function runFlagCheck({ trigger = 'daily_check', actorId = null, today = new Date() } = {}) {
@@ -18,10 +18,11 @@ export async function runFlagCheck({ trigger = 'daily_check', actorId = null, to
   const rules = await getFlagRules(adminClient);
   const { data: projects, error } = await adminClient.from('projects').select('id, project_code');
   if (error) throw error;
+  const phashCandidates = await loadHashedImages(adminClient);
   const summary = { evaluated: 0, changed: 0, failed: 0, green: 0, yellow: 0, red: 0, changes: [] };
   for (const p of projects) {
     try {
-      const r = await evaluateAndSave(adminClient, p.id, { trigger, actorId, rules, today });
+      const r = await evaluateAndSave(adminClient, p.id, { trigger, actorId, rules, today, phashCandidates });
       summary.evaluated += 1;
       summary[r.flag] += 1;
       if (r.flagChanged) {
