@@ -3,11 +3,11 @@ import { ACCOUNT_SUSPENDED_EVENT, api } from '../lib/api.js';
 import { STAFF_ROLES, SUSPENDED_MESSAGE, isSuspensionError } from '../lib/constants.js';
 import { supabase } from '../lib/supabaseClient.js';
 import { friendlyAuthError } from '../lib/imageFile.js';
-import { takePendingAvatar } from '../lib/pendingAvatar.js';
+import { shouldUploadPendingPhoto, takePendingAvatar } from '../lib/pendingAvatar.js';
 
 const AuthContext = createContext(null);
 
-/** Upload a photo chosen during sign-up (kept on this device until first sign-in). */
+/** Upload a photo chosen during sign-up (kept on this device until the account is approved). */
 async function uploadPendingPhoto(userId) {
   const file = await takePendingAvatar(userId);
   if (!file) return;
@@ -37,7 +37,7 @@ export function AuthProvider({ children }) {
       const res = await api.get('/me');
       setProfile(res.data);
       setProfileError(null);
-      await uploadPendingPhoto(res.data.id);
+      if (shouldUploadPendingPhoto(res.data)) await uploadPendingPhoto(res.data.id);
     } catch (err) {
       setProfile(null);
       setProfileError(err.message);

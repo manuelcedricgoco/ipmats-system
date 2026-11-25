@@ -22,6 +22,13 @@ export function requireRole(...roles) {
   };
 }
 
+/** Any signed-in account whose registration has been approved (no particular role needed). */
+export function requireApproved(req, _res, next) {
+  if (!req.user) return next(unauthorized());
+  if (req.user.profile?.approval_status !== 'approved') return next(forbidden('You can add a profile photo once your account is approved.'));
+  return next();
+}
+
 /** Writes need the service-role client; fail clearly if the server lacks it. */
 export function requireWriteAccess(_req, _res, next) {
   if (!adminClient) {

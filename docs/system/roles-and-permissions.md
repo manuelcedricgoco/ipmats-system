@@ -47,7 +47,7 @@ which are the real enforcement point for every write.
 | Contractors | V C E D⁴ | V C E (incl. suspend) | V | — (only names, on projects) |
 | Offices and agencies | V C E D⁵ | V | V | V (lists only) |
 | User accounts and access requests | V C E D (approve, decline, suspend) | — | — | — |
-| Own account (name, position, photo, password) | V E | V E | V E | E (applicants only) |
+| Own account (name, position, photo after approval, password) | V E | V E | V E | E (applicants only) |
 | Activity logs | V | — | V | — |
 | Flag rules (System Settings) | V E | V⁶ | V⁶ | — |
 
