@@ -90,17 +90,12 @@ export function evaluateProject({
   // ------------------------------------------------------------------ schedule
   const plannedProgress = isCompleted ? 100 : computePlannedProgress(project, phases, today);
   const slippage = isCompleted ? 0 : round2(plannedProgress - overallProgress); // + = behind schedule
-  let status;
+  let scheduledStatus;
 
-  if (manualStatus) {
-    status = manualStatus;
-    if (manualStatus === 'suspended') {
-      add('schedule', 'yellow', 'SUSPENDED', 'Project is suspended; work is not progressing.');
-    } else if (!isCompleted) {
-      add('schedule', 'red', 'TERMINATED_INCOMPLETE', `Contract terminated at ${overallProgress}% accomplishment.`);
-    }
-  } else if (isCompleted) {
-    status = 'completed';
+  // The schedule checks run for every project, so a manual Suspended / Terminated
+  // status never hides an overdue or slipping project.
+  if (isCompleted) {
+    scheduledStatus = 'completed';
     const actual = toDate(project.actual_completion_date);
     if (target && actual) {
       const lateDays = daysBetween(target, actual);
@@ -109,11 +104,11 @@ export function evaluateProject({
       }
     }
   } else if (!hasStarted) {
-    status = 'not_started';
+    scheduledStatus = 'not_started';
     if (!ntp) add('schedule', 'info', 'NO_NTP', 'No Notice to Proceed date recorded yet.');
     else add('schedule', 'info', 'NOT_STARTED', `Works have not started; Notice to Proceed effective ${project.notice_to_proceed}.`);
   } else if (target && today > target) {
-    status = 'delayed';
+    scheduledStatus = 'delayed';
     const overdue = daysBetween(target, today);
     add(
       'schedule',
@@ -122,13 +117,20 @@ export function evaluateProject({
       `Target completion date passed ${overdue} day(s) ago without completion (${overallProgress}% accomplished).`,
     );
   } else if (slippage > rules.slippage_yellow_max) {
-    status = 'delayed';
+    scheduledStatus = 'delayed';
     add('schedule', 'red', 'SLIPPAGE_SEVERE', `Slippage of ${slippage}% (planned ${plannedProgress}%, actual ${overallProgress}%).`);
   } else if (slippage > rules.slippage_green_max) {
-    status = 'delayed';
+    scheduledStatus = 'delayed';
     add('schedule', 'yellow', 'SLIPPAGE_MINOR', `Slippage of ${slippage}% (planned ${plannedProgress}%, actual ${overallProgress}%).`);
   } else {
-    status = 'ongoing';
+    scheduledStatus = 'ongoing';
+  }
+
+  const status = manualStatus ?? scheduledStatus;
+  if (manualStatus === 'suspended') {
+    add('schedule', 'yellow', 'SUSPENDED', 'Project is suspended; work is not progressing.');
+  } else if (manualStatus === 'terminated' && !isCompleted) {
+    add('schedule', 'red', 'TERMINATED_INCOMPLETE', `Contract terminated at ${overallProgress}% accomplishment.`);
   }
 
   // ------------------------------------------------------------- documentation

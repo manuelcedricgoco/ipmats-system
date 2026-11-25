@@ -135,6 +135,8 @@ Sidebar items appear only for the roles that can use them. "All staff" = Admin, 
     - The target completion date is computed as NTP + duration.
     - The contract amount cannot exceed the approved budget.
     - The status is **automatic**. Staff can only set Suspended or Terminated, or put it back to automatic.
+      A Suspended or Terminated project still shows that status, but its schedule reasons (target date passed,
+      slippage) still count toward the flag, together with a Suspended (Yellow) or Terminated (Red) reason.
   - **Project page tabs:** Overview, Phases & progress, Finance, 360° images, Flag & audit, Documents (described
     below). Non-editors see a "Read-only" label.
   - **Delete:** an Admin can delete a project, which also deletes all of its records.

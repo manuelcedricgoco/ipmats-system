@@ -68,6 +68,24 @@ describe('evaluateProject', () => {
     assert.equal(run({ project: { ...project, status: 'suspended' } }).status, 'suspended');
     assert.equal(run({ project: { ...project, status: 'terminated' } }).flag, 'red');
   });
+  it('a suspended project past its target date stays RED', () => {
+    const r = run({ project: { ...project, status: 'suspended', target_completion_date: '2026-10-01' } });
+    assert.equal(r.flag, 'red');
+    assert.equal(r.status, 'suspended');
+    assert.ok(codes(r).includes('SUSPENDED'));
+    assert.ok(codes(r).includes('TARGET_DATE_PASSED'));
+  });
+  it('a suspended project with severe slippage stays RED', () => {
+    const r = run({ project: { ...project, status: 'suspended' }, phases: phases(50) });
+    assert.equal(r.flag, 'red');
+    assert.equal(r.status, 'suspended');
+    assert.ok(codes(r).includes('SLIPPAGE_SEVERE'));
+  });
+  it('a suspended project on schedule is YELLOW (suspension only)', () => {
+    const r = run({ project: { ...project, status: 'suspended' } });
+    assert.equal(r.flag, 'yellow');
+    assert.equal(r.status, 'suspended');
+  });
   it('is Not started before the Notice to Proceed', () => {
     const r = run({ project: { ...project, notice_to_proceed: '2026-12-15', target_completion_date: '2027-06-01' }, phases: phases(0), images: [] });
     assert.equal(r.status, 'not_started');
