@@ -5,7 +5,9 @@ DPWH projects in Occidental Mindoro. Staff keep project records, progress, payme
 date. The system flags delays and discrepancies automatically, and auditors review the flags. The public can
 browse every project without an account.
 
-These pages describe the system as it is in the code and the live database on 22 November 2026.
+These pages describe the system as it is in the code and the live database on 22 November 2026, updated on
+25 November 2026 for the security fixes merged in pull request #3 (migrations 019 and 020, applied to the live
+database the same day).
 
 | File | What it covers |
 |---|---|

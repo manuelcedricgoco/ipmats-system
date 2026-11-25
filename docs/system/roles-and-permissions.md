@@ -64,6 +64,23 @@ Other limits enforced by the API:
 - The last active admin cannot be suspended or deleted.
 - An account with any records (projects, reports, photos, findings, log entries…) cannot be deleted; it must be
   suspended instead, so the history stays intact.
+- A profile photo can only be uploaded by an approved account (`requireApproved` on `POST /me/avatar`).
+- An auditor's flag decision cannot be lowered by the automatic evaluation. When the automatic flag changes, the
+  shown flag becomes the worse of the new automatic flag and the auditor's decision (`projects.reviewed_flag`),
+  and goes back to "pending" for another review. Personnel therefore cannot clear a reviewed flag by editing the
+  project, for example by setting it to Suspended and back.
+- Uploaded photos are checked by their actual bytes: only real JPEG, PNG or WebP files reach the image decoder.
+- **Rate limits** (HTTP 429 "Too many requests, please slow down."):
+
+  | Limit | Applies to | Counted per |
+  |---|---|---|
+  | 600 requests per minute | every `/api` request, before sign-in is checked | IP address |
+  | 300 requests per minute | every `/api` request | signed-in account (IP address if not signed in) |
+  | 20 per 10 minutes | requests that can carry a file: 360° photo and document uploads, profile photos, flag reviews, and creating or editing audit findings | signed-in account |
+  | 30 per 10 minutes | report downloads (`/reports/*`) | signed-in account |
+
+  The IP address is only correct when `TRUST_PROXY` matches the number of proxies in front of the API (see the
+  root README, "Upgrading to this version").
 
 ## Registration and approval
 
@@ -87,6 +104,7 @@ cases.
 | Browse the public portal, with a banner showing the request status | Call any staff API endpoint (403 "waiting for approval") |
 | Open the "Awaiting approval" page (`/account-pending`) | Read any staff table, even with the publishable key (RLS) |
 | Read its own profile | Use its requested role in any way |
+| | Upload a profile photo (a photo chosen at sign-up stays on the device until approval) |
 
 **Who approves:** only the System Administrator, on the **User Management** page. The admin can:
 - **Approve** — grants a role (which may differ from the one requested) and may set the office and position.
@@ -127,7 +145,11 @@ These only decide what is shown. Anyone can change the code running in their own
   inactive account gets 403.
 - `requireAuth` refuses requests without a valid sign-in (401).
 - `requireRole(...)` refuses accounts that are not approved, or whose role is not in the list (403).
+- `requireApproved` refuses accounts that are not approved (403); used where any approved account may act, such
+  as uploading a profile photo.
 - `requireWriteAccess` refuses writes when the server has no service-role key (503).
+- Rate limiters (`middleware/rateLimits.js`) refuse too many requests (429); see the table under
+  "Other limits enforced by the API" above.
 - Each controller then applies record-level rules (uploader-only delete, assigned-person-only corrective action,
   self-protection rules, delete blocked by existing records).
 - Input is validated with zod schemas (`routes/schemas.js`) and business rules (`services/validationRules.js`).

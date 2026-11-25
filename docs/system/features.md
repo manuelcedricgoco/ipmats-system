@@ -87,6 +87,8 @@ Accounts waiting for approval, or declined, see the same portal with a status ba
   - **Register:** asks for name, email, password, the role requested (DPWH Personnel or Auditor), office,
     position, and an optional photo. It creates a request, not a staff account (see
     [registration and approval](roles-and-permissions.md#registration-and-approval)).
+    - The photo is kept on the device (IndexedDB) and uploaded at the first sign-in **after the account is
+      approved**. Pending and declined accounts cannot upload a profile photo.
   - **Sign in:** shows a 5-second entry screen, then opens the staff dashboard. Accounts without a role go to the
     public portal instead. Suspended accounts see a suspension message.
   - **Awaiting approval:** shows the status of the request, or the reason it was declined.
@@ -130,6 +132,9 @@ Sidebar items appear only for the roles that can use them. "All staff" = Admin, 
     location, approved budget (ABC), contract amount, Notice to Proceed, duration, fund source and status.
     - Location is picked on a map: search a place, click, or drag the pin. Points outside Occidental Mindoro are
       refused, in the browser and again by the API.
+    - Once a project has 360° photos, only a System Administrator can move its location (personnel get an
+      error). Every location change is recorded in the activity log with the old and new coordinates. Saving
+      the form with the same coordinates does not count as a move.
     - The **Project ID is created by the database** (e.g. `26OM0332`) and cannot be changed. A dialog shows it
       after saving.
     - The target completion date is computed as NTP + duration.
@@ -193,12 +198,21 @@ Sidebar items appear only for the roles that can use them. "All staff" = Admin, 
   - Admin deletes.
 - **What it does:**
   - **Upload:** JPEG, PNG or WebP, up to 30 MB, with an inspection date. The server:
+    - checks the file's first bytes and refuses anything that is not really a JPEG, PNG or WebP image, whatever
+      type the browser claims; a damaged or incomplete file is refused with a message (400);
     - reads the GPS location and capture time stored in the file;
+    - uses coordinates or a capture time typed by the uploader only when the file has none, and records that
+      they were typed (the project then gets a Yellow `GPS_MANUAL` or `IMAGE_DATE_MANUAL` reason);
     - measures the distance from the project site;
     - refuses a capture time in the future;
     - warns when the photo is far from the site or its date;
-    - compares the file's fingerprint (SHA-256) with every other photo to detect reuse;
+    - compares the file's fingerprint (SHA-256) with every other photo to detect an identical copy (Red
+      `IMAGE_REUSED`);
+    - computes a perceptual hash (dHash) to detect a re-saved or re-compressed copy of an earlier photo from
+      another project or an earlier inspection (Yellow `IMAGE_NEAR_DUPLICATE`; only the later copy is flagged);
     - stores a smaller copy if the file is large.
+  - **Limits:** each person can make at most 20 file-carrying requests per 10 minutes (360° photo and document
+    uploads, profile photos, flag reviews, and creating or editing audit findings).
   - **Public approval:** new photos start hidden from the public until an Auditor or Admin clicks
     **Show to public**.
   - **Final photo:** a photo marked **final** (as-built) is one of the requirements for a project to count as completed.
@@ -271,7 +285,8 @@ Sidebar items appear only for the roles that can use them. "All staff" = Admin, 
   2. **One project's audit report:** PDF.
   3. **Financial summary:** Excel, with totals.
 
-  The PDFs have a letterhead, page numbers and a signature block.
+  The PDFs have a letterhead, page numbers and a signature block. Each person can download at most 30 reports
+  per 10 minutes.
 - **Touches:**
   - Pages: `pages/auditor/ReportsPage.jsx`.
   - API: `GET /reports/flagged.pdf`, `/reports/flagged.xlsx`, `/reports/projects/:id/audit.pdf`,
@@ -357,6 +372,9 @@ Sidebar items appear only for the roles that can use them. "All staff" = Admin, 
 - **Daily flag check:** runs inside the API at 01:15 Asia/Manila time (`DAILY_FLAG_CHECK_CRON`) and once at
   start-up. It re-evaluates every project, so delays show up even when nobody submits anything. It can also be
   run by hand with `npm run flags:recheck`. Code: `server/src/jobs/dailyFlagCheck.js`.
+- **Photo hash backfill (one-off):** `node --env-file=.env scripts/backfill-phash.mjs` (from `server/`) computes
+  the perceptual hash of photos uploaded before migration 020. Photos without a hash are skipped by the
+  near-duplicate check until it has run. Code: `server/scripts/backfill-phash.mjs`.
 
 ---
 
