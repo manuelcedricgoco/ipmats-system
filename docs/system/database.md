@@ -1,7 +1,8 @@
 # Database
 
 The database is PostgreSQL 17, hosted by Supabase (project **IPMATS**). This page was written from the live
-database on 22 November 2026, not only from the migration files. Where the two differ, the live schema wins.
+database on 22 November 2026, not only from the migration files, and updated on 25 November 2026 for migrations
+019 and 020. Where the two differ, the live schema wins.
 
 - What each table is used for in the app: [features.md](features.md)
 - Who may read or change each table: [roles-and-permissions.md](roles-and-permissions.md)
@@ -507,7 +508,8 @@ write files. It hands out signed links that expire (1 hour by default, `SIGNED_U
 ## Migrations
 
 The migration files are in `database/migrations/`. They are numbered and run in number order, `001` to `020`.
-The live database's migration history lists all 18 of the first migrations as applied (019 and 020 are applied by hand before the matching API is deployed), in that order.
+The live database's migration history lists all 20 migrations as applied, in that order (019 and 020 were
+applied on 25 November 2026, before the matching API was deployed).
 
 Rules the project follows:
 - An applied migration is never edited or deleted. A mistake is undone by a new migration (013 → 014, 006 → 016).
