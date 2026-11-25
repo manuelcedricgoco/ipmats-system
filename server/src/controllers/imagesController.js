@@ -87,9 +87,14 @@ export async function uploadImage(req, res) {
   const rules = await getFlagRules(adminClient);
   const buffer = req.file.buffer;
   const existingWithHash = unwrap(await adminClient.from('site_images').select('project_id').eq('file_hash', sha256(buffer)));
-  const phash = await dHash(buffer);
+  let phash;
+  try {
+    phash = await dHash(buffer);
+  } catch {
+    throw badRequest('The photo file is damaged or incomplete. Upload the original file again.');
+  }
   const candidates = await loadHashedImages(adminClient);
-  const probe = { id: 'new', project_id: id, phash, inspection_date: body.inspection_date };
+  const probe = { id: 'new', project_id: project.id, phash, inspection_date: body.inspection_date, created_at: new Date().toISOString() };
   const nearDuplicateIn = candidates.filter((c) => findNearDuplicates([probe], [c]).size).map((c) => c.project_id);
   const v = await validateImage({
     buffer,

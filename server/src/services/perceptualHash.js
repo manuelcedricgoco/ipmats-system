@@ -10,7 +10,7 @@ export const PHASH_MAX_DISTANCE = 6;
 
 /** 64-bit dHash as 16 lowercase hex characters. */
 export async function dHash(buffer) {
-  const px = await sharp(buffer).greyscale().resize(9, 8, { fit: 'fill' }).raw().toBuffer();
+  const px = await sharp(buffer, { failOn: 'none', limitInputPixels: 268402689 }).greyscale().resize(9, 8, { fit: 'fill' }).raw().toBuffer();
   let hex = '';
   for (let r = 0; r < 8; r += 1) {
     let byte = 0;
@@ -33,10 +33,17 @@ export function hammingDistance(a, b) {
 }
 
 /**
- * Ids of `images` that have a near-identical candidate: a different image from
- * another project, or from the same project on a different inspection date.
- * Rows without a phash are ignored.
+ * Ids of `images` that have a near-identical EARLIER candidate: a different image
+ * from another project, or from the same project on a different inspection date.
+ * Earlier means an earlier inspection_date, or the same date and an earlier
+ * created_at (same rule as the exact-hash reuse check), so only the later copy is
+ * flagged. Rows without a phash are ignored.
  */
+function isEarlier(c, img) {
+  if (c.inspection_date !== img.inspection_date) return c.inspection_date < img.inspection_date;
+  return Boolean(c.created_at && img.created_at && new Date(c.created_at) < new Date(img.created_at));
+}
+
 export function findNearDuplicates(images, candidates, maxDistance = PHASH_MAX_DISTANCE) {
   const found = new Set();
   for (const img of images) {
@@ -44,6 +51,7 @@ export function findNearDuplicates(images, candidates, maxDistance = PHASH_MAX_D
     for (const c of candidates) {
       if (!c.phash || c.id === img.id) continue;
       if (c.project_id === img.project_id && c.inspection_date === img.inspection_date) continue;
+      if (!isEarlier(c, img)) continue;
       if (hammingDistance(img.phash, c.phash) <= maxDistance) {
         found.add(img.id);
         break;

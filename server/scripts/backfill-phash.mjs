@@ -3,6 +3,7 @@
  * Run from server/:  node --env-file=.env scripts/backfill-phash.mjs
  */
 import { createClient } from '@supabase/supabase-js';
+import { detectImageFormat } from '../src/services/imageFormat.js';
 import { dHash } from '../src/services/perceptualHash.js';
 
 const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } = process.env;
@@ -29,7 +30,9 @@ for (;;) {
     try {
       const file = await db.storage.from(BUCKET).download(row.storage_path);
       if (file.error) throw file.error;
-      const phash = await dHash(Buffer.from(await file.data.arrayBuffer()));
+      const buf = Buffer.from(await file.data.arrayBuffer());
+      if (!detectImageFormat(buf)) throw new Error('not a JPEG, PNG or WebP file');
+      const phash = await dHash(buf);
       const upd = await db.from('site_images').update({ phash }).eq('id', row.id);
       if (upd.error) throw upd.error;
       updated += 1;

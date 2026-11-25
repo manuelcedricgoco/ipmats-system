@@ -40,7 +40,7 @@ export async function loadHashedImages(db) {
   const rows = [];
   for (let from = 0; ; from += PAGE_SIZE) {
     const page = unwrap(
-      await db.from('site_images').select('id, project_id, phash, inspection_date').not('phash', 'is', null).order('id').range(from, from + PAGE_SIZE - 1),
+      await db.from('site_images').select('id, project_id, phash, inspection_date, created_at').not('phash', 'is', null).order('id').range(from, from + PAGE_SIZE - 1),
     );
     rows.push(...page);
     if (page.length < PAGE_SIZE) return rows;
