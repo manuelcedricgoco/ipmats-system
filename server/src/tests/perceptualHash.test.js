@@ -5,34 +5,41 @@ import { dHash, hammingDistance, findNearDuplicates, PHASH_MAX_DISTANCE } from '
 
 const W = 512;
 const H = 256;
-async function picture(fn, quality) {
+function picture(fn) {
   const raw = Buffer.alloc(W * H * 3);
   for (let y = 0; y < H; y += 1) {
     for (let x = 0; x < W; x += 1) {
-      const v = fn(x, y) % 256;
+      const v = Math.max(0, Math.min(255, Math.round(fn(x, y))));
       const o = (y * W + x) * 3;
       raw[o] = v;
       raw[o + 1] = v;
       raw[o + 2] = v;
     }
   }
-  return sharp(raw, { raw: { width: W, height: H, channels: 3 } }).jpeg({ quality }).toBuffer();
+  return sharp(raw, { raw: { width: W, height: H, channels: 3 } });
 }
-const patternA = (x, y) => x * 7 + y * 13 + ((x * y) % 31);
-const patternB = (x, y) => x * x + 3 * y;
+// Low-frequency pictures: their hash is stable under re-encoding.
+const patternA = (x, y) => 128 + 60 * Math.sin(x / 170) + 50 * Math.cos(y / 90) + 30 * Math.sin((x + y) / 300);
+const patternB = (x, y) => 128 + 80 * Math.cos(x / 60) * Math.sin(y / 40);
+const jpeg = (fn, quality) => picture(fn).jpeg({ quality }).toBuffer();
 
 describe('perceptual hash', () => {
   it('returns 16 lowercase hex characters', async () => {
-    assert.match(await dHash(await picture(patternA, 90)), /^[0-9a-f]{16}$/);
+    assert.match(await dHash(await jpeg(patternA, 90)), /^[0-9a-f]{16}$/);
   });
   it('the same picture re-encoded at JPEG q60 is within the threshold', async () => {
-    const a = await dHash(await picture(patternA, 90));
-    const b = await dHash(await picture(patternA, 60));
+    const a = await dHash(await jpeg(patternA, 90));
+    const b = await dHash(await jpeg(patternA, 60));
+    assert.ok(hammingDistance(a, b) <= PHASH_MAX_DISTANCE, `distance ${hammingDistance(a, b)}`);
+  });
+  it('a lossless PNG and a JPEG q90 of the same picture are within the threshold', async () => {
+    const a = await dHash(await picture(patternA).png().toBuffer());
+    const b = await dHash(await jpeg(patternA, 90));
     assert.ok(hammingDistance(a, b) <= PHASH_MAX_DISTANCE, `distance ${hammingDistance(a, b)}`);
   });
   it('a different picture is far', async () => {
-    const a = await dHash(await picture(patternA, 90));
-    const b = await dHash(await picture(patternB, 90));
+    const a = await dHash(await jpeg(patternA, 90));
+    const b = await dHash(await jpeg(patternB, 90));
     assert.ok(hammingDistance(a, b) > PHASH_MAX_DISTANCE, `distance ${hammingDistance(a, b)}`);
   });
   it('counts differing bits', () => {

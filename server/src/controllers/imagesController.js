@@ -16,7 +16,7 @@ import { assertImageFormat } from '../services/imageFormat.js';
 import { sha256, validateImage } from '../services/imageValidation.js';
 import { dHash, findNearDuplicates } from '../services/perceptualHash.js';
 import { logActivity, projectCode } from '../services/activityLog.js';
-import { reevaluate } from '../services/projectEvaluation.js';
+import { loadHashedImages, reevaluate } from '../services/projectEvaluation.js';
 import { getFlagRules } from '../services/settings.js';
 import { signedUrls } from '../services/storage.js';
 import { badRequest, notFound, unwrap } from '../utils/httpError.js';
@@ -88,7 +88,7 @@ export async function uploadImage(req, res) {
   const buffer = req.file.buffer;
   const existingWithHash = unwrap(await adminClient.from('site_images').select('project_id').eq('file_hash', sha256(buffer)));
   const phash = await dHash(buffer);
-  const candidates = unwrap(await adminClient.from('site_images').select('id, project_id, phash, inspection_date').not('phash', 'is', null));
+  const candidates = await loadHashedImages(adminClient);
   const probe = { id: 'new', project_id: id, phash, inspection_date: body.inspection_date };
   const nearDuplicateIn = candidates.filter((c) => findNearDuplicates([probe], [c]).size).map((c) => c.project_id);
   const v = await validateImage({

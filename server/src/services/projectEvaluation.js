@@ -33,7 +33,21 @@ function findReusedHashes(images, others) {
   return reused;
 }
 
-async function loadEvaluationInput(db, projectId) {
+const PAGE_SIZE = 1000; // PostgREST returns at most this many rows per request
+
+/** Every site_images row that has a perceptual hash, read page by page (a single query is capped at max_rows). */
+export async function loadHashedImages(db) {
+  const rows = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const page = unwrap(
+      await db.from('site_images').select('id, project_id, phash, inspection_date').not('phash', 'is', null).order('id').range(from, from + PAGE_SIZE - 1),
+    );
+    rows.push(...page);
+    if (page.length < PAGE_SIZE) return rows;
+  }
+}
+
+async function loadEvaluationInput(db, projectId, phashCandidates) {
   const [project, phases, images, financials] = await Promise.all([
     db.from('projects').select('*').eq('id', projectId).single().then((r) => unwrap(r, { notFoundMessage: 'Project not found' })),
     db.from('project_phases').select('*').eq('project_id', projectId).order('sequence_no').then(unwrap),
@@ -47,7 +61,7 @@ async function loadEvaluationInput(db, projectId) {
   }
   let nearDuplicateIds = new Set();
   if (images.some((i) => i.phash)) {
-    const candidates = unwrap(await db.from('site_images').select('id, project_id, phash, inspection_date').not('phash', 'is', null));
+    const candidates = phashCandidates ?? (await loadHashedImages(db));
     nearDuplicateIds = findNearDuplicates(images, candidates);
   }
   return { project, phases, images, financials, hashesUsedElsewhere: findReusedHashes(images, others), nearDuplicateIds };
@@ -71,8 +85,8 @@ export function resolveFlagState({ autoFlag, previousAutoFlag, currentFlag, revi
   return { current_flag: maxFlag(autoFlag, reviewedFlag), flag_review_status: 'pending' };
 }
 
-export async function evaluateAndSave(admin, projectId, { trigger = 'manual', actorId = null, rules, today = new Date() } = {}) {
-  const input = await loadEvaluationInput(admin, projectId);
+export async function evaluateAndSave(admin, projectId, { trigger = 'manual', actorId = null, rules, today = new Date(), phashCandidates } = {}) {
+  const input = await loadEvaluationInput(admin, projectId, phashCandidates);
   const activeRules = rules || (await getFlagRules(admin));
   const result = evaluateProject({ ...input, rules: activeRules, today });
   const { project } = input;
