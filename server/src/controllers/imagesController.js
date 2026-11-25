@@ -12,6 +12,7 @@
 import { randomUUID } from 'node:crypto';
 import sharp from 'sharp';
 import { adminClient } from '../config/supabase.js';
+import { assertImageFormat } from '../services/imageFormat.js';
 import { sha256, validateImage } from '../services/imageValidation.js';
 import { logActivity, projectCode } from '../services/activityLog.js';
 import { reevaluate } from '../services/projectEvaluation.js';
@@ -70,6 +71,7 @@ export async function listImages(req, res) {
 
 export async function uploadImage(req, res) {
   if (!req.file) throw badRequest('Attach a 360° panorama in the "file" field.');
+  const format = assertImageFormat(req.file.buffer);
   const { id } = req.params;
   const project = await getProject(id);
   const body = req.body;
@@ -97,7 +99,7 @@ export async function uploadImage(req, res) {
   if (v.problems.length) throw badRequest(v.problems[0], v.problems.map((message) => ({ field: 'file', message })));
 
   // Validation (EXIF GPS / time, reuse hash) has used the original file; store a smaller copy when it is large.
-  const stored = await compressPanorama(buffer, req.file.mimetype, v.width);
+  const stored = await compressPanorama(buffer, `image/${format}`, v.width);
   const storagePath = `${id}/${body.inspection_date}_${randomUUID()}.${EXT[stored.mimetype]}`;
   const up = await adminClient.storage.from(BUCKET).upload(storagePath, stored.buffer, { contentType: stored.mimetype, upsert: false });
   if (up.error) throw Object.assign(new Error('Storage upload failed'), { cause: up.error });

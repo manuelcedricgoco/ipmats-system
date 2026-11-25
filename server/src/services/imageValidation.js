@@ -8,7 +8,7 @@
  */
 import { createHash } from 'node:crypto';
 import exifr from 'exifr';
-import imageSize from 'image-size';
+import sharp from 'sharp';
 import { haversineMeters, isWithinOccidentalMindoro } from '../utils/geo.js';
 
 export function sha256(buffer) {
@@ -19,7 +19,7 @@ export async function readImageMetadata(buffer) {
   let width = null;
   let height = null;
   try {
-    ({ width, height } = imageSize(buffer));
+    ({ width, height } = await sharp(buffer).metadata());
   } catch {
     /* unreadable dimensions are reported as a warning */
   }

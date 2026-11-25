@@ -5,6 +5,7 @@
 import { randomUUID } from 'node:crypto';
 import sharp from 'sharp';
 import { adminClient } from '../config/supabase.js';
+import { assertImageFormat } from './imageFormat.js';
 import { badRequest, unwrap } from '../utils/httpError.js';
 
 const BUCKET = 'avatars';
@@ -13,6 +14,7 @@ const SIGNED_URL_TTL = 60 * 60;
 
 /** Check the bytes are a real image (not just a renamed file) and normalise it. */
 export async function processAvatar(buffer) {
+  assertImageFormat(buffer);
   let meta;
   try {
     meta = await sharp(buffer, { failOn: 'error', limitInputPixels: 40_000_000 }).metadata();
@@ -22,7 +24,7 @@ export async function processAvatar(buffer) {
   if (!meta.width || !meta.height || Math.min(meta.width, meta.height) < 128) {
     throw badRequest('Use a photo that is at least 128 × 128 pixels.');
   }
-  return sharp(buffer, { failOn: 'error' })
+  return sharp(buffer, { failOn: 'error', limitInputPixels: 40_000_000 })
     .rotate() // respect phone camera orientation
     .resize(SIZE, SIZE, { fit: 'cover', position: 'attention' })
     .webp({ quality: 85 })
