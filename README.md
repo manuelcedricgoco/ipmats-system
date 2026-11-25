@@ -111,6 +111,7 @@ There is no migration runner in this repository. Apply the files in `database/mi
 1. `database/seed/seed.sql` — municipalities, barangays, offices, demo accounts, contractors and projects (`npm run seed:generate` rebuilds it from `generate-seed.mjs`).
 2. `database/seed/seed_week2.sql` — phases, monthly progress reports and financial records (`node database/seed/week2-seed.mjs` rebuilds it).
 3. With the API running, in `server/`: `npm run seed:images` uploads placeholder 360° panoramas (labelled "SAMPLE – NOT A REAL PHOTO") through the upload API.
+4. After applying migration `020`, in `server/`: `node --env-file=.env scripts/backfill-phash.mjs` computes the perceptual hash of photos uploaded earlier (prints `updated N / skipped M`).
 
 Demo accounts (password `Dpwh360!Demo2026`; change or delete them before real use): `admin@dpwh360.local` (System Administrator), `personnel@dpwh360.local` and `personnel.south@dpwh360.local` (DPWH Personnel), `auditor@dpwh360.local` (Auditor), `applicant@dpwh360.local` (pending registration).
 

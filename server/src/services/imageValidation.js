@@ -51,9 +51,10 @@ export async function readImageMetadata(buffer) {
  * @param {number|null} p.manualLongitude
  * @param {string|null} p.capturedAt
  * @param {object[]} p.existingWithHash     site_images rows that already have this hash
+ * @param {string[]} p.nearDuplicateIn      ids of projects holding a near-identical photo
  * @param {object} p.rules                  flag rules (gps_tolerance_m, gps_red_m)
  */
-export async function validateImage({ buffer, project, manualLatitude, manualLongitude, capturedAt, inspectionDate, existingWithHash = [], rules }) {
+export async function validateImage({ buffer, project, manualLatitude, manualLongitude, capturedAt, inspectionDate, existingWithHash = [], nearDuplicateIn = [], rules }) {
   const meta = await readImageMetadata(buffer);
   const fileHash = sha256(buffer);
   const warnings = [];
@@ -90,6 +91,9 @@ export async function validateImage({ buffer, project, manualLatitude, manualLon
   const reusedIn = [...new Set(existingWithHash.map((r) => r.project_id))];
   if (reusedIn.length) warnings.push('An identical file has already been uploaded.');
 
+  const nearIn = [...new Set(nearDuplicateIn)];
+  if (nearIn.length) warnings.push('A photo that looks almost identical already exists in another project or an earlier inspection.');
+
   const captured = meta.exifCapturedAt || capturedAt || null;
   const timestampSource = meta.exifCapturedAt ? 'exif' : capturedAt ? 'manual' : 'none';
   const problems = []; // reasons the upload is REFUSED
@@ -124,6 +128,7 @@ export async function validateImage({ buffer, project, manualLatitude, manualLon
       distance_m: distanceM,
       reused_elsewhere: reusedIn.length > 0,
       reused_in_projects: reusedIn,
+      near_duplicate_in_projects: nearIn,
       aspect_ratio_ok: aspectRatioOk,
       projection_type: meta.projectionType,
       exif_gps: meta.exifLatitude != null,

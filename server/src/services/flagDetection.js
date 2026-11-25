@@ -46,6 +46,7 @@ const peso = (n) =>
  * @param {object[]} input.images       site_images rows for the project
  * @param {object[]} input.financials   financial_records rows for the project
  * @param {Set<string>} [input.hashesUsedElsewhere] file hashes that also appear in OTHER projects
+ * @param {Set<string>} [input.nearDuplicateIds] ids of images that look almost identical to another project's / an earlier photo
  * @param {object}   [input.rules]      flag rules (merged over DEFAULT_RULES)
  * @param {Date|string} [input.today]
  */
@@ -55,6 +56,7 @@ export function evaluateProject({
   images = [],
   financials = [],
   hashesUsedElsewhere = new Set(),
+  nearDuplicateIds = new Set(),
   rules: rulesInput = {},
   today: todayInput = new Date(),
 }) {
@@ -167,6 +169,11 @@ export function evaluateProject({
     add('documentation', 'red', 'IMAGE_REUSED', `${reused.size} 360° image(s) appear to be reused (identical file found elsewhere).`);
   }
 
+  const nearCount = images.filter((img) => nearDuplicateIds.has(img.id)).length;
+  if (nearCount) {
+    add('documentation', 'yellow', 'IMAGE_NEAR_DUPLICATE', `${nearCount} 360° image(s) look almost identical to a photo from another project or an earlier inspection.`);
+  }
+
   // GPS consistency
   let maxDistance = 0;
   let farCount = 0;
@@ -187,6 +194,10 @@ export function evaluateProject({
   }
   if (farCount) {
     add('documentation', 'yellow', 'GPS_MISMATCH', `${farCount} image(s) were taken more than ${rules.gps_tolerance_m} m from the project site.`);
+  }
+  const manualGps = images.filter((img) => img.gps_source === 'manual').length;
+  if (manualGps) {
+    add('documentation', 'yellow', 'GPS_MANUAL', `${manualGps} image(s) use coordinates typed by the uploader instead of GPS stored in the photo.`);
   }
   if (noGpsCount) {
     add('documentation', 'yellow', 'GPS_MISSING', `${noGpsCount} image(s) have no GPS coordinates.`);
@@ -215,6 +226,10 @@ export function evaluateProject({
       'IMAGE_DATE_MISMATCH',
       `${dateMismatch} image(s) were taken more than ${rules.image_date_tolerance_days} days away from their inspection date.`,
     );
+  }
+  const manualDate = images.filter((img) => img.validation?.timestamp_source === 'manual').length;
+  if (manualDate) {
+    add('documentation', 'yellow', 'IMAGE_DATE_MANUAL', `${manualDate} image(s) use a capture time typed by the uploader.`);
   }
   if (undated) {
     add('documentation', 'yellow', 'IMAGE_UNDATED', `${undated} image(s) have no capture date in the file.`);

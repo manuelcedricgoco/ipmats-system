@@ -14,6 +14,7 @@ import sharp from 'sharp';
 import { adminClient } from '../config/supabase.js';
 import { assertImageFormat } from '../services/imageFormat.js';
 import { sha256, validateImage } from '../services/imageValidation.js';
+import { dHash, findNearDuplicates } from '../services/perceptualHash.js';
 import { logActivity, projectCode } from '../services/activityLog.js';
 import { reevaluate } from '../services/projectEvaluation.js';
 import { getFlagRules } from '../services/settings.js';
@@ -86,6 +87,10 @@ export async function uploadImage(req, res) {
   const rules = await getFlagRules(adminClient);
   const buffer = req.file.buffer;
   const existingWithHash = unwrap(await adminClient.from('site_images').select('project_id').eq('file_hash', sha256(buffer)));
+  const phash = await dHash(buffer);
+  const candidates = unwrap(await adminClient.from('site_images').select('id, project_id, phash, inspection_date').not('phash', 'is', null));
+  const probe = { id: 'new', project_id: id, phash, inspection_date: body.inspection_date };
+  const nearDuplicateIn = candidates.filter((c) => findNearDuplicates([probe], [c]).size).map((c) => c.project_id);
   const v = await validateImage({
     buffer,
     project,
@@ -94,6 +99,7 @@ export async function uploadImage(req, res) {
     capturedAt: body.captured_at ?? null,
     inspectionDate: body.inspection_date,
     existingWithHash,
+    nearDuplicateIn,
     rules,
   });
   if (v.problems.length) throw badRequest(v.problems[0], v.problems.map((message) => ({ field: 'file', message })));
@@ -111,6 +117,7 @@ export async function uploadImage(req, res) {
       phase_id: body.phase_id || null,
       storage_path: storagePath,
       file_hash: v.fileHash,
+      phash,
       mime_type: stored.mimetype,
       size_bytes: stored.buffer.length,
       width: v.width,

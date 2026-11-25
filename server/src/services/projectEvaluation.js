@@ -15,6 +15,7 @@
 import { adminClient } from '../config/supabase.js';
 import { unwrap } from '../utils/httpError.js';
 import { evaluateProject, maxFlag } from './flagDetection.js';
+import { findNearDuplicates } from './perceptualHash.js';
 import { getFlagRules } from './settings.js';
 
 /** Hashes of this project's images that appeared EARLIER in a different project. */
@@ -36,7 +37,7 @@ async function loadEvaluationInput(db, projectId) {
   const [project, phases, images, financials] = await Promise.all([
     db.from('projects').select('*').eq('id', projectId).single().then((r) => unwrap(r, { notFoundMessage: 'Project not found' })),
     db.from('project_phases').select('*').eq('project_id', projectId).order('sequence_no').then(unwrap),
-    db.from('site_images').select('id, file_hash, latitude, longitude, captured_at, inspection_date, is_final, created_at').eq('project_id', projectId).then(unwrap),
+    db.from('site_images').select('id, project_id, file_hash, latitude, longitude, captured_at, inspection_date, is_final, created_at, gps_source, validation, phash').eq('project_id', projectId).then(unwrap),
     db.from('financial_records').select('record_type, amount').eq('project_id', projectId).then(unwrap),
   ]);
   const hashes = [...new Set(images.map((i) => i.file_hash))];
@@ -44,7 +45,12 @@ async function loadEvaluationInput(db, projectId) {
   if (hashes.length) {
     others = unwrap(await db.from('site_images').select('project_id, file_hash, inspection_date, created_at').in('file_hash', hashes).neq('project_id', projectId));
   }
-  return { project, phases, images, financials, hashesUsedElsewhere: findReusedHashes(images, others) };
+  let nearDuplicateIds = new Set();
+  if (images.some((i) => i.phash)) {
+    const candidates = unwrap(await db.from('site_images').select('id, project_id, phash, inspection_date').not('phash', 'is', null));
+    nearDuplicateIds = findNearDuplicates(images, candidates);
+  }
+  return { project, phases, images, financials, hashesUsedElsewhere: findReusedHashes(images, others), nearDuplicateIds };
 }
 
 /**
