@@ -32,7 +32,7 @@ export const DEFAULT_RULES = Object.freeze({
 
 const RANK = { info: -1, green: 0, yellow: 1, red: 2 };
 
-function maxFlag(a, b) {
+export function maxFlag(a, b) {
   return RANK[b] > RANK[a] ? b : a;
 }
 

@@ -242,7 +242,9 @@ Sidebar items appear only for the roles that can use them. "All staff" = Admin, 
   - **Flag review queue:** counters (Red, Yellow, Green, awaiting review), filters by flag, review status and
     municipality, worst projects first.
   - **Review:** confirm the flag, or override it with another colour. A reason is always required. An override
-    also needs an evidence file (PDF or photo).
+    also needs an evidence file (PDF or photo). The auditor's decision is sticky: editing the project can never
+    lower a reviewed flag. If the automatic flag changes later, the flag becomes the worse of the new automatic
+    flag and the auditor's decision, and goes back to "pending" for another review.
   - **Audit findings:** severity, description, recommendation and due date, and an optional assignment of the
     corrective action to a DPWH personnel account. The assigned person reports progress on their dashboard; the
     auditor closes the finding.
