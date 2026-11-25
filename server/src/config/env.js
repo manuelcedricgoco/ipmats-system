@@ -9,7 +9,8 @@ function list(value, fallback) {
 
 /** Proxy hops in front of Express. A typo must not become NaN or true. */
 export function parseTrustProxy(value) {
-  const n = Number(value ?? 1);
+  if (value == null || String(value).trim() === '') return 1;
+  const n = Number(value);
   return Number.isInteger(n) && n >= 0 ? n : 1;
 }
 

@@ -40,6 +40,8 @@ describe('proxy hop count', () => {
     assert.equal(parseTrustProxy('-1'), 1);
     assert.equal(parseTrustProxy('1.5'), 1);
     assert.equal(parseTrustProxy(undefined), 1);
+    assert.equal(parseTrustProxy(''), 1);
+    assert.equal(parseTrustProxy('  '), 1);
     assert.equal(parseTrustProxy('0'), 0);
     assert.equal(parseTrustProxy('3'), 3);
   });
