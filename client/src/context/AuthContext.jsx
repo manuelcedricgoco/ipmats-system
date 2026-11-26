@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { invalidateReference } from '../hooks/useReference.js';
 import { ACCOUNT_SUSPENDED_EVENT, api } from '../lib/api.js';
 import { STAFF_ROLES, SUSPENDED_MESSAGE, isSuspensionError } from '../lib/constants.js';
 import { supabase } from '../lib/supabaseClient.js';
@@ -70,6 +71,9 @@ export function AuthProvider({ children }) {
     });
     const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
       setSession(s);
+      // The reference lists depend on who is signed in (contractors are staff-only), so a list cached on the
+      // public portal while signed out must not be reused after sign-in, and vice versa.
+      if (event === 'SIGNED_IN' || event === 'SIGNED_OUT') invalidateReference();
       if (event === 'SIGNED_IN' || event === 'USER_UPDATED') loadProfile(s);
       if (event === 'SIGNED_OUT') setProfile(null);
     });
