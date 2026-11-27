@@ -113,7 +113,9 @@ Anyone can also report a problem on a project to PACC, anonymously and with phot
     description, status, the submission **date only** (Asia/Manila, no time) and a keyed hash of the tracking code.
     No IP, user agent, account or session is stored or logged, and nothing goes to the activity log.
   - **Tracking code:** after sending, the dialog shows a 10-character code (`XXXXX-XXXXX`) with a Copy button
-    and "Save this code; it is shown only once." Closing the dialog discards it; the browser does not keep it.
+    and "Save this code; it is shown only once." Only the Done button closes this screen (Esc, a click outside and
+    the corner X do nothing, so the code is not lost by accident), and the "Check a report" link opens in a new tab.
+    Closing the dialog discards the code; the browser does not keep it.
   - **Limits:** 3 reports per day per connection and 1 per project per day per connection (HTTP 429 "Too many
     reports from this connection today. Please try again tomorrow."). See
     [roles-and-permissions → rate limits](roles-and-permissions.md#permission-matrix).

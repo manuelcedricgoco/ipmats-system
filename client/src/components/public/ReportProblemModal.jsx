@@ -101,8 +101,9 @@ export default function ReportProblemModal({ project, onClose }) {
   const subtitle = project ? `${project.project_code} · ${project.name}` : undefined;
 
   if (code) {
+    // The code is shown only once: Esc, a click outside or the corner X must not lose it. Only Done closes.
     return (
-      <Modal key="sent" open onClose={close} title="Report sent" description={subtitle} footer={<Button onClick={close}>Done</Button>}>
+      <Modal key="sent" open onClose={close} dismissible={false} title="Report sent" description={subtitle} footer={<Button onClick={close}>Done</Button>}>
         <TrackingCode code={code} />
       </Modal>
     );
@@ -232,7 +233,10 @@ function TrackingCode({ code }) {
       <Alert tone="warning">Save this code; it is shown only once.</Alert>
       <p className="text-sm text-slate-600">
         Check it any time on the{' '}
-        <Link to="/report-status" className="font-semibold text-brand-700 underline underline-offset-2">Check a report</Link> page.
+        <Link to="/report-status" target="_blank" rel="noopener noreferrer" className="font-semibold text-brand-700 underline underline-offset-2">
+          Check a report
+        </Link>{' '}
+        page (opens in a new tab).
       </p>
     </div>
   );

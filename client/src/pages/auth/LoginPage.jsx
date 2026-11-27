@@ -60,7 +60,7 @@ export default function LoginPage() {
   const message = error || signOutNotice;
 
   return (
-    <AuthShell title="Sign in" subtitle="For registered DPWH personnel, auditors and system administrators.">
+    <AuthShell title="Sign in" subtitle="For registered DPWH personnel, auditors, system administrators and PACC members.">
       <form onSubmit={submit} className="space-y-4">
         {message && <Alert tone="error" title={isSuspensionError(message) ? 'Account suspended' : undefined}>{message}</Alert>}
         <Field label="Email" required>{(a) => <Input {...a} type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus />}</Field>
@@ -71,7 +71,7 @@ export default function LoginPage() {
         DPWH personnel or auditor without an account? <Link to="/register" className="font-semibold text-brand-700 hover:underline">Request one</Link>
       </p>
       <p className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-center text-xs text-slate-600">
-        Sign-in is for DPWH staff and auditors. Anyone can <Link to="/" className="font-semibold text-brand-700 hover:underline">browse the public portal</Link> without an account.
+        Sign-in is for DPWH staff, auditors and PACC members. Anyone can <Link to="/" className="font-semibold text-brand-700 hover:underline">browse the public portal</Link> without an account.
       </p>
     </AuthShell>
   );
