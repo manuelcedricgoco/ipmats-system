@@ -9,8 +9,8 @@ The database has four roles (enum `user_role`). Two more kinds of user have no r
 
 | Who | Role value | What it is for |
 |---|---|---|
-| **System Administrator** | `admin` | Runs the system: approves access requests and manages accounts, offices and the automatic flag rules. Can also do everything DPWH personnel and auditors do. Cannot see or manage PACC accounts, and cannot read citizen reports, PACC cases or the PACC activity log |
-| **DPWH Personnel** | `dpwh_personnel` | Keeps the project records up to date: registers projects and contractors, sets up phases, reports progress, records payments, uploads 360° photos and documents, and reports on the corrective actions assigned to them |
+| **System Administrator** | `admin` | Runs the system: approves access requests and manages accounts, offices and the automatic flag rules. Can also do everything auditors do. Views all project data but does **not** create or edit it (migration 027): only DPWH Personnel do. Deletes wrong records (projects, 360° photos, financial records, documents) and approves or declines DPWH Personnel's requests to delete a project. Sees whether a project has an open PACC case (status only). Cannot see or manage PACC accounts, and cannot read citizen reports, PACC cases or the PACC activity log |
+| **DPWH Personnel** | `dpwh_personnel` | Keeps the project records up to date: registers and edits projects, registers contractors, sets up phases, reports progress, records payments, uploads 360° photos and documents, and reports on the corrective actions assigned to them. The only role that creates or edits project data (027). Deletes a project only with the System Administrator's approval |
 | **Auditor** | `auditor` | Checks the work: reviews automatic flags (confirm or override), records audit findings, decides which photos the public may see, and reads the activity log. Read-only for project data |
 | **PACC** | `pacc` | Presidential Anti-Corruption Commission (migration 023). Receives projects with an auditor-confirmed Red flag and anonymous citizen reports, investigates, and records cases. Read-only for project data. Uses the PACC portal (`/pacc`), not the staff workspace. Manages its own accounts |
 | Public visitor | none (no account) | Browses the public portal, reports a problem on a project to PACC (anonymously, with photo proof) and checks a report's status with its tracking code. Needs no account |
@@ -32,15 +32,18 @@ which are the real enforcement point for every write.
 | Feature or record | Admin | DPWH Personnel | Auditor | PACC | Public visitor / applicant |
 |---|---|---|---|---|---|
 | Public portal (dashboard, projects, map, public 360° photos) | V | V | V | V | V |
-| Projects | V C E D | V C E⁷ | V | V⁸ | V (public fields only) |
-| Project starting status at registration (Automatic, Not started, On-going) | C | C | — | — | — |
-| Construction phases (plan) | V C E D¹ | V C E D¹ | V | V⁸ | — |
-| Progress reports | V C | V C | V | V⁸ | — (only the overall %) |
-| Financial records | V C D | V C | V | V⁸ | — (only the contract amount) |
-| 360° photos: upload, caption, mark final | V C E | V C E | V | V⁸ | — |
+| Projects | V D | V C E⁷ D¹³ | V | V⁸ | V (public fields only) |
+| Project starting status at registration (Automatic, Not started, On-going) | — | C | — | — | — |
+| Project deletion requests: ask with a reason, cancel while pending | — | C E¹³ | — | — | — |
+| Project deletion requests: list, approve or decline | V E¹³ | V (the project's latest request, on the project page) | V (the project's latest request, API only) | — | — |
+| PACC case status on the staff project page and project list (status only) | V¹⁴ | V¹⁴ | V¹⁴ | V (the case itself) | — |
+| Construction phases (plan) | V | V C E D¹ | V | V⁸ | — |
+| Progress reports | V | V C | V | V⁸ | — (only the overall %) |
+| Financial records | V D | V C | V | V⁸ | — (only the contract amount) |
+| 360° photos: upload, caption, mark final | V | V C E | V | V⁸ | — |
 | 360° photos on the public portal | V | V | V | V | V (every photo, as soon as it is uploaded; no approval step) |
 | 360° photos: delete | D | — | — | — | — |
-| Project documents | V C D | V C D² | V | V⁸ | — |
+| Project documents | V D² | V C D² | V | V⁸ | — |
 | Automatic flags and flag history | V | V | V | V | — (only the flag an auditor confirmed or overrode; "Under review" before that) |
 | Flag review (confirm / override) | C | — | C | — (reads the decisions) | — |
 | Re-check all flags now | C | — | — | — | — |
@@ -70,12 +73,14 @@ which are the real enforcement point for every write.
 4. A contractor still assigned to a project cannot be deleted; suspend it instead.
 5. An office used by any project or user account cannot be deleted.
 6. The API lets every staff role read the rules, but the System Settings page is shown to admins only.
-7. Personnel cannot change a project's location once 360° photos have been uploaded for it. Only a System Administrator can, and the move is recorded in the activity log.
+7. Nobody can change a project's location once 360° photos have been uploaded for it, the System Administrator included (027; before, the Admin could). The API answers 403 "The project location cannot be changed once 360° photos are on file."
 8. PACC reads project data only, never writes it. The PACC investigation page (`GET /pacc/projects/:id`) shows the project summary, the flag and its history, auditor decisions and findings, and, read-only, the construction phases, the 50 most recent progress reports, the financial records with a summary, the 360° photos (opened full size in a new tab) and the supporting documents (one-hour links). It reads them as the PACC account, through the "… pacc read" RLS policies of migration 024; only the file links are signed by the server. RLS also lets a PACC account read the activity-log entries tied to a project, as an Auditor can. PACC cannot use `/app` or any staff route.
 9. PACC accounts are not listed in User Management, and the API refuses every action on them (see [Roles](#roles)).
 10. Anyone can report, signed in or not, and the report stays anonymous: the browser sends it without the sign-in token, and the API route does not read a session. Nothing links a report to an account, so a staff member who sends one has no more access to it than any visitor.
 11. Closing a case (Resolved or Dismissed) is final and closes its attached reports. Notes are append-only and can be added to a closed case.
 12. Add (with a temporary password), suspend, reactivate and remove PACC accounts. Nobody can act on their own account, the last active PACC account cannot be suspended or removed, and an account with case records cannot be removed (suspend it instead).
+13. Project deletion by approval (027). DPWH Personnel ask with a reason (10–500 characters); a project has at most one open request (pending, or approved and unused), otherwise 409 "This project already has an open deletion request." The requester can cancel a pending request. The System Administrator approves or declines a pending request, with an optional note (at most 500 characters). An approval is valid for **7 days**, can be used **once**, and only by the **requesting** Personnel account; an expired one is shown as expired and a new request can then be made. Any other Personnel delete (no request, someone else's approval, pending, declined, expired or used) gets 403 "Ask a System Administrator to approve deleting this project first." The Admin deletes directly, and any open request on the project is then closed. Every step (request, cancel, approve, decline, delete) is in the activity log.
+14. `projects.pacc_case_status` (027): "Under PACC investigation" or "Case filed" while the project has a non-closed PACC case, **whether or not** PACC shows it on the public portal; nothing about the case itself (respondents, charges, reports, notes). It is a chip on the staff project page and project list, and a warning in the delete, request-deletion and approve dialogs ("This project is under PACC investigation. Deleting it removes records PACC may need."). Deleting stays allowed; when a non-closed case exists, the API first writes one `pacc_activity` entry (actor "System") naming who deleted the project (name and role), and the case survives. The public still sees only what PACC's "show status to public" switch allows (`pacc_public_status`). Accepted risk: investigated personnel learn of an open case as soon as it is opened.
 
 Other limits enforced by the API:
 - An admin cannot change their own role, or deactivate, suspend, decline or delete their own account.
@@ -163,9 +168,9 @@ There are three layers. Only the last two actually protect data.
 ### 1. Frontend route guards (convenience only)
 `client/src/routes/ProtectedRoute.jsx` and `App.jsx`:
 - `/app/**`: signed-in staff (admin, DPWH personnel, auditor). Others go to `/login`, or to `/` if they have no role.
-- `/app/projects/new` and `/app/projects/:id/edit`: admin and DPWH personnel.
+- `/app/projects/new` and `/app/projects/:id/edit`: DPWH personnel only (027).
 - `/app/activity`: admin and auditor.
-- `/app/users` and `/app/settings`: admin.
+- `/app/users`, `/app/deletion-requests` and `/app/settings`: admin.
 - `/pacc/**`: PACC accounts only. A PACC account opening `/app` is sent to `/pacc`, and staff opening `/pacc` are
   sent to `/app`.
 - `/report-status` (Check a report) is public, like the rest of the portal.
@@ -208,6 +213,8 @@ Most API reads run **as the caller**: the API uses a Supabase client carrying th
 |---|---|---|
 | Public project data (`v_public_projects`, public photo rows) | RLS + column grants (anon) | API only (no write grants) |
 | Staff project data (projects, phases, progress, finance, photos, documents, flags, findings) | RLS (`is_staff()`) and the API role check | API role check + controller rules |
+| Project deletion requests (`project_deletion_requests`) | RLS (`is_staff()`; anon has no grant) and the API role check | API role check (ask / cancel: Personnel; approve / decline: Admin) + controller rules; one open request per project (partial unique index) |
+| PACC case status for staff (`projects.pacc_case_status`) | RLS (staff, through `projects` / `v_project_summary`); anon has no grant | Database trigger on `pacc_cases` only (never written directly) |
 | Activity logs | RLS (admin, auditor) and the API role check | API only; append-only trigger in the database |
 | Flag history and reviews | RLS (staff) | API only; append-only trigger; CHECK rules (evidence required to override) |
 | User list, access requests, "assign to" list | **API role check only** (these reads use the service role) | API role check (admin) |

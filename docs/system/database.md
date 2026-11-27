@@ -2,7 +2,7 @@
 
 The database is PostgreSQL 17, hosted by Supabase (project **IPMATS**). This page was written from the live
 database on 22 November 2026, not only from the migration files, and updated on 25 November 2026 for migrations
-019 and 020. The PACC parts (migrations 023, 024 and 025, applied 27 November 2026, and 026) and the project deletion requests (027) are written from the migration files.
+019 and 020. The PACC parts (migrations 023–026) and the project deletion requests (027), all applied 27 November 2026, are written from the migration files.
 Where the two differ, the live schema wins.
 
 - What each table is used for in the app: [features.md](features.md)
@@ -669,12 +669,12 @@ write files. It hands out signed links that expire (1 hour by default, `SIGNED_U
 ## Migrations
 
 The migration files are in `database/migrations/`. They are numbered and run in number order, `001` to `027`.
-The live database's migration history lists 001–026 as applied, in that order (019 and 020 on 25 November
+The live database's migration history lists 001–027 as applied, in that order (019 and 020 on 25 November
 2026; 021 and 022 on 27 November 2026, each before the matching API was deployed; 023, 024, 025 and 026 on 27 November
-2026 for the PACC portal). On a fresh database, 023 must be applied on its own before 024, because a new enum value
+2026 for the PACC portal; 027 on 27 November 2026 for project deletion requests and the staff-visible PACC case status). On a fresh database, 023 must be applied on its own before 024, because a new enum value
 must be committed before it can be used, and 025 must be applied after 024 and before the API that closes cases is
-deployed. 026 is new: apply it after 025 and before deploying the API that writes `pacc_cases.contractor_name`
-(without it, opening or editing a case fails). 027 is new and not yet applied: apply it after 026 and before deploying
+deployed. Apply 026 after 025 and before deploying the API that writes `pacc_cases.contractor_name`
+(without it, opening or editing a case fails). Apply 027 after 026 and before deploying
 the API that reads `project_deletion_requests` and `v_project_summary.pacc_case_status` (without it, the project list fails).
 
 Rules the project follows:
