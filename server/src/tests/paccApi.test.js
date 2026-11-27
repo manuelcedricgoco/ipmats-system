@@ -25,6 +25,7 @@ function run(role) {
 describe('PACC API guards', () => {
   it('every PACC route needs sign-in', async () => {
     assert.equal((await request(app).get('/api/pacc/inbox')).status, 401);
+    assert.equal((await request(app).get('/api/pacc/activity')).status, 401);
     assert.equal((await request(app).get(`/api/pacc/projects/${ID}`)).status, 401);
     assert.equal((await request(app).post(`/api/pacc/reports/${ID}/close`).send({ outcome: 'valid' })).status, 401);
     assert.equal((await request(app).post(`/api/pacc/projects/${ID}/reports/close-all`).send({ outcome: 'valid' })).status, 401);

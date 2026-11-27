@@ -2,7 +2,7 @@
 
 The database is PostgreSQL 17, hosted by Supabase (project **IPMATS**). This page was written from the live
 database on 22 November 2026, not only from the migration files, and updated on 25 November 2026 for migrations
-019 and 020. The PACC parts (migrations 023, 024 and 025, 27 November 2026) are written from the migration files.
+019 and 020. The PACC parts (migrations 023, 024 and 025, applied 27 November 2026) are written from the migration files.
 Where the two differ, the live schema wins.
 
 - What each table is used for in the app: [features.md](features.md)
@@ -637,10 +637,11 @@ write files. It hands out signed links that expire (1 hour by default, `SIGNED_U
 ## Migrations
 
 The migration files are in `database/migrations/`. They are numbered and run in number order, `001` to `025`.
-The live database's migration history lists 001–022 as applied, in that order (019 and 020 on 25 November
-2026, 021 and 022 on 27 November 2026, each before the matching API was deployed). 023 (PACC role), 024 (PACC
-portal and citizen reports) and 025 (closing a case closes its reports) are new; 023 must be applied on its own before 024, because a new enum value must be committed
-before it can be used. 025 must be applied after 024 and before the API that closes cases is deployed.
+The live database's migration history lists 001–025 as applied, in that order (019 and 020 on 25 November
+2026; 021 and 022 on 27 November 2026, each before the matching API was deployed; 023, 024 and 025 on 27 November
+2026 for the PACC portal). On a fresh database, 023 must be applied on its own before 024, because a new enum value
+must be committed before it can be used, and 025 must be applied after 024 and before the API that closes cases is
+deployed.
 
 Rules the project follows:
 - An applied migration is never edited or deleted. A mistake is undone by a new migration (013 → 014, 006 → 016).

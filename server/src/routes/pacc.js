@@ -31,4 +31,6 @@ r.post('/members', requireWriteAccess, validate(s.paccMemberCreate), h(c.createM
 r.post('/members/:userId/suspend', requireWriteAccess, validate(s.userSuspend), h(c.suspendMember));
 r.post('/members/:userId/unsuspend', requireWriteAccess, h(c.unsuspendMember));
 r.delete('/members/:userId', requireWriteAccess, h(c.deleteMember));
+
+r.get('/activity', h(c.listActivity));
 export default r;

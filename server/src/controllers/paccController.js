@@ -20,6 +20,7 @@ import { removeAvatarFile } from '../services/avatars.js';
 import { logPacc } from '../services/paccActivity.js';
 import { detectImageFormat } from '../services/imageFormat.js';
 import { signedUrl, signedUrls } from '../services/storage.js';
+import { pagination } from '../utils/pagination.js';
 import { HttpError, badRequest, conflict, notFound, unwrap } from '../utils/httpError.js';
 import { suspendAccount, unsuspendAccount } from '../services/accountSuspension.js';
 
@@ -541,4 +542,19 @@ export async function deleteMember(req, res) {
   }
   await logPacc(req, { action: 'member.delete', entityType: 'member', entityId: userId, summary: `Removed PACC member ${member.email}`, details: { email: member.email, full_name: member.full_name } });
   res.status(204).end();
+}
+
+/** PACC's own activity log (table pacc_activity, readable only by PACC through RLS). */
+export async function listActivity(req, res) {
+  const { page, pageSize, from, to } = pagination(req.query);
+  let q = req.db.from('pacc_activity').select('*', { count: 'exact' }).order('created_at', { ascending: false });
+  if (/^\d{4}-\d{2}-\d{2}$/.test(req.query.from || '')) q = q.gte('created_at', `${req.query.from}T00:00:00+08:00`);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(req.query.to || '')) q = q.lte('created_at', `${req.query.to}T23:59:59.999+08:00`);
+  if (req.query.search) {
+    const t = String(req.query.search).replace(/[%,()]/g, ' ').trim().slice(0, 80);
+    if (t) q = q.or(`summary.ilike.%${t}%,actor_name.ilike.%${t}%`);
+  }
+  const { data, count, error } = await q.range(from, to);
+  unwrap({ data, error });
+  res.json({ data, page, pageSize, total: count ?? 0 });
 }

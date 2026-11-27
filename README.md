@@ -60,6 +60,29 @@ The public sees a project's flag only after an Auditor or Admin has reviewed it 
 - The admin approves or rejects from **User Management → Access requests**. Approving grants the role (the requested one by default); rejecting records an optional reason. The database refuses a role on any account that is not approved.
 - Writes go through the API with the service-role key, which never leaves the server. Reads run as the caller (or as the anonymous role for the public portal), so Row Level Security applies.
 
+## PACC portal
+
+PACC is the body that receives citizen reports about projects and decides what to investigate. The name is kept as the instructor asked; the real PACC was abolished in 2022, so treat this as a modelled role, not the current agency.
+
+- **Who can read what.** Citizen reports, report files, PACC cases, case documents and the PACC activity log are readable only by an active, approved `pacc` account (Row Level Security plus `requireRole('pacc')` on `/api/pacc`). Admin and Auditor cannot read them, and PACC actions never go to the staff `activity_logs`. PACC can read project records (as an Auditor can) but change none of them, and cannot use `/app`.
+- **Who manages PACC accounts.** PACC does. The Admin cannot create, approve, edit, suspend or delete a PACC account, and User Management does not list them. Sign-up cannot request `pacc`.
+- **First account (one time).** From `server/`, with `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` in `.env`:
+
+  ```
+  node --env-file=.env scripts/bootstrap-pacc.mjs --email <email> --name "<full name>" --redirect https://<your-site>/set-password
+  ```
+
+  The script creates the account with a random password that is never shown, makes it an approved PACC account and prints a one-time set-password link. Open the link to choose a password. In Supabase, **Authentication → URL Configuration** must allow `<your-site>/set-password` as a redirect URL (the set-password page is added in a later change). It refuses if an active PACC account exists (add `--force` to override) and refuses to turn an Admin, DPWH Personnel or Auditor account into PACC.
+- **Later members** are added, suspended, reactivated and removed from the **PACC Members** page. An account cannot act on itself, and the last active account cannot be suspended or removed.
+- **Recovery.** If the last two PACC members suspend each other at the same moment, PACC is left with no active account. Run the bootstrap script again with `--force`.
+
+### Known limits of the anonymous reports
+
+- IPMATS stores no reporter IP, user agent, account or exact time, but hosting providers (Render, Vercel, Supabase) keep their own request logs with IPs, and Supabase Storage keeps an exact `created_at` for every file. IPMATS cannot control these, and nothing in IPMATS links them to a report.
+- Rate-limit counters are held in memory, are keyed by a daily-rotating HMAC of the IP, reset on every restart or deploy, and count per Manila day.
+- Keep `DEBUG_PROXY` off in production: it logs client IPs.
+- Tracking codes are stored as an HMAC keyed from `SUPABASE_SERVICE_ROLE_KEY`. Rotating that key invalidates every existing tracking code.
+
 ## Setup
 
 ### Prerequisites
@@ -108,7 +131,7 @@ Used only by the scripts in `server/scripts/`: `API_URL` (default `http://localh
 
 ### Database migrations
 
-There is no migration runner in this repository. Apply the files in `database/migrations/` **in numeric order** in the Supabase SQL Editor (or with the Supabase CLI / MCP). The IPMATS project already has `001`–`022` applied; `023`, `024` and `025` are new (the PACC role, then the PACC portal and anonymous citizen reports, then the trigger that closes a PACC case's attached reports when the case is closed). Apply `023` on its own, before `024`: a new enum value must be committed before it can be used. Apply `025` after `024` and before deploying the API: without it, closing a case leaves its attached reports open. Never edit or renumber a migration that has been applied; write a new one that changes or reverses it.
+There is no migration runner in this repository. Apply the files in `database/migrations/` **in numeric order** in the Supabase SQL Editor (or with the Supabase CLI / MCP). The IPMATS project has all of `001`–`025` applied (`023`, `024` and `025` were applied on 27 November 2026: the PACC role, then the PACC portal and anonymous citizen reports, then the trigger that closes a PACC case's attached reports when the case is closed). On a fresh database, apply `023` on its own, before `024`: a new enum value must be committed before it can be used. Apply `025` after `024` and before deploying the API: without it, closing a case leaves its attached reports open. Never edit or renumber a migration that has been applied; write a new one that changes or reverses it.
 
 #### Upgrading to this version
 
