@@ -109,6 +109,14 @@ export const userReject = z.object({ note: nullable(text(500)) });
 /** Suspending an account always needs a reason (kept on the profile and in the activity log). */
 export const userSuspend = z.object({ reason: text(500).min(5, 'Give a reason of at least 5 characters') });
 
+/** PACC creates its own members; the role is fixed by the route, never sent by the client. */
+export const paccMemberCreate = z.object({
+  email: z.string().trim().toLowerCase().email().max(200),
+  password: z.string().min(8, 'At least 8 characters').max(72),
+  full_name: text(120).min(2),
+  position: nullable(text(120)),
+});
+
 export const meUpdate = z.object({ full_name: text(120).min(2), position: nullable(text(120)) });
 
 // ---------------------------------------------------------------------------
