@@ -1,4 +1,4 @@
-import { Ban, Plus, RotateCcw, Trash2 } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 import { Fragment, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Pill, StatusBadge } from '../../components/common/Badges.jsx';
@@ -26,7 +26,6 @@ export default function ContractorsPage() {
   const { data, loading, error, reload } = useApi('/contractors', undefined, { select: (r) => r.data });
   const [editing, setEditing] = useState(null);
   const [deleting, setDeleting] = useState(null);
-  const [suspending, setSuspending] = useState(null); // contractor whose active status is being toggled
   const [expanded, setExpanded] = useState(null);
   const detail = useApi(expanded ? `/contractors/${expanded}` : null, undefined, { select: (r) => r.data });
   const rows = useRowBusy();
@@ -35,10 +34,7 @@ export default function ContractorsPage() {
     <RowActions
       name={c.name}
       busy={rows.isBusy(c.id)}
-      suspended={!c.is_active}
       onEdit={canEdit ? () => setEditing(c) : undefined}
-      onSuspend={canEdit ? () => setSuspending(c) : undefined}
-      onReactivate={canEdit ? () => setSuspending(c) : undefined}
       onDelete={canDelete ? () => setDeleting(c) : undefined}
     />
   );
@@ -72,7 +68,7 @@ export default function ContractorsPage() {
                   <div><dt className="text-slate-500">PCAB licence</dt><dd className="font-mono text-slate-800">{c.pcab_license_no || '—'}{c.classification && <span className="font-sans text-slate-500"> · Cat. {c.classification}</span>}</dd></div>
                   <div><dt className="text-slate-500">Projects</dt><dd className="tabular-nums text-slate-800">{c.project_count} · {pesoCompact(c.total_contract)}</dd></div>
                   <div className="col-span-2"><dt className="text-slate-500">Contact</dt><dd className="break-words text-slate-700">{[c.contact_person, c.contact_number].filter(Boolean).join(' · ') || '—'}{c.email && <span className="block break-all">{c.email}</span>}</dd></div>
-                  <div className="col-span-2"><dt className="sr-only">Status</dt><dd className="flex gap-3 tabular-nums"><span className="text-brand-700">{c.ongoing} ongoing</span><span className="text-emerald-700">{c.completed} completed</span></dd></div>
+                  <div className="col-span-2"><dt className="sr-only">Status</dt><dd className="flex gap-3 tabular-nums"><span className="text-brand-700">{c.ongoing} on-going</span></dd></div>
                 </dl>
                 {expanded === c.id && (
                   <div className="mt-3 rounded-md bg-slate-50 p-2">
@@ -120,8 +116,7 @@ export default function ContractorsPage() {
                       <td className="px-4 py-3 text-right tabular-nums">{c.project_count}</td>
                       <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums">{pesoCompact(c.total_contract)}</td>
                       <td className="px-4 py-3 text-xs">
-                        <span className="block whitespace-nowrap tabular-nums text-brand-700">{c.ongoing} ongoing</span>
-                        <span className="block whitespace-nowrap tabular-nums text-emerald-700">{c.completed} completed</span>
+                        <span className="block whitespace-nowrap tabular-nums text-brand-700">{c.ongoing} on-going</span>
                       </td>
                       {canEdit && <td className="whitespace-nowrap px-4 py-3 text-right">{rowActions(c)}</td>}
                     </tr>
@@ -171,38 +166,6 @@ export default function ContractorsPage() {
               <dd className="text-xs text-slate-600">PCAB licence <span className="font-mono">{deleting.pcab_license_no || '—'}</span></dd>
             </dl>
             <p><strong>This cannot be undone.</strong> A contractor that is still assigned to projects cannot be deleted; mark it inactive instead.</p>
-          </>
-        )}
-      </ConfirmDialog>
-      <ConfirmDialog
-        open={Boolean(suspending)}
-        onClose={() => setSuspending(null)}
-        title={suspending?.is_active ? 'Suspend contractor?' : 'Reactivate contractor?'}
-        confirmLabel={suspending?.is_active ? 'Suspend contractor' : 'Reactivate contractor'}
-        confirmVariant={suspending?.is_active ? 'warning' : 'primary'}
-        confirmIcon={suspending?.is_active ? Ban : RotateCcw}
-        onConfirm={async () => {
-          const c = suspending;
-          await rows.run(c.id, () => api.patch(`/contractors/${c.id}`, { is_active: !c.is_active }));
-          toast.success(c.is_active ? `Contractor "${c.name}" suspended.` : `Contractor "${c.name}" reactivated.`);
-          setSuspending(null);
-          invalidateReference();
-          reload();
-        }}
-      >
-        {suspending && (
-          <>
-            <dl className="rounded-md bg-slate-50 px-3 py-2">
-              <dt className="sr-only">Contractor</dt>
-              <dd className="break-words font-semibold text-slate-900">{suspending.name}</dd>
-              <dt className="sr-only">PCAB licence</dt>
-              <dd className="text-xs text-slate-600">PCAB licence <span className="font-mono">{suspending.pcab_license_no || '—'}</span></dd>
-            </dl>
-            {suspending.is_active ? (
-              <p>The contractor is marked <strong>inactive</strong> and can no longer be assigned to new projects. Its current project assignments and records are kept.</p>
-            ) : (
-              <p>The contractor becomes active again and can be assigned to new projects.</p>
-            )}
           </>
         )}
       </ConfirmDialog>

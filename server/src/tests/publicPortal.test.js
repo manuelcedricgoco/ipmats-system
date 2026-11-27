@@ -33,7 +33,7 @@ describe('staff guard and approval', () => {
 });
 
 describe('landing-page counters', () => {
-  it('maps statuses to the cards as agreed (delayed or stalled = delayed + suspended)', () => {
-    assert.deepEqual(STAT_GROUPS, { ongoing: ['ongoing'], completed: ['completed'], delayed_or_stalled: ['delayed', 'suspended'] });
+  it('keeps removed project statuses out of the public status cards', () => {
+    assert.deepEqual(STAT_GROUPS, { ongoing: ['ongoing'], delayed_or_stalled: ['delayed'] });
   });
 });

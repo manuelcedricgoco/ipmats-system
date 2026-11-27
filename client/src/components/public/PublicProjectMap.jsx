@@ -5,7 +5,7 @@ import ProjectDrawer from './ProjectDrawer.jsx';
 import { useApi } from '../../hooks/useApi.js';
 import { STATUS_META } from '../../lib/constants.js';
 
-const marker = (p) => ({ color: STATUS_META[p.status]?.color || '#94a3b8', label: STATUS_META[p.status]?.label || p.status });
+const marker = (p) => ({ color: STATUS_META[p.status]?.color || '#94a3b8', label: STATUS_META[p.status]?.label || 'Project' });
 const HEADER = 64; // sticky top bar height (px)
 const wide = () => typeof window !== 'undefined' && window.matchMedia('(min-width: 640px)').matches;
 

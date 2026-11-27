@@ -54,7 +54,7 @@ export default function ProjectCardGrid({ onOpen, showSearch = false, pageSize =
           <Select aria-label="Status" value={status} onChange={(e) => setFilter({ status: e.target.value, page: '' })}>
             <option value="">Any status</option>
             {Object.entries(STATUS_META).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
-            <option value="delayed_or_stalled">Delayed or stalled (delayed + suspended)</option>
+            <option value="delayed_or_stalled">Delayed</option>
           </Select>
           <Select aria-label="Municipality" value={municipality} onChange={(e) => setFilter({ municipality_id: e.target.value, page: '' })}>
             <option value="">All municipalities</option>

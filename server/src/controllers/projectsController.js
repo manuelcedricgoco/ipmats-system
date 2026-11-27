@@ -22,6 +22,7 @@ const LIST_COLUMNS =
   'overall_progress, phase_count, revised_contract_amount, total_disbursed, remaining_balance, ' +
   // Week 3
   'current_flag, flag_review_status, planned_progress, image_count';
+const FILTERABLE_STATUSES = new Set(['not_started', 'ongoing', 'delayed']);
 
 /** Filters shared by the list endpoint. */
 export function applyProjectFilters(query, f) {
@@ -30,7 +31,7 @@ export function applyProjectFilters(query, f) {
   if (f.barangay_id) q = q.eq('barangay_id', f.barangay_id);
   if (f.agency_id) q = q.eq('agency_id', f.agency_id);
   if (f.contractor_id) q = q.eq('contractor_id', f.contractor_id);
-  if (f.status) q = q.eq('status', f.status);
+  if (FILTERABLE_STATUSES.has(f.status)) q = q.eq('status', f.status);
   if (f.type) q = q.eq('project_type', f.type);
   if (f.search) {
     const s = String(f.search).replace(/[%,()]/g, ' ').trim();
@@ -102,8 +103,8 @@ async function getProjectOrThrow(id, columns = '*') {
 
 export async function createProject(req, res) {
   const body = { ...req.body };
-  // Week 3: status is automatic unless Suspended / Terminated is chosen
-  if (body.status === 'auto') delete body.status;
+  const statusOverride = ['not_started', 'ongoing'].includes(body.status) ? body.status : undefined;
+  if (!statusOverride) delete body.status;
   assertInsideProvince(body.latitude, body.longitude);
   await assertBarangayInMunicipality(body.barangay_id, body.municipality_id);
   if (body.notice_to_proceed && body.duration_days && !body.target_completion_date) {
@@ -116,7 +117,7 @@ export async function createProject(req, res) {
       .select('id, project_code')
       .single(),
   );
-  const evaluation = await reevaluate(project.id, 'project_created', req.user.id);
+  const evaluation = await reevaluate(project.id, 'project_created', req.user.id, { statusOverride });
   await logActivity(req, {
     action: 'project.create',
     entityType: 'project',
@@ -135,11 +136,11 @@ export async function updateProject(req, res) {
     assertInsideProvince(req.body.latitude ?? current.latitude, req.body.longitude ?? current.longitude);
   }
   const body = { ...req.body };
-  // Week 3: "auto" lifts a manual Suspended / Terminated status; the evaluation below sets the real status.
+  // "auto" requests a fresh status evaluation; any other status input is discarded.
   if (body.status === 'auto') {
     if (['suspended', 'terminated'].includes(current.status)) body.status = 'ongoing';
     else delete body.status;
-  }
+  } else delete body.status;
   if (body.contract_amount !== undefined) {
     const records = unwrap(await adminClient.from('financial_records').select('record_type, amount').eq('project_id', id));
     assertValid(checkContractAmountChange({ contractAmount: body.contract_amount, records }));

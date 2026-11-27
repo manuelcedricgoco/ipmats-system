@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, FolderKanban, Hammer, Search } from 'lucide-react';
+import { AlertTriangle, FolderKanban, Hammer, Search } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Button from '../../components/common/Button.jsx';
@@ -54,9 +54,8 @@ export default function PortalHome() {
 
       <section aria-label="Project counts" className="stagger mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard label="Total projects" value={count(s?.total_projects)} icon={FolderKanban} />
-        <StatCard label="Ongoing" value={count(s?.ongoing)} icon={Hammer} tone="brand" />
-        <StatCard label="Completed" value={count(s?.completed)} icon={CheckCircle2} tone="green" />
-        <StatCard label="Delayed or stalled" value={count(s?.delayed_or_stalled)} hint="Delayed or suspended" icon={AlertTriangle} tone="yellow" />
+        <StatCard label="On-going" value={count(s?.ongoing)} icon={Hammer} tone="brand" />
+        <StatCard label="Delayed" value={count(s?.delayed_or_stalled)} icon={AlertTriangle} tone="yellow" />
       </section>
 
       <section aria-labelledby="map-heading" className="mt-8">

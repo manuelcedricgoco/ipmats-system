@@ -317,7 +317,7 @@ function ProgressModal({ open, onClose, project, phases, lastReport, onSaved }) 
           </div>
         </fieldset>
         {all100 && (
-          <Field label="Actual completion date" hint="Every phase is at 100%. Enter the completion date; the project becomes Completed once a final as-built 360° image is also uploaded.">
+          <Field label="Actual completion date" hint="Every phase is at 100%. Enter the completion date; the final as-built 360° image is also required to record the project as finished.">
             {(a) => <Input {...a} type="date" value={completion} max={todayIso()} onChange={(e) => setCompletion(e.target.value)} />}
           </Field>
         )}

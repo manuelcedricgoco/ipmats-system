@@ -21,8 +21,7 @@ import { pagination } from '../utils/pagination.js';
 /** Landing-page counters: which project statuses each card counts (besides Total). */
 export const STAT_GROUPS = Object.freeze({
   ongoing: ['ongoing'],
-  completed: ['completed'],
-  delayed_or_stalled: ['delayed', 'suspended'],
+  delayed_or_stalled: ['delayed'],
 });
 
 const CARD_COLUMNS =
@@ -30,7 +29,7 @@ const CARD_COLUMNS =
   'contract_amount, overall_progress, notice_to_proceed, target_completion_date, actual_completion_date, image_count, latitude, longitude, updated_at';
 const PIN_COLUMNS = 'id, project_code, name, project_type, status, latitude, longitude, municipality_name, barangay_name, overall_progress, contract_amount';
 const SORTS = ['updated_at', 'name', 'project_code', 'overall_progress', 'contract_amount', 'target_completion_date'];
-const STATUSES = ['not_started', 'ongoing', 'delayed', 'completed', 'suspended', 'terminated'];
+const STATUSES = ['not_started', 'ongoing', 'delayed'];
 
 function db() {
   if (!anonClient) throw new HttpError(503, 'The server is not connected to the database.');
@@ -45,7 +44,6 @@ export async function publicStats(_req, res) {
     data: {
       total_projects: rows.length,
       ongoing: count(STAT_GROUPS.ongoing),
-      completed: count(STAT_GROUPS.completed),
       delayed_or_stalled: count(STAT_GROUPS.delayed_or_stalled),
       status_groups: STAT_GROUPS,
     },

@@ -34,11 +34,20 @@ describe('project validation (Week 1)', () => {
     assert.equal('project_code' in projectCreate.parse(valid), false);
     assert.equal('project_code' in projectUpdate.parse({ project_code: '26OM0001', name: 'Renamed project' }), false);
   });
-  it('Week 3: only Suspended / Terminated are manual; anything else means automatic status', () => {
-    assert.equal(projectUpdate.parse({ status: 'suspended' }).status, 'suspended');
-    assert.equal(projectUpdate.parse({ status: 'terminated' }).status, 'terminated');
+  it('project status is always automatic and cannot be assigned manually', () => {
+    assert.equal(projectUpdate.parse({ status: 'suspended' }).status, 'auto');
+    assert.equal(projectUpdate.parse({ status: 'terminated' }).status, 'auto');
+    assert.equal(projectUpdate.parse({ status: 'completed' }).status, 'auto');
     assert.equal(projectUpdate.parse({ status: 'delayed' }).status, 'auto');
     assert.equal(projectUpdate.parse({ status: 'auto' }).status, 'auto');
+  });
+  it('project registration allows only Automatic, Not started, or Ongoing status', () => {
+    for (const status of ['auto', 'not_started', 'ongoing']) {
+      assert.equal(projectCreate.parse({ ...valid, status }).status, status);
+    }
+    for (const status of ['completed', 'suspended', 'terminated']) {
+      assert.equal(projectCreate.parse({ ...valid, status }).status, 'auto');
+    }
   });
   it('computes the target completion date from NTP + duration', () => {
     assert.equal(addDays('2026-01-01', 240), '2026-08-29');
