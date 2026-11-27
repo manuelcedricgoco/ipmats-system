@@ -3,14 +3,13 @@ import { ErrorState, Skeleton } from '../common/Feedback.jsx';
 import ProjectMap from '../map/ProjectMap.jsx';
 import ProjectDrawer from './ProjectDrawer.jsx';
 import { useApi } from '../../hooks/useApi.js';
-import { STATUS_META } from '../../lib/constants.js';
-
-const marker = (p) => ({ color: STATUS_META[p.status]?.color || '#94a3b8', label: STATUS_META[p.status]?.label || 'Project' });
+import { PUBLIC_FLAG_LEGEND, publicFlagMarker } from '../../lib/publicFlag.js';
 const HEADER = 64; // sticky top bar height (px)
 const wide = () => typeof window !== 'undefined' && window.matchMedia('(min-width: 640px)').matches;
 
 /**
- * PUBLIC PORTAL — map of every project with coordinates (pins coloured by status) with the project
+ * PUBLIC PORTAL — map of every project with coordinates (pins coloured by the auditor-reviewed flag,
+ * gray while under review) with the project
  * drawer laid over it. Opening a project (pin or card) brings the map into view; clicking the
  * empty map, the X or Escape closes the drawer.
  */
@@ -45,7 +44,7 @@ export default function PublicProjectMap({ openId, onOpen, onClose, className = 
             projects={pins.data || []}
             selectedId={openId}
             onSelect={onOpen}
-            markerOf={marker}
+            markerOf={publicFlagMarker}
             onBackgroundClick={openId ? onClose : undefined}
             inset={inset}
             recenterKey={recenterKey}
@@ -54,8 +53,9 @@ export default function PublicProjectMap({ openId, onOpen, onClose, className = 
         <ProjectDrawer projectId={openId} onClose={onClose} onRecenter={() => setRecenterKey((k) => k + 1)} />
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-700">
-        {Object.entries(STATUS_META).map(([k, m]) => (
-          <span key={k} className="inline-flex items-center gap-1.5">
+        <span className="font-medium text-slate-500">Flag after audit review:</span>
+        {PUBLIC_FLAG_LEGEND.map((m) => (
+          <span key={m.key} className="inline-flex items-center gap-1.5">
             <span className="h-3 w-3 rounded-full ring-2 ring-white" style={{ background: m.color }} aria-hidden />
             {m.label}
           </span>

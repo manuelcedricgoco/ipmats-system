@@ -5,6 +5,7 @@ export const ROLES = Object.freeze({
   ADMIN: 'admin',
   PERSONNEL: 'dpwh_personnel',
   AUDITOR: 'auditor',
+  PACC: 'pacc',
 });
 export const STAFF = [ROLES.ADMIN, ROLES.PERSONNEL, ROLES.AUDITOR];
 
@@ -20,6 +21,13 @@ export function requireRole(...roles) {
     if (!allowed.includes(req.user.role)) return next(forbidden());
     return next();
   };
+}
+
+/** Any signed-in account whose registration has been approved (no particular role needed). */
+export function requireApproved(req, _res, next) {
+  if (!req.user) return next(unauthorized());
+  if (req.user.profile?.approval_status !== 'approved') return next(forbidden('You can add a profile photo once your account is approved.'));
+  return next();
 }
 
 /** Writes need the service-role client; fail clearly if the server lacks it. */

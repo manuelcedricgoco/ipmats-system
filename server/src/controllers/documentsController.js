@@ -11,8 +11,8 @@ import { logActivity, projectCode } from '../services/activityLog.js';
 import { signedUrls } from '../services/storage.js';
 import { badRequest, forbidden, notFound, unwrap } from '../utils/httpError.js';
 
-const DOCUMENT_BUCKET = 'project-documents';
-const TYPE_LABELS = {
+export const DOCUMENT_BUCKET = 'project-documents';
+export const TYPE_LABELS = {
   contract: 'Contract',
   program_of_work: 'Program of work',
   progress_report: 'Progress report',

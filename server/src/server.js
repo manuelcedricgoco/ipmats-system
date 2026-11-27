@@ -4,8 +4,8 @@ import { scheduleDailyFlagCheck } from './jobs/dailyFlagCheck.js';
 
 assertEnv();
 const app = createApp();
-const server = app.listen(env.port, () => {
-  console.log(`IPMATS API (Week 3) listening on http://localhost:${env.port}/api (${env.nodeEnv})`);
+const server = app.listen(env.port, '0.0.0.0', () => {
+  console.log(`IPMATS API listening on port ${env.port} (${env.nodeEnv})`);
 });
 const flagJob = process.env.NODE_ENV === 'test' ? null : scheduleDailyFlagCheck();
 

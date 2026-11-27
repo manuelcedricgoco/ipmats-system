@@ -1,8 +1,15 @@
 import { adminClient } from '../config/supabase.js';
 import { logActivity } from '../services/activityLog.js';
-import { HttpError, badRequest, conflict, notFound, unwrap } from '../utils/httpError.js';
+import { logPacc } from '../services/paccActivity.js';
+import { HttpError, badRequest, conflict, forbidden, notFound, unwrap } from '../utils/httpError.js';
 import { avatarUrl, removeAvatarFile, setAvatar, uploadAvatar } from '../services/avatars.js';
 import { pagination } from '../utils/pagination.js';
+import { suspendAccount, unsuspendAccount } from '../services/accountSuspension.js';
+
+/** PACC accounts are managed by PACC itself; the System Administrator may not act on them. */
+export function assertNotPaccAccount(target) {
+  if (target?.role === 'pacc') throw forbidden('PACC accounts are managed by PACC.');
+}
 
 export async function me(req, res) {
   const { avatar_path, ...profile } = req.user.profile;
@@ -24,9 +31,17 @@ export async function deleteMyAvatar(req, res) {
   res.json({ data: { avatar_url: null } });
 }
 
+/** A PACC member's own edit goes to the PACC trail only: PACC actions never reach the staff activity_logs. */
+export function logOwnAccountUpdate(req, loggers = { logActivity, logPacc }) {
+  if (req.user.role === 'pacc') {
+    return loggers.logPacc(req, { action: 'member.update_self', entityType: 'member', entityId: req.user.id, summary: 'Updated own account details' });
+  }
+  return loggers.logActivity(req, { action: 'account.update', entityType: 'user', entityId: req.user.id, summary: 'Updated own name / position' });
+}
+
 export async function updateMe(req, res) {
   const row = unwrap(await adminClient.from('profiles').update({ full_name: req.body.full_name, position: req.body.position }).eq('id', req.user.id).select('*').single());
-  await logActivity(req, { action: 'account.update', entityType: 'user', entityId: req.user.id, summary: 'Updated own name / position' });
+  await logOwnAccountUpdate(req);
   res.json({ data: row });
 }
 
@@ -35,6 +50,7 @@ export async function listUsers(req, res) {
   let q = adminClient
     .from('profiles')
     .select('*, agency:agencies(code, name)', { count: 'exact' })
+    .or('role.is.null,role.neq.pacc') // PACC accounts are not the Administrator's to list (further .or() filters are ANDed)
     .order('created_at', { ascending: false });
   if (req.query.role) q = q.eq('role', req.query.role);
   if (req.query.status === 'suspended') q = q.or('suspended_at.not.is.null,is_active.eq.false');
@@ -89,6 +105,7 @@ export async function updateUser(req, res) {
   const { userId } = req.params;
   const target = unwrap(await adminClient.from('profiles').select('id, role, is_active, email').eq('id', userId).maybeSingle());
   if (!target) throw notFound('User not found');
+  assertNotPaccAccount(target);
   if (userId === req.user.id && (req.body.role && req.body.role !== 'admin')) throw badRequest('You cannot remove your own administrator role.');
   if (userId === req.user.id && req.body.is_active === false) throw badRequest('You cannot deactivate your own account.');
 
@@ -121,8 +138,9 @@ export async function updateUser(req, res) {
 /** Approve a staff access request: grant the (possibly adjusted) role. */
 export async function approveUser(req, res) {
   const { userId } = req.params;
-  const target = unwrap(await adminClient.from('profiles').select('id, email, approval_status, requested_role').eq('id', userId).maybeSingle());
+  const target = unwrap(await adminClient.from('profiles').select('id, email, role, approval_status, requested_role').eq('id', userId).maybeSingle());
   if (!target) throw notFound('User not found');
+  assertNotPaccAccount(target);
   if (target.approval_status === 'approved') throw badRequest('This account is already approved.');
   const row = unwrap(
     await adminClient
@@ -149,8 +167,9 @@ export async function approveUser(req, res) {
 export async function rejectUser(req, res) {
   const { userId } = req.params;
   if (userId === req.user.id) throw badRequest('You cannot decline your own account.');
-  const target = unwrap(await adminClient.from('profiles').select('id, email, approval_status, requested_role').eq('id', userId).maybeSingle());
+  const target = unwrap(await adminClient.from('profiles').select('id, email, role, approval_status, requested_role').eq('id', userId).maybeSingle());
   if (!target) throw notFound('User not found');
+  assertNotPaccAccount(target);
   if (target.approval_status !== 'pending') throw badRequest('Only pending requests can be declined.');
   const row = unwrap(
     await adminClient
@@ -168,13 +187,12 @@ export async function rejectUser(req, res) {
 // Delete, suspend and lift suspension (System Administrator)
 // ---------------------------------------------------------------------------
 
-const BAN_FOREVER = '876000h'; // ~100 years: Supabase Auth refuses sign-in until the ban is lifted
-
 async function loadTarget(userId) {
   const target = unwrap(
     await adminClient.from('profiles').select('id, email, full_name, role, is_active, avatar_path, suspended_at').eq('id', userId).maybeSingle(),
   );
   if (!target) throw notFound('User not found');
+  assertNotPaccAccount(target);
   return target;
 }
 
@@ -255,25 +273,7 @@ export async function suspendUser(req, res) {
   await assertNotLastActiveAdmin(target, 'suspend');
   const { reason } = req.body;
 
-  // 1. Block sign-in in Supabase Auth (refresh tokens stop working too).
-  const ban = await adminClient.auth.admin.updateUserById(userId, { ban_duration: BAN_FOREVER });
-  if (ban.error) throw Object.assign(new HttpError(500, 'The account could not be blocked from signing in. Nothing was changed.'), { cause: ban.error });
-
-  // 2. Mark the profile: the API refuses every request of an inactive account (middleware/auth.js).
-  let row;
-  try {
-    row = unwrap(
-      await adminClient
-        .from('profiles')
-        .update({ is_active: false, suspended_at: new Date().toISOString(), suspended_by: req.user.id, suspension_reason: reason })
-        .eq('id', userId)
-        .select('*')
-        .single(),
-    );
-  } catch (err) {
-    await adminClient.auth.admin.updateUserById(userId, { ban_duration: 'none' }); // roll back the ban
-    throw err;
-  }
+  const row = await suspendAccount(userId, req.user.id, reason);
 
   await logActivity(req, {
     action: 'user.suspend',
@@ -290,16 +290,7 @@ export async function unsuspendUser(req, res) {
   const target = await loadTarget(userId);
   if (target.is_active && !target.suspended_at) throw badRequest('This account is not suspended.');
 
-  const unban = await adminClient.auth.admin.updateUserById(userId, { ban_duration: 'none' });
-  if (unban.error) throw Object.assign(new HttpError(500, 'The sign-in block could not be lifted. Nothing was changed.'), { cause: unban.error });
-  const row = unwrap(
-    await adminClient
-      .from('profiles')
-      .update({ is_active: true, suspended_at: null, suspended_by: null, suspension_reason: null })
-      .eq('id', userId)
-      .select('*')
-      .single(),
-  );
+  const row = await unsuspendAccount(userId);
 
   await logActivity(req, {
     action: 'user.unsuspend',

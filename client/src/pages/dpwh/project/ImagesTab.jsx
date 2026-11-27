@@ -1,4 +1,4 @@
-import { AlertTriangle, CalendarClock, CloudOff, Columns2, Crosshair, Eye, EyeOff, MapPin, Star, Trash2, Upload } from 'lucide-react';
+import { AlertTriangle, CalendarClock, CloudOff, Columns2, Crosshair, MapPin, Star, Trash2, Upload } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { FlagBadge, Pill } from '../../../components/common/Badges.jsx';
@@ -8,7 +8,6 @@ import { Alert, EmptyState, ErrorState, PageLoader } from '../../../components/c
 import { Checkbox, Field, Input, Select } from '../../../components/common/Form.jsx';
 import Modal from '../../../components/common/Modal.jsx';
 import PanoramaViewer from '../../../components/viewer360/PanoramaViewer.jsx';
-import { useAuth } from '../../../context/AuthContext.jsx';
 import { useToast } from '../../../context/ToastContext.jsx';
 import { useApi } from '../../../hooks/useApi.js';
 import { api } from '../../../lib/api.js';
@@ -46,14 +45,12 @@ function Checks({ img }) {
  * WEEK 3 — 360° image upload and Pannellum viewer (Tracy Ann Milaflores, front-end).
  * Shows the site photos of one project in an interactive 360° viewer, lets DPWH personnel
  * upload new ones, and shows the GPS / timestamp checks made by the server.
- * Gap fixes: Auditors / Admins approve each photo for the public portal; with no connection a photo is
+ * Every uploaded photo is shown on the public portal at once (no approval step); with no connection a photo is
  * saved on the device and uploaded later (lib/offlineUploads.js).
  */
 export default function ImagesTab() {
   const { project, reloadProject, canEdit, canDelete } = useOutletContext();
   const toast = useToast();
-  const { hasRole } = useAuth();
-  const canApprove = hasRole('auditor', 'admin');
   const images = useApi(`/projects/${project.id}/images`, undefined, { select: (r) => r.data });
   const phases = useApi(`/projects/${project.id}/phases`, undefined, { select: (r) => r.data.phases });
   const [selected, setSelected] = useState(null);
@@ -77,14 +74,6 @@ export default function ImagesTab() {
     try {
       await api.patch(`/projects/${project.id}/images/${img.id}`, { is_final: !img.is_final });
       changed(img.is_final ? 'No longer marked as the final as-built image.' : 'Marked as the final as-built image.');
-    } catch (e) {
-      toast.error(e.message);
-    }
-  };
-  const togglePublic = async (img) => {
-    try {
-      await api.patch(`/projects/${project.id}/images/${img.id}/public`, { is_public: !img.is_public });
-      changed(img.is_public ? 'Photo hidden from the public portal.' : 'Photo approved for the public portal.');
     } catch (e) {
       toast.error(e.message);
     }
@@ -176,20 +165,13 @@ export default function ImagesTab() {
                     <span className="font-semibold text-slate-900">Inspection {date(img.inspection_date)}</span>
                     {img.is_final && <Pill className="bg-emerald-50 text-emerald-800">Final as-built</Pill>}
                     {img.validation?.reused_elsewhere && <Pill className="bg-red-50 text-red-800">Reused file</Pill>}
-                    <Pill className={img.is_public ? 'bg-emerald-50 text-emerald-800' : 'bg-slate-100 text-slate-600'}>{img.is_public ? 'Public' : 'Awaiting approval'}</Pill>
                   </div>
                   {img.phase_name && <p className="text-xs text-slate-600">{img.phase_name}</p>}
                   <Checks img={img} />
                   <p className="mt-1 text-[11px] text-slate-400">Uploaded by {img.uploaded_by_name || '—'}</p>
                 </button>
-                {(canEdit || canDelete || canApprove) && (
+                {(canEdit || canDelete) && (
                   <div className="mt-2 flex flex-wrap gap-3 border-t border-slate-100 pt-2">
-                    {canApprove && (
-                      <button type="button" onClick={() => togglePublic(img)} className="inline-flex items-center gap-1 text-xs font-semibold text-brand-700 hover:underline">
-                        {img.is_public ? <EyeOff className="h-3.5 w-3.5" aria-hidden /> : <Eye className="h-3.5 w-3.5" aria-hidden />}
-                        {img.is_public ? 'Hide from public' : 'Show to public'}
-                      </button>
-                    )}
                     {canEdit && (
                       <button type="button" onClick={() => setFinal(img)} className="inline-flex items-center gap-1 text-xs font-semibold text-brand-700 hover:underline">
                         <Star className="h-3.5 w-3.5" aria-hidden /> {img.is_final ? 'Unmark final' : 'Mark as final'}
@@ -315,7 +297,7 @@ function UploadModal({ open, onClose, project, phases, onDone }) {
             {result.validation.warnings.length ? <ul className="list-disc pl-4">{result.validation.warnings.map((w) => <li key={w}>{w}</li>)}</ul> : 'GPS and capture time look right. No issues found.'}
           </Alert>
           <p className="text-xs text-slate-500">
-            The photo is visible to staff now and appears on the public portal after an Auditor or Admin approves it.
+            The photo is now visible to staff and on the public portal.
             {result.validation.compressed ? ' It was compressed for storage (the checks used the original file).' : ''}
           </p>
           <dl className="grid grid-cols-2 gap-2 text-sm">

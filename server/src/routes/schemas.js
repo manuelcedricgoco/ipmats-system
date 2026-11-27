@@ -3,6 +3,7 @@
  * the API answers 400 with the field and the reason.
  */
 import { z } from 'zod';
+import { REPORT_CATEGORIES, normalizeTrackingCode } from '../services/citizenReports.js';
 
 const empty = (v) => (v === '' || v === 'null' || v === undefined ? undefined : v);
 const opt = (schema) => z.preprocess(empty, schema.optional());
@@ -110,6 +111,14 @@ export const userApprove = z.object({
 export const userReject = z.object({ note: nullable(text(500)) });
 /** Suspending an account always needs a reason (kept on the profile and in the activity log). */
 export const userSuspend = z.object({ reason: text(500).min(5, 'Give a reason of at least 5 characters') });
+
+/** PACC creates its own members; the role is fixed by the route, never sent by the client. */
+export const paccMemberCreate = z.object({
+  email: z.string().trim().toLowerCase().email().max(200),
+  password: z.string().min(8, 'At least 8 characters').max(72),
+  full_name: text(120).min(2),
+  position: nullable(text(120)),
+});
 
 export const meUpdate = z.object({ full_name: text(120).min(2), position: nullable(text(120)) });
 
@@ -255,3 +264,40 @@ export const flagRulesUpdate = z
   .refine((r) => r.slippage_green_max < r.slippage_yellow_max, { message: 'The Yellow slippage limit must be higher than the Green limit', path: ['slippage_yellow_max'] })
   .refine((r) => r.gps_tolerance_m < r.gps_red_m, { message: 'The Red GPS distance must be larger than the Yellow distance', path: ['gps_red_m'] })
   .refine((r) => r.financial_variance_yellow < r.financial_variance_red, { message: 'The Red payment gap must be larger than the Yellow gap', path: ['financial_variance_red'] });
+
+// Anonymous citizen reports (public portal).
+export const citizenReport = z.object({
+  category: z.enum(REPORT_CATEGORIES, { message: 'Choose what kind of problem this is.' }),
+  description: z.string().trim().min(20, 'Describe the problem in at least 20 characters.').max(2000),
+});
+export const trackingCodeParam = z.object({
+  code: z.string().transform((v) => normalizeTrackingCode(v)).refine((v) => v !== null, 'Enter the 10-character tracking code.'),
+});
+
+// PACC: close a citizen report (or every open report of a project) with an outcome.
+export const reportClose = z.object({ outcome: z.enum(['valid', 'invalid', 'duplicate'], { message: 'Choose an outcome: valid, invalid or duplicate.' }) });
+
+// PACC cases. A case names at least one respondent: a contractor and/or officials as free text.
+export const CASE_STATUSES = ['under_investigation', 'case_filed', 'resolved', 'dismissed'];
+const respondentText = nullable(text(1000)).transform((v) => (v === '' ? null : v));
+const charges = text(4000).min(10, 'Describe the charges in at least 10 characters.');
+export const caseCreate = z
+  .object({
+    contractor_id: nullable(z.string().uuid()),
+    other_respondents: respondentText,
+    charges,
+    report_ids: z.array(z.string().uuid()).max(200, 'Attach at most 200 reports at a time.').optional(),
+  })
+  .refine((o) => Boolean(o.contractor_id || o.other_respondents), { message: 'Name at least one respondent.', path: ['contractor_id'] });
+export const caseUpdate = z
+  .object({
+    status: z.enum(CASE_STATUSES, { message: 'Choose a valid case status.' }).optional(),
+    show_public: z.boolean().optional(),
+    charges: charges.optional(),
+    other_respondents: respondentText,
+    contractor_id: nullable(z.string().uuid()),
+  })
+  .refine((o) => Object.values(o).some((v) => v !== undefined), 'Nothing to update');
+export const caseNote = z.object({ body: text(4000).min(1, 'Write the note.') });
+/** Case document (multipart field next to "file"). */
+export const caseDocumentUpload = z.object({ title: text(200).min(3, 'Give the document a title (at least 3 characters)') });

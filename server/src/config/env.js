@@ -7,6 +7,13 @@ function list(value, fallback) {
     .filter(Boolean);
 }
 
+/** Proxy hops in front of Express. A typo must not become NaN or true. */
+export function parseTrustProxy(value) {
+  if (value == null || String(value).trim() === '') return 1;
+  const n = Number(value);
+  return Number.isInteger(n) && n >= 0 ? n : 1;
+}
+
 export const env = Object.freeze({
   port: Number(process.env.PORT || 4000),
   nodeEnv: process.env.NODE_ENV || 'development',
@@ -16,6 +23,9 @@ export const env = Object.freeze({
   corsOrigins: list(process.env.CORS_ORIGINS, 'http://localhost:5173'),
   // Week 3: daily automatic flag check (01:15 Philippine time)
   dailyFlagCheckCron: process.env.DAILY_FLAG_CHECK_CRON || '15 1 * * *',
+  // Browser -> Vercel -> Render -> Express: raise by 1 if req.ip shows a proxy address
+  trustProxy: parseTrustProxy(process.env.TRUST_PROXY),
+  debugProxy: process.env.DEBUG_PROXY === '1',
   timezone: process.env.TZ_NAME || 'Asia/Manila',
 });
 

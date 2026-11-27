@@ -24,7 +24,7 @@ IPMATS tracks DPWH infrastructure projects in Occidental Mindoro (Region IV-B MI
 | Project Map (`/map`) | Full-height map with a pin for every project that has coordinates, coloured by status |
 | Project drawer | Opens from a pin or a card, sliding in from the right while the page stays usable: 360° viewer (or a placeholder when no photo has been published), location, implementing office, contractor, contract cost, status, progress and dates |
 
-The public sees no flags, audit findings, finances, phases, documents or activity: the API never selects them and the database refuses them to the anonymous role. Only 360° photos that an Auditor or Admin has approved for the public are shown. Top navigation bar (no sidebar); **Sign in** is for staff.
+The public sees a project's flag only after an Auditor or Admin has reviewed it ("Under review" before that), and every 360° photo as soon as DPWH personnel upload it. It sees no automatic flags or reasons, audit findings, finances, phases, documents or activity: the API never selects them and the database refuses them to the anonymous role. Top navigation bar (no sidebar); **Sign in** is for staff.
 
 ### Staff workspace (`/app`, after sign-in and approval)
 
@@ -60,6 +60,33 @@ The public sees no flags, audit findings, finances, phases, documents or activit
 - The admin approves or rejects from **User Management → Access requests**. Approving grants the role (the requested one by default); rejecting records an optional reason. The database refuses a role on any account that is not approved.
 - Writes go through the API with the service-role key, which never leaves the server. Reads run as the caller (or as the anonymous role for the public portal), so Row Level Security applies.
 
+## PACC portal
+
+PACC is the body that receives citizen reports about projects and decides what to investigate. The name is kept as the instructor asked; the real PACC was abolished in 2022, so treat this as a modelled role, not the current agency.
+
+- **Who can read what.** Citizen reports, report files, PACC cases, case documents and the PACC activity log are readable only by an active, approved `pacc` account (Row Level Security plus `requireRole('pacc')` on `/api/pacc`). Admin and Auditor cannot read them, and PACC actions never go to the staff `activity_logs`. PACC can read project records (as an Auditor can) but change none of them, and cannot use `/app`.
+- **Who manages PACC accounts.** PACC does. The Admin cannot create, approve, edit, suspend or delete a PACC account, and User Management does not list them. Sign-up cannot request `pacc`.
+- **First account (one time).** From `server/`, with `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` in `.env`:
+
+  ```
+  node --env-file=.env scripts/bootstrap-pacc.mjs --email <email> --name "<full name>" --redirect https://<your-site>/set-password
+  ```
+
+  The script creates the account with a random password that is never shown, makes it an approved PACC account and prints a one-time set-password link. Open the link to choose a password. In Supabase, **Authentication → URL Configuration** must allow `<your-site>/set-password` as a redirect URL (the link opens the site's set-password page). It refuses if an active, approved PACC account exists (add `--force` to override) and refuses to turn an Admin, DPWH Personnel or Auditor account into PACC.
+- **Later members** are added, suspended, reactivated and removed from the **PACC Members** page. An account cannot act on itself, and the last active account cannot be suspended or removed.
+- **Recovery.** If the last two PACC members suspend each other at the same moment, PACC is left with no active account. Run the bootstrap script again with `--force`, giving either a suspended member's email or a new email. For an existing account it clears the suspension, lifts the Supabase Auth sign-in block and prints a new set-password link.
+- **Before announcing public reporting**, confirm `TRUST_PROXY` is right: set `DEBUG_PROXY=1` briefly, check in the API logs that `req.ip` is the visitor's own IP (see "Verifying the client IP" below), then turn `DEBUG_PROXY` off again (it logs IPs). With a wrong value every citizen shares one rate-limit key, so three reports a day from anyone would block everyone.
+
+### Known limits of the anonymous reports
+
+- IPMATS stores no reporter IP, user agent, account or exact time. But hosting providers (Render, Vercel, Supabase) keep their own request logs with IPs and exact times, and Supabase Storage keeps an exact `created_at` for every proof photo. Each report's photo record (`citizen_report_files.storage_path`) points to its Storage object, so someone with **both** database access (for example the Supabase project owner) **and** the hosting request logs could match a photo's upload time to a logged request and so link an IP to a report. IPMATS's own API and the Admin role in the app cannot do this. IPMATS cannot control the providers' logs.
+- The tracking code is sent in the request body of the status check, never in the URL, so it is not in the providers' request logs.
+- Rate-limit counters are held in memory, are keyed by a daily-rotating HMAC of the IP (an IPv6 address by its /64 prefix), reset on every restart or deploy, and count per Manila day.
+- Keep `DEBUG_PROXY` off in production: it logs client IPs.
+- Tracking codes are stored as an HMAC keyed from `SUPABASE_SERVICE_ROLE_KEY`. Rotating that key invalidates every existing tracking code.
+- Showing or hiding a case's status on the public portal changes `projects.updated_at`, so the project may move in lists sorted by last update. Nothing else changes.
+- PACC's own activity log entry for opening a project with new reports ("… now under review") has an exact time, which narrows down when those reports arrived. Only PACC can read that log.
+
 ## Setup
 
 ### Prerequisites
@@ -89,6 +116,12 @@ npm run install:all
 | `DAILY_FLAG_CHECK_CRON` | `15 1 * * *` | When the daily flag check runs (default 01:15) |
 | `TZ_NAME` | `Asia/Manila` | Time zone of the daily check (default Asia/Manila) |
 | `SIGNED_URL_TTL` | `3600` | Lifetime in seconds of signed links to private photos and files (default 3600) |
+| `TRUST_PROXY` | `1` | Number of proxy hops in front of the API, used for the client IP in rate limits (default 1; a non-integer falls back to 1). The live deployment behind Vercel uses `4`; see "Verifying the client IP" below |
+| `DEBUG_PROXY` | `1` | Logs `req.ip` and the `X-Forwarded-For` entry count for the first 20 requests |
+
+**Verifying the client IP (Render):** rate limits are keyed per user, and per IP for anonymous requests, so `req.ip` must be the visitor's public IP. Deploy once with `DEBUG_PROXY=1`, open the site from mobile data and from Wi-Fi, and check the Render logs for `[proxy-debug]`. If `req.ip` shows a Vercel or Render address, raise `TRUST_PROXY` by 1 and redeploy; then remove `DEBUG_PROXY`.
+
+The live IPMATS deployment (Vercel rewrites `/api` to Render) was checked this way on 27 November 2026. With `TRUST_PROXY=1` the API saw Render's private `10.x` addresses, with 4 `X-Forwarded-For` entries. That meant every anonymous visitor and citizen reporter shared the same rate-limit keys. With **`TRUST_PROXY=4`** it sees the visitor's own public IP, so the Render service now has `TRUST_PROXY=4`, `NODE_ENV=production` and `DEBUG_PROXY` off. Requests sent straight to `ipmats-system-api.onrender.com`, bypassing Vercel, pass through fewer proxies. Such a caller can put fake addresses in `X-Forwarded-For` and so get around the per-IP limits. The per-account limits and every access check still apply. If the frontend or the hosting changes, check again.
 
 Used only by the scripts in `server/scripts/`: `API_URL` (default `http://localhost:4000/api`), `SEED_EMAIL`, `SEED_PASSWORD`, `SEED_ADMIN`, `SEED_AUDITOR` (demo accounts the scripts sign in with).
 
@@ -104,13 +137,25 @@ Used only by the scripts in `server/scripts/`: `API_URL` (default `http://localh
 
 ### Database migrations
 
-There is no migration runner in this repository. Apply the files in `database/migrations/` **in numeric order** in the Supabase SQL Editor (or with the Supabase CLI / MCP). The IPMATS project already has `001`–`018` applied. Never edit or renumber a migration that has been applied; write a new one that changes or reverses it.
+There is no migration runner in this repository. Apply the files in `database/migrations/` **in numeric order** in the Supabase SQL Editor (or with the Supabase CLI / MCP). The IPMATS project has all of `001`–`026` applied (`023`–`026` were applied on 27 November 2026: the PACC role, then the PACC portal and anonymous citizen reports, then the trigger that closes a PACC case's attached reports when the case is closed, then the contractor name kept on a PACC case). On a fresh database, apply `023` on its own, before `024`: a new enum value must be committed before it can be used. Apply `025` after `024` and before deploying the API: without it, closing a case leaves its attached reports open. Apply `026` after `025` and before deploying the API, which reads and writes `pacc_cases.contractor_name`; without it, listing, opening or editing PACC cases fails. Never edit or renumber a migration that has been applied; write a new one that changes or reverses it.
+
+#### Upgrading to this version
+
+1. Apply migrations `019` and `020` in the Supabase SQL Editor **before** deploying the API (before merging, if Render auto-deploys on push). The new API reads and writes `phash` and `reviewed_flag`, so it fails against a database without them. The same holds for `021`: the public portal API reads `public_flag`.
+2. Deploy the API, then the web client.
+3. From `server/`, run `node --env-file=.env scripts/backfill-phash.mjs` to hash the existing photos.
+4. From `server/`, run `npm run flags:recheck` to re-evaluate every project.
+5. Check the client IP the API sees with `DEBUG_PROXY=1`, set `TRUST_PROXY` to match, then remove `DEBUG_PROXY`.
+
+Expect some changes after step 4: projects with typed GPS or time will turn yellow, and reviewed flags may go back to pending.
 
 ### Seed data (fictional demo data)
 
 1. `database/seed/seed.sql` — municipalities, barangays, offices, demo accounts, contractors and projects (`npm run seed:generate` rebuilds it from `generate-seed.mjs`).
 2. `database/seed/seed_week2.sql` — phases, monthly progress reports and financial records (`node database/seed/week2-seed.mjs` rebuilds it).
 3. With the API running, in `server/`: `npm run seed:images` uploads placeholder 360° panoramas (labelled "SAMPLE – NOT A REAL PHOTO") through the upload API.
+4. After applying migration `020`, in `server/`: `node --env-file=.env scripts/backfill-phash.mjs` computes the perceptual hash of photos uploaded earlier (prints `updated N / skipped M`).
+5. In `server/`: `node --env-file=.env scripts/seed-sample-documents.mjs` adds two sample PDFs to every project's Documents tab (a contract agreement and a program of work, marked "SAMPLE – FOR DEMONSTRATION ONLY"). Add `--dry-run` first to see what it would add. Running it again skips documents that are already there.
 
 Demo accounts (password `Dpwh360!Demo2026`; change or delete them before real use): `admin@dpwh360.local` (System Administrator), `personnel@dpwh360.local` and `personnel.south@dpwh360.local` (DPWH Personnel), `auditor@dpwh360.local` (Auditor), `applicant@dpwh360.local` (pending registration).
 
@@ -158,7 +203,7 @@ ipmats-system/
 │   ├── src/tests/          server tests
 │   └── scripts/            demo-data scripts (placeholder panoramas, sample project, cleanup)
 ├── database/
-│   ├── migrations/         schema, Row Level Security and data migrations 001–018
+│   ├── migrations/         schema, Row Level Security and data migrations 001–026
 │   └── seed/               fictional demo data
 └── docker-compose.yml      API + web containers
 ```
@@ -181,13 +226,12 @@ ipmats-system/
 | `activity_logs` | Who did what and when (append-only) |
 | `system_settings` | Flag thresholds |
 | `v_project_summary` | Staff view: project with names, progress, finance totals and flags |
-| `v_public_projects` | Public view: only the columns the portal shows, no flags or finances |
+| `v_public_projects` | Public view: only the columns the portal shows, the auditor-reviewed flag (`public_flag`), no automatic flags or finances |
 
-Migrations are numbered in the order they were applied: `001`–`006` Weeks 1–2 and the first public portal, `007`–`011` Week 3 and later improvements, `012` office status, `013` and `014` a data-provenance experiment and its reversal, `015` office restructure, `016` reopens the public portal to the anonymous role (reverses `006`), `017` removes the Public role and adds admin approval, `018` fixes the sign-in ban set by `017`.
+Migrations are numbered in the order they were applied: `001`–`006` Weeks 1–2 and the first public portal, `007`–`011` Week 3 and later improvements, `012` office status, `013` and `014` a data-provenance experiment and its reversal, `015` office restructure, `016` reopens the public portal to the anonymous role (reverses `006`), `017` removes the Public role and adds admin approval, `018` fixes the sign-in ban set by `017`, `019` keeps an auditor's flag decision from being lowered automatically, `020` adds the perceptual photo hash, `021` shows the auditor-reviewed flag on the public portal, `022` makes every 360° photo public on upload, `023` adds the PACC role, `024` adds the PACC portal and anonymous citizen reports (PACC cases and citizen reports keep the project code and name, so they survive a project delete), `025` makes closing a PACC case close its attached reports in the same transaction, `026` keeps the contractor's name on a PACC case so deleting the contractor does not erase the respondent.
 
 ## Known limitations and unfinished work
 
-- No 360° photo is currently approved for the public, so every public drawer shows the placeholder until an Auditor or Admin approves photos.
 - All project, contractor and photo data is fictional demo data; the uploaded panoramas are drawn placeholders.
 - Registration needs email confirmation. Without custom SMTP, Supabase sends only a few emails per hour.
 - The public account `public@dpwh360.local` from the old model is kept but deactivated; pending accounts have no "My account" page until they are approved.

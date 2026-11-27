@@ -131,7 +131,7 @@ export default function RegisterPage() {
                 setPhotoError(err);
               }}
             />
-            {photo && <p className="mt-2 text-xs text-slate-600">Your photo will be added after you confirm your email and sign in.</p>}
+            <p className="mt-2 text-xs text-slate-600">Your photo is added after your account is approved.</p>
             {photoError && <p className="mt-2 text-xs font-medium text-red-700">{photoError}</p>}
           </div>
           <Field label="Password" required hint="At least 8 characters">

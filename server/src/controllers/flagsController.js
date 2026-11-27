@@ -83,7 +83,7 @@ export async function reviewFlag(req, res) {
   unwrap(
     await adminClient
       .from('projects')
-      .update({ current_flag: finalFlag, flag_review_status: decision === 'confirm' ? 'confirmed' : 'overridden', audit_status: nextAudit, updated_by: req.user.id })
+      .update({ current_flag: finalFlag, reviewed_flag: finalFlag, flag_review_status: decision === 'confirm' ? 'confirmed' : 'overridden', audit_status: nextAudit, updated_by: req.user.id })
       .eq('id', id),
   );
   unwrap(

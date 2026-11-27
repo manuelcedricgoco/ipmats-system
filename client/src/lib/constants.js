@@ -21,6 +21,7 @@ export const ROLE_LABELS = {
   admin: 'System Administrator',
   dpwh_personnel: 'DPWH Personnel',
   auditor: 'Auditor',
+  pacc: 'PACC Investigator',
 };
 
 export const OFFICE_TYPES = {
@@ -33,8 +34,19 @@ export const STAFF_ROLES = ['admin', 'dpwh_personnel', 'auditor'];
 
 // Suspended accounts: Supabase Auth refuses the sign-in ("User is banned") and the API answers 403.
 export const SUSPENDED_MESSAGE = 'Your account has been suspended by the System Administrator. Contact the System Administrator to lift the suspension.';
-/** True for Supabase's "banned" sign-in error and the API's "has been suspended" 403. */
-export const isSuspensionError = (message = '') => /banned|has been suspended/i.test(String(message));
+/** PACC manages its own accounts, so a suspended PACC account is sent to another PACC member (same text as the API). */
+export const PACC_SUSPENDED_MESSAGE = 'Your account is suspended. Ask another PACC member to lift the suspension.';
+/** True for Supabase's "banned" sign-in error and the API's "has been suspended" / "account is suspended" 403. */
+export const isSuspensionError = (message = '') => /banned|has been suspended|account is suspended/i.test(String(message));
+/** Supabase's sign-in "banned" error does not name the role, so the sign-in page says what both kinds of account can do. */
+export const BANNED_SIGN_IN_MESSAGE = 'Your account is suspended. Contact the System Administrator, or, for a PACC account, ask another PACC member to lift the suspension.';
+/** What the sign-in page says after a suspension. The API's 403 tells PACC accounts apart; the sign-in ban does not. */
+export const suspensionNotice = (message = '') => {
+  const text = String(message);
+  if (/PACC member/i.test(text)) return PACC_SUSPENDED_MESSAGE;
+  if (/banned/i.test(text)) return BANNED_SIGN_IN_MESSAGE;
+  return SUSPENDED_MESSAGE;
+};
 
 // Week 2 — financial record types
 export const RECORD_TYPES = {

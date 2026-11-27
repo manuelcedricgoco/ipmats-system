@@ -1,7 +1,7 @@
 import { Building2, CalendarClock, Camera, MapPin, Search } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { StatusBadge } from '../common/Badges.jsx';
+import { FlagBadge, StatusBadge } from '../common/Badges.jsx';
 import { Card } from '../common/Card.jsx';
 import { EmptyState, ErrorState, PageLoader } from '../common/Feedback.jsx';
 import { Input, Select } from '../common/Form.jsx';
@@ -80,7 +80,10 @@ export default function ProjectCardGrid({ onOpen, showSearch = false, pageSize =
                   >
                     <div className="flex items-start justify-between gap-2">
                       <span className="font-mono text-xs text-brand-700">{p.project_code} · {PROJECT_TYPES[p.project_type] || p.project_type}</span>
-                      <StatusBadge status={p.status} />
+                      <span className="flex flex-col items-end gap-1">
+                        <StatusBadge status={p.status} />
+                        <FlagBadge flag={p.public_flag} size="sm" emptyLabel="Under review" />
+                      </span>
                     </div>
                     <h3 className="mt-2 line-clamp-2 font-semibold text-slate-900 group-hover:text-brand-800">{p.name}</h3>
                     <p className="mt-2 flex items-center gap-1.5 text-xs text-slate-600"><MapPin className="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden />{p.barangay_name ? `Brgy. ${p.barangay_name}, ` : ''}{p.municipality_name}</p>

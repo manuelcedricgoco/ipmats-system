@@ -72,11 +72,12 @@ flowchart LR
 | Validation | zod | ^3.23.8 | 3.25.76 | Checks every request body before it reaches the database |
 | Security headers | helmet | ^8.0.0 | 8.3.0 | Standard HTTP security headers |
 | CORS | cors | ^2.8.5 | 2.8.6 | Lets only the configured web-app origins call the API |
-| Rate limit | express-rate-limit | ^7.4.1 | 7.5.1 | 300 requests per minute per client on `/api` |
+| Rate limit | express-rate-limit | ^7.4.1 | 7.5.1 | Four limiters (`middleware/rateLimits.js`): 600/min per IP before sign-in, 300/min per account, 20 uploads and 30 report downloads per 10 min per account. The client IP depends on `TRUST_PROXY` (proxy hop count) |
 | File uploads | multer | ^1.4.5-lts.1 | 1.4.5-lts.2 | Receives photos, evidence and documents in memory, with size and type limits |
-| Image processing | sharp | 0.33.5 | 0.33.5 | Stores a smaller copy of very large panoramas; profile photos |
+| Image processing | sharp | 0.35.5 | 0.35.5 | Reads width and height (2:1 panorama check); stores a smaller copy of very large panoramas; profile photos; perceptual hash for near-duplicate detection. Pinned exactly; upgraded from 0.33.5 for libvips security fixes |
+| Image file check | own code (`services/imageFormat.js`) | — | — | Checks the first bytes of every uploaded image so only real JPEG, PNG or WebP files reach sharp and exifr |
+| Photo similarity | own code (`services/perceptualHash.js`) | — | — | 64-bit difference hash (dHash) of each 360° photo, compared by Hamming distance (≤ 6 bits = near-duplicate) |
 | Photo metadata | exifr | ^7.1.3 | 7.1.3 | Reads GPS and capture time from photos |
-| Image size | image-size | ^1.2.1 | 1.2.1 | Reads width and height (2:1 panorama check) |
 | PDF reports | pdfkit | ^0.15.2 | 0.15.2 | Builds the audit reports |
 | Excel reports | exceljs | ^4.4.0 | 4.4.0 | Builds formatted .xlsx files |
 | Scheduler | node-cron | ^3.0.3 | 3.0.3 | Daily flag check at 01:15, Asia/Manila |
@@ -90,6 +91,7 @@ flowchart LR
 | Hosting | Supabase (project IPMATS) | Managed Postgres with Auth and Storage in one place |
 | Authentication | Supabase Auth, email and password | Sign-in, sign-up, password change, account bans (suspension) |
 | File storage | Supabase Storage, 4 private buckets | Photos, evidence, documents, profile photos |
+| Production hosting | Web app on Vercel; Vercel forwards `/api/*` to the API on Render (`client/vercel.json`) | Two proxies sit in front of the API, so `TRUST_PROXY` must match the hop count for rate limits to see the real client IP (verify with `DEBUG_PROXY=1`) |
 | Deployment (optional) | Docker: `server/Dockerfile` (node:22-slim), `client/Dockerfile` (build on node:22-slim, served by nginx:1.27-alpine), `docker-compose.yml` | Runs the API and web app with one command |
 
 Details of the schema: [database.md](database.md).

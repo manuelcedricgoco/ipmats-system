@@ -13,7 +13,10 @@ describe('processAvatar', () => {
     assert.equal(meta.height, 512);
   });
   it('rejects bytes that are not an image', async () => {
-    await assert.rejects(processAvatar(Buffer.from('not an image at all')), /not a readable image/);
+    await assert.rejects(processAvatar(Buffer.from('not an image at all')), /JPEG, PNG or WebP/);
+  });
+  it('rejects an SVG even when it claims to be PNG', async () => {
+    await assert.rejects(processAvatar(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="300" height="300"/>')), /JPEG, PNG or WebP/);
   });
   it('rejects tiny images', async () => {
     const tiny = await sharp({ create: { width: 64, height: 64, channels: 3, background: '#000' } }).png().toBuffer();
