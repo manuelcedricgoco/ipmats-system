@@ -4,6 +4,7 @@
  */
 import { z } from 'zod';
 import { REPORT_CATEGORIES, normalizeTrackingCode } from '../services/citizenReports.js';
+import { CONTRACTOR_COMPANY_MESSAGE } from '../services/contractorAccess.js';
 
 const empty = (v) => (v === '' || v === 'null' || v === undefined ? undefined : v);
 const opt = (schema) => z.preprocess(empty, schema.optional());
@@ -18,7 +19,8 @@ const createStatusField = z.preprocess(
 );
 
 export const uuidParam = z.string().uuid();
-export const ROLES = ['admin', 'dpwh_personnel', 'auditor'];
+/** Roles the System Administrator may give. Not 'pacc' (PACC manages its own accounts). */
+export const ROLES = ['admin', 'dpwh_personnel', 'auditor', 'contractor'];
 export const PROJECT_TYPES = ['road', 'bridge', 'flood_control', 'building', 'water_supply', 'other'];
 // Updates recalculate status automatically; registration accepts an initial Not started or Ongoing value.
 export const MANUAL_STATUSES = [];
@@ -85,14 +87,22 @@ export const agencyCreate = z.object({
 });
 export const agencyUpdate = agencyCreate.partial().refine((o) => Object.keys(o).length > 0, 'Nothing to update');
 
-export const userCreate = z.object({
-  email: z.string().trim().toLowerCase().email().max(200),
-  password: z.string().min(8, 'At least 8 characters').max(72),
-  full_name: text(120).min(2),
-  role: z.enum(ROLES),
-  agency_id: nullable(z.coerce.number().int().positive()),
-  position: nullable(text(120)),
-});
+// 029: a contractor account represents one contractor company (required for that role; the
+// controller also checks that the company exists, and the approve / edit defaults).
+const contractorField = nullable(z.string().uuid('Choose a contractor company from the list.'));
+const companyRule = { message: CONTRACTOR_COMPANY_MESSAGE, path: ['contractor_id'] };
+
+export const userCreate = z
+  .object({
+    email: z.string().trim().toLowerCase().email().max(200),
+    password: z.string().min(8, 'At least 8 characters').max(72),
+    full_name: text(120).min(2),
+    role: z.enum(ROLES),
+    agency_id: nullable(z.coerce.number().int().positive()),
+    position: nullable(text(120)),
+    contractor_id: contractorField,
+  })
+  .refine((o) => o.role !== 'contractor' || Boolean(o.contractor_id), companyRule);
 export const userUpdate = z
   .object({
     full_name: text(120).min(2).optional(),
@@ -100,13 +110,17 @@ export const userUpdate = z
     agency_id: nullable(z.coerce.number().int().positive()),
     position: nullable(text(120)),
     is_active: z.boolean().optional(),
+    contractor_id: contractorField,
   })
-  .refine((o) => Object.keys(o).length > 0, 'Nothing to update');
+  .refine((o) => Object.keys(o).length > 0, 'Nothing to update')
+  .refine((o) => o.role !== 'contractor' || o.contractor_id !== null, companyRule);
 
+/** Approving as contractor: contractor_id defaults to the company asked for at sign-up (controller). */
 export const userApprove = z.object({
-  role: z.enum(['admin', 'dpwh_personnel', 'auditor']),
+  role: z.enum(ROLES),
   agency_id: nullable(z.coerce.number().int().positive()),
   position: nullable(text(120)),
+  contractor_id: contractorField,
 });
 export const userReject = z.object({ note: nullable(text(500)) });
 /** Suspending an account always needs a reason (kept on the profile and in the activity log). */

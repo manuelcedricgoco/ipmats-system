@@ -1,13 +1,23 @@
 import { adminClient } from '../config/supabase.js';
-import { HttpError, forbidden, unauthorized } from '../utils/httpError.js';
+import { assertContractorOwnsProject } from '../services/contractorAccess.js';
+import { HttpError, forbidden, unauthorized, unwrap } from '../utils/httpError.js';
 
 export const ROLES = Object.freeze({
   ADMIN: 'admin',
   PERSONNEL: 'dpwh_personnel',
   AUDITOR: 'auditor',
   PACC: 'pacc',
+  CONTRACTOR: 'contractor',
 });
+/** Staff roles. PACC and Contractor accounts are not staff. */
 export const STAFF = [ROLES.ADMIN, ROLES.PERSONNEL, ROLES.AUDITOR];
+/**
+ * Who may open a project's pages (project, phases, progress, photos, finance, documents, flags,
+ * findings): staff, and contractor accounts for their own company's projects only (RLS, 029).
+ */
+export const PROJECT_VIEWERS = [...STAFF, ROLES.CONTRACTOR];
+/** Who may submit progress reports and upload 360° photos (contractors: own company's projects, requireOwnProject). */
+export const PROJECT_REPORTERS = [ROLES.PERSONNEL, ROLES.CONTRACTOR];
 
 /**
  * Allow only the listed roles. Accounts waiting for approval (or declined) have no role and are
@@ -37,3 +47,26 @@ export function requireWriteAccess(_req, _res, next) {
   }
   return next();
 }
+
+/** The project's company and whether that company is active (service role: a contractor cannot read other companies' projects). */
+async function loadProjectCompany(projectId) {
+  return unwrap(await adminClient.from('projects').select('id, contractor_id, contractor:contractors(is_active)').eq('id', projectId).maybeSingle());
+}
+
+/**
+ * Contractor accounts write only to their own active company's projects (403 "You can only update
+ * your company's projects."). Other roles pass without a lookup. Placed after requireWriteAccess
+ * and before any upload is read, so a refused photo is never processed.
+ */
+export function makeRequireOwnProject(load = loadProjectCompany) {
+  return async (req, _res, next) => {
+    if (req.user?.role !== ROLES.CONTRACTOR) return next();
+    try {
+      assertContractorOwnsProject(await load(req.params.id), req.user);
+      return next();
+    } catch (err) {
+      return next(err);
+    }
+  };
+}
+export const requireOwnProject = makeRequireOwnProject();

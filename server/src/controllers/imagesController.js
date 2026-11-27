@@ -18,6 +18,7 @@ import { dHash, findNearDuplicates } from '../services/perceptualHash.js';
 import { logActivity, projectCode } from '../services/activityLog.js';
 import { loadHashedImages, reevaluate } from '../services/projectEvaluation.js';
 import { getFlagRules } from '../services/settings.js';
+import { fillMissingNames } from '../services/profileNames.js';
 import { signedUrls } from '../services/storage.js';
 import { badRequest, notFound, unwrap } from '../utils/httpError.js';
 
@@ -59,15 +60,20 @@ export async function listImages(req, res) {
   const rows = unwrap(
     await req.db
       .from('site_images')
-      .select('*, phase:project_phases(name), uploader:profiles!site_images_uploaded_by_fkey(full_name)')
+      .select('*, phase:project_phases(name), uploader:profiles!site_images_uploaded_by_fkey(full_name, role)')
       .eq('project_id', req.params.id)
       .order('inspection_date', { ascending: false })
       .order('created_at', { ascending: false }),
   );
   const urls = await signedUrls(BUCKET, rows.map((r) => r.storage_path));
-  res.json({
-    data: rows.map(({ phase, uploader, ...r }) => ({ ...r, phase_name: phase?.name ?? null, uploaded_by_name: uploader?.full_name ?? null, url: urls[r.storage_path] ?? null })),
-  });
+  const data = rows.map(({ phase, uploader, ...r }) => ({
+    ...r,
+    phase_name: phase?.name ?? null,
+    uploaded_by_name: uploader?.full_name ?? null,
+    uploaded_by_role: uploader?.role ?? null,
+    url: urls[r.storage_path] ?? null,
+  }));
+  res.json({ data: await fillMissingNames(data, [{ id: 'uploaded_by', name: 'uploaded_by_name', role: 'uploaded_by_role' }]) });
 }
 
 export async function uploadImage(req, res) {
@@ -136,7 +142,7 @@ export async function uploadImage(req, res) {
       is_final: body.is_final,
       validation: { ...v.validation, original_size_bytes: req.file.size, compressed: stored.compressed },
       uploaded_by: req.user.id,
-      // shown on the public portal at once: DPWH personnel's photos need no approval
+      // shown on the public portal at once: photos (DPWH personnel's and contractors') need no approval
       is_public: true,
     })
     .select('*')

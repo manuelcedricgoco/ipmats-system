@@ -2,7 +2,7 @@
 
 The database is PostgreSQL 17, hosted by Supabase (project **IPMATS**). This page was written from the live
 database on 22 November 2026, not only from the migration files, and updated on 25 November 2026 for migrations
-019 and 020. The PACC parts (migrations 023–026) and the project deletion requests (027), all applied 27 November 2026, are written from the migration files.
+019 and 020. The PACC parts (migrations 023–026) and the project deletion requests (027), all applied 27 November 2026, are written from the migration files, as are the contractor accounts (028, 029; new, not yet applied).
 Where the two differ, the live schema wins.
 
 - What each table is used for in the app: [features.md](features.md)
@@ -30,6 +30,7 @@ erDiagram
   AGENCIES ||--o{ PROJECTS : "implements"
   AGENCIES |o--o{ PROFILES : "employs"
   CONTRACTORS |o--o{ PROJECTS : "builds"
+  CONTRACTORS |o--o{ PROFILES : "represented by (029)"
   PROJECTS ||--o{ PROJECT_PHASES : "divided into"
   PROJECTS ||--o{ PROGRESS_UPDATES : "reported in"
   PROJECTS ||--o{ FINANCIAL_RECORDS : "paid through"
@@ -112,11 +113,11 @@ One row per user account. Linked one-to-one to the Supabase Auth user (`auth.use
 | id | uuid | no | — | Same id as the Auth user. Deleting the Auth user deletes the profile |
 | email | text | no | — | Sign-in email |
 | full_name | text | no | `''` | Display name |
-| role | user_role | yes | — | Staff role, or `pacc`. **Empty until the account is approved** |
+| role | user_role | yes | — | Staff role, `pacc` or `contractor` (029). **Empty until the account is approved** |
 | agency_id | smallint | yes | — | Office the person works for |
 | position | text | yes | — | Job title |
 | is_active | boolean | no | true | False = deactivated or suspended; the API refuses every request |
-| requested_role | user_role | yes | — | Role asked for at registration (`dpwh_personnel` or `auditor` only) |
+| requested_role | user_role | yes | — | Role asked for at registration (`dpwh_personnel`, `auditor` or, 029, `contractor` only) |
 | approval_status | text | no | `'approved'` | `pending`, `approved` or `rejected`. Self-registered accounts get `pending` or `rejected` from the sign-up trigger, not this default |
 | requested_at | timestamptz | yes | — | When the access request was made |
 | reviewed_by | uuid | yes | — | Administrator who approved or declined |
@@ -128,8 +129,11 @@ One row per user account. Linked one-to-one to the Supabase Auth user (`auth.use
 | suspended_at | timestamptz | yes | — | When the account was suspended |
 | suspended_by | uuid | yes | — | Administrator who suspended it |
 | suspension_reason | text | yes | — | Required reason, 5–500 characters |
+| contractor_id | uuid | yes | — | The contractor company a `contractor` account represents (029). Required for that role; empty for every other role. One company can have several accounts |
+| requested_contractor_id | uuid | yes | — | Company chosen at registration by a "Contractor representative" (029; must exist, else the request is declined by the sign-up trigger). The Admin confirms or corrects it on approval |
+| requested_contractor_license | text | yes | — | PCAB licence number typed at registration, at most 50 characters (029). User Management shows whether it matches the company's licence (ignoring case and spaces) |
 
-Rules: a role can only be set when `approval_status = 'approved'` (`profiles_role_requires_approval`).
+Rules: a role can only be set when `approval_status = 'approved'` (`profiles_role_requires_approval`). A `contractor` account must have a company (`profiles_contractor_has_company`: `role is distinct from 'contractor' or contractor_id is not null`, 029).
 
 ### contractors
 Construction contractors and their PCAB licence.
@@ -525,6 +529,8 @@ Both views use `security_invoker`, so the reader's own permissions (RLS) apply.
 | projects.contractor_id | contractors | set null | The contractor building it |
 | profiles.id | auth.users | cascade | Every account has one profile |
 | profiles.agency_id | agencies | set null | The office a staff member works for |
+| profiles.contractor_id | contractors | restrict | The company a contractor account represents (029); a company with accounts cannot be deleted (the API answers 409 first) |
+| profiles.requested_contractor_id | contractors | set null | The company asked for at registration (029) |
 | project_phases.project_id | projects | cascade | Phases belong to one project |
 | progress_updates.project_id | projects | cascade | Reports belong to one project |
 | financial_records.project_id | projects | cascade | Records belong to one project |
@@ -561,7 +567,7 @@ delete a user who has any of these records ([roles-and-permissions](roles-and-pe
 
 | Type | Allowed values |
 |---|---|
-| user_role | `admin`, `dpwh_personnel`, `auditor`, `pacc` (023) |
+| user_role | `admin`, `dpwh_personnel`, `auditor`, `pacc` (023), `contractor` (028) |
 | project_type | `road`, `bridge`, `flood_control`, `building`, `water_supply`, `other` |
 | project_status | `not_started`, `ongoing`, `delayed`, `completed`, `suspended`, `terminated` |
 | completion_status | `completed`, `not_completed` |
@@ -576,7 +582,7 @@ These are `text` columns limited by a `CHECK` rule, not enum types.
 |---|---|
 | agencies.office_type | `district_engineering_office`, `field_office`, `other` |
 | profiles.approval_status | `pending`, `approved`, `rejected` |
-| profiles.requested_role | `dpwh_personnel`, `auditor` (or empty) |
+| profiles.requested_role | `dpwh_personnel`, `auditor`, `contractor` (029) (or empty) |
 | financial_records.record_type | `variation_order`, `obligation`, `disbursement`, `expense` |
 | site_images.gps_source | `exif`, `manual`, `none` |
 | flag_history.source | `auto`, `auditor` |
@@ -601,7 +607,7 @@ These are `text` columns limited by a `CHECK` rule, not enum types.
 
 | Name | On | What it does |
 |---|---|---|
-| `handle_new_user` | after a new Auth user is created | Creates the profile with **no role**. A requested role of DPWH Personnel or Auditor makes the account `pending`; anything else makes it `rejected` |
+| `handle_new_user` | after a new Auth user is created | Creates the profile with **no role**. A requested role of DPWH Personnel or Auditor makes the account `pending`; so does Contractor (029) when `requested_contractor_id` is an existing company (saved with the typed licence, at most 50 characters); anything else, including a contractor request without an existing company, makes it `rejected` |
 | `projects_assign_code` | before a project insert | Assigns the next Project ID for the year (Asia/Manila time) |
 | `projects_lock_code` | before a project update | Refuses any change to the Project ID |
 | `prevent_modification` | before update or delete on `flag_history`, `flag_reviews`, `activity_logs`, `pacc_case_notes`, `pacc_activity` | Makes them append-only (deletes allowed only through a cascade (project or case)) |
@@ -611,6 +617,7 @@ These are `text` columns limited by a `CHECK` rule, not enum types.
 | `private.is_staff()` | used by RLS | True when `app_role()` is admin, DPWH personnel or auditor |
 | `private.is_pacc()` | used by RLS | True when `app_role()` is `pacc` (024). PACC is **not** staff |
 | `private.can_investigate()` | helper | True for staff or PACC (024) |
+| `private.contractor_company()` | used by RLS | Security definer, stable (029). The caller's `contractor_id` when the account is an active, approved `contractor` account **and** its company is active; otherwise NULL (so an inactive company's accounts read nothing). Contractor is **not** staff |
 | `private.sync_pacc_public_status()` | after insert, delete, or update of `project_id`, `status` or `show_public` on `pacc_cases` | Security definer. Sets `projects.pacc_public_status` to the status of the project's non-closed case with `show_public` on, or null, and (027) `projects.pacc_case_status` to the status of the non-closed case whether or not it is public, or null; writes only when either value changes |
 | `private.close_pacc_case_reports()` | after update of `status` on `pacc_cases` | Security definer (025). When a case becomes `resolved` or `dismissed`, closes its attached reports that are not yet closed, in the same transaction: outcome `valid` for resolved, `invalid` for dismissed. Reports PACC already closed keep their outcome |
 | `private.next_project_code()` | used by the code trigger | Increments the yearly counter and returns the next free code |
@@ -624,6 +631,7 @@ goes through the API, which uses the service-role key (it bypasses RLS) after ch
 `anon` = a visitor without an account (the publishable key). `authenticated` = any signed-in account.
 "Staff" = `private.is_staff()` is true: an active, approved admin, DPWH personnel or auditor.
 "PACC" = `private.is_pacc()` is true: an active, approved `pacc` account. PACC is not staff.
+"Contractor" = `private.contractor_company()` is not NULL: an active, approved `contractor` account of an active company (029). Contractor is not staff; "own company's projects" = projects whose `contractor_id` is that company.
 
 | Table | Policy | For | Allows reading |
 |---|---|---|---|
@@ -641,10 +649,18 @@ goes through the API, which uses the service-role key (it bypasses RLS) after ch
 | projects, contractors, project_phases, progress_updates, financial_records, site_images, project_documents, flag_history, flag_reviews, audit_findings, system_settings, profiles | "…: pacc read" (024) | authenticated | Every row, PACC only (read only) |
 | activity_logs | activity: pacc read (024) | authenticated | Rows with a `project_id`, PACC only |
 | citizen_reports, citizen_report_files, pacc_cases, pacc_case_notes, pacc_case_documents, pacc_activity | reports / report files / cases / case notes / case documents / pacc activity: pacc read (024) | authenticated | Every row, **PACC only**. Admin, Auditor and DPWH Personnel have no policy, and anon has no grant |
+| projects | projects: contractor read (029) | authenticated | The contractor's own company's projects, every column (see the note below on `pacc_case_status`) |
+| contractors | contractors: contractor read (029) | authenticated | The contractor's own company's row |
+| project_phases, progress_updates, financial_records, site_images, flag_history, flag_reviews, audit_findings, project_documents | "…: contractor read" (029) | authenticated | Rows of the contractor's own company's projects. Contractors have no policy on activity_logs, system_settings, deletion requests or any PACC table, and read only their own profile |
 
 `anon` may also read the `v_public_projects` view. It cannot read any other table or view.
 A signed-in account that is pending or declined is not staff, so it can read only its own profile and the lookup
 tables, the same as a visitor.
+
+`v_project_summary` (security invoker) shows a contractor only its own company's projects, through the policies above.
+Column grants cannot differ between staff and contractors (both are `authenticated`), so a contractor querying
+Supabase directly with its own token can read `projects.pacc_case_status` of its own company's projects. The API
+strips that column (every `pacc_*` field) from every project row it sends to a contractor account (029).
 
 ## File storage
 
@@ -668,7 +684,7 @@ write files. It hands out signed links that expire (1 hour by default, `SIGNED_U
 
 ## Migrations
 
-The migration files are in `database/migrations/`. They are numbered and run in number order, `001` to `027`.
+The migration files are in `database/migrations/`. They are numbered and run in number order, `001` to `029`.
 The live database's migration history lists 001–027 as applied, in that order (019 and 020 on 25 November
 2026; 021 and 022 on 27 November 2026, each before the matching API was deployed; 023, 024, 025 and 026 on 27 November
 2026 for the PACC portal; 027 on 27 November 2026 for project deletion requests and the staff-visible PACC case status). On a fresh database, 023 must be applied on its own before 024, because a new enum value
@@ -676,6 +692,9 @@ must be committed before it can be used, and 025 must be applied after 024 and b
 deployed. Apply 026 after 025 and before deploying the API that writes `pacc_cases.contractor_name`
 (without it, opening or editing a case fails). Apply 027 after 026 and before deploying
 the API that reads `project_deletion_requests` and `v_project_summary.pacc_case_status` (without it, the project list fails).
+028 and 029 (contractor accounts) are new and not yet applied: apply 028 on its own first (a new enum value must be
+committed before it is used), then 029, both before deploying the API, which selects `profiles.contractor_id` on every
+signed-in request (without 029, every signed-in request fails).
 
 Rules the project follows:
 - An applied migration is never edited or deleted. A mistake is undone by a new migration (013 → 014, 006 → 016).
@@ -711,3 +730,5 @@ Rules the project follows:
 | 025 | pacc_case_closes_reports | Trigger `pacc_cases_close_reports` (`private.close_pacc_case_reports()`): closing a case (resolved or dismissed) closes its attached open reports in the same transaction, outcome `valid` or `invalid` |
 | 026 | pacc_case_contractor_name | Adds `pacc_cases.contractor_name` (snapshot of the contractor's name, backfilled for existing cases), so deleting a contractor no longer erases a case's respondent |
 | 027 | project_authority | Table `project_deletion_requests` (one open request per project, staff read, API writes); `projects.pacc_case_status` (no anon grant, backfilled), kept by `private.sync_pacc_public_status()`, which now sets both PACC status columns; `pacc_case_status` appended to `v_project_summary`; projects trigger `projects_updated_at` now uses `private.projects_set_updated_at()`, so a PACC status change alone does not move `projects.updated_at` |
+| 028 | contractor_role | Adds `contractor` to `user_role` (only that, so it is committed before 029 uses it) |
+| 029 | contractor_accounts | `profiles.contractor_id` (restrict) with CHECK `profiles_contractor_has_company`; `profiles.requested_contractor_id` (set null) and `requested_contractor_license` (at most 50 characters); `profiles_requested_role_check` allows `contractor`; `handle_new_user` accepts a contractor request with an existing company (role stays empty until approval); `private.contractor_company()`; "…: contractor read" policies on projects, contractors and eight project tables |

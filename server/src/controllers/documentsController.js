@@ -8,6 +8,7 @@
 import { randomUUID } from 'node:crypto';
 import { adminClient } from '../config/supabase.js';
 import { logActivity, projectCode } from '../services/activityLog.js';
+import { fillMissingNames } from '../services/profileNames.js';
 import { signedUrls } from '../services/storage.js';
 import { badRequest, forbidden, notFound, unwrap } from '../utils/httpError.js';
 
@@ -35,15 +36,14 @@ export async function listDocuments(req, res) {
       .order('created_at', { ascending: false }),
   );
   const urls = await signedUrls(DOCUMENT_BUCKET, rows.map((r) => r.storage_path));
-  res.json({
-    data: rows.map(({ phase, uploader, ...r }) => ({
-      ...r,
-      type_label: TYPE_LABELS[r.doc_type] || r.doc_type,
-      phase_name: phase?.name ?? null,
-      uploaded_by_name: uploader?.full_name ?? null,
-      url: urls[r.storage_path] ?? null,
-    })),
-  });
+  const data = rows.map(({ phase, uploader, ...r }) => ({
+    ...r,
+    type_label: TYPE_LABELS[r.doc_type] || r.doc_type,
+    phase_name: phase?.name ?? null,
+    uploaded_by_name: uploader?.full_name ?? null,
+    url: urls[r.storage_path] ?? null,
+  }));
+  res.json({ data: await fillMissingNames(data, [{ id: 'uploaded_by', name: 'uploaded_by_name' }]) });
 }
 
 export async function uploadDocument(req, res) {

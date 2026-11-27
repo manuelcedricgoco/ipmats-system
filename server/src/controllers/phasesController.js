@@ -8,6 +8,7 @@
  */
 import { adminClient } from '../config/supabase.js';
 import { logActivity, projectCode } from '../services/activityLog.js';
+import { fillMissingNames } from '../services/profileNames.js';
 import { computeOverallProgress, computePlannedProgress, computeSlippage, planFromTemplate } from '../services/completion.js';
 import { reevaluate } from '../services/projectEvaluation.js';
 import { assertValid, checkPhasePlan, checkProgressUpdate } from '../services/validationRules.js';
@@ -82,12 +83,14 @@ export async function listProgress(req, res) {
   const rows = unwrap(
     await req.db
       .from('progress_updates')
-      .select('id, report_date, overall_progress, phase_snapshot, remarks, created_at, submitted_by, submitter:profiles!progress_updates_submitted_by_fkey(full_name)')
+      .select('id, report_date, overall_progress, phase_snapshot, remarks, created_at, submitted_by, submitter:profiles!progress_updates_submitted_by_fkey(full_name, role)')
       .eq('project_id', req.params.id)
       .order('report_date', { ascending: false })
       .order('created_at', { ascending: false }),
   );
-  res.json({ data: rows.map(({ submitter, ...r }) => ({ ...r, submitted_by_name: submitter?.full_name || null })) });
+  const named = rows.map(({ submitter, ...r }) => ({ ...r, submitted_by_name: submitter?.full_name || null, submitted_by_role: submitter?.role ?? null }));
+  // A contractor account cannot read other profiles (RLS): its names come from the service role.
+  res.json({ data: await fillMissingNames(named, [{ id: 'submitted_by', name: 'submitted_by_name', role: 'submitted_by_role' }]) });
 }
 
 export async function submitProgress(req, res) {
