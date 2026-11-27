@@ -25,6 +25,8 @@ export const ROLE_LABELS = {
   dpwh_personnel: 'DPWH Personnel',
   auditor: 'Auditor',
   pacc: 'PACC Investigator',
+  // 029: a contractor company's representative. Not staff (STAFF_ROLES below stays the same).
+  contractor: 'Contractor',
 };
 
 export const OFFICE_TYPES = {
@@ -34,6 +36,10 @@ export const OFFICE_TYPES = {
 };
 
 export const STAFF_ROLES = ['admin', 'dpwh_personnel', 'auditor'];
+/** 029: contractor accounts work in /app too, but only on their own company's projects (lib/contractor.js). */
+export const CONTRACTOR_ROLE = 'contractor';
+/** Roles that may open the /app workspace: staff, and contractors on the pages canOpenWorkspacePath allows. */
+export const WORKSPACE_ROLES = [...STAFF_ROLES, CONTRACTOR_ROLE];
 
 /**
  * Status of a project's non-closed PACC case, shown to DPWH staff (Admin, Personnel, Auditor) whether or not PACC

@@ -1,8 +1,9 @@
-import { Building2, ClipboardCheck, Coins, FileBarChart, FolderKanban, History, Info, Landmark, LayoutDashboard, Map, SlidersHorizontal, Trash2, TrendingUp, Users } from 'lucide-react';
+import { Building2, ClipboardCheck, Coins, FileBarChart, FolderKanban, History, Info, Landmark, LayoutDashboard, Map, SlidersHorizontal, Trash2, TrendingUp, UserRound, Users } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useApi } from '../../hooks/useApi.js';
 import { ROLE_LABELS } from '../../lib/constants.js';
+import { CONTRACTOR_NAV, isContractor } from '../../lib/contractor.js';
 import OfflineUploads from '../common/OfflineUploads.jsx';
 import WorkspaceShell from './WorkspaceShell.jsx';
 
@@ -34,10 +35,14 @@ const SECTIONS = [
   },
 ];
 
+// 029: a contractor account's sidebar (its own company's projects only).
+const CONTRACTOR_ICONS = { '/app': LayoutDashboard, '/app/projects': FolderKanban, '/app/account': UserRound };
+const CONTRACTOR_SECTIONS = [{ title: 'My work', items: CONTRACTOR_NAV.map((i) => ({ ...i, icon: CONTRACTOR_ICONS[i.to] })) }];
+
 // "My account" and "Public portal" are in the account menu (top right), so the sidebar fits without scrolling.
 const FOOTER_LINKS = [{ to: '/', label: 'About the system', icon: Info, end: true }];
 
-/** Staff workspace (Admin, DPWH Personnel, Auditor). */
+/** Staff workspace (Admin, DPWH Personnel, Auditor), and the contractor workspace (029) with its own sidebar. */
 export default function AppLayout() {
   const { role, profile } = useAuth();
   const { pathname } = useLocation();
@@ -46,20 +51,25 @@ export default function AppLayout() {
   // …and how many project deletion requests wait for a decision (027).
   const pendingDeletions = useApi('/deletion-requests', { status: 'pending', pageSize: 1, _: pathname }, { enabled: role === 'admin', select: (r) => r.total });
   const badges = { '/app/users': pendingUsers.data || 0, '/app/deletion-requests': pendingDeletions.data || 0 };
-  const sections = SECTIONS.map((s) => ({ ...s, items: s.items.filter((i) => i.roles.includes(role)).map((i) => ({ ...i, badge: badges[i.to] })) }));
+  const contractor = isContractor(role);
+  const sections = contractor
+    ? CONTRACTOR_SECTIONS
+    : SECTIONS.map((s) => ({ ...s, items: s.items.filter((i) => i.roles.includes(role)).map((i) => ({ ...i, badge: badges[i.to] })) }));
 
   return (
     <WorkspaceShell
       homeTo="/app"
-      tag="Staff"
+      tag={contractor ? 'Contractor' : 'Staff'}
       sections={sections}
       footerLinks={FOOTER_LINKS}
-      // Offline 360° photos are uploaded by DPWH Personnel only (027).
-      headerExtra={role === 'dpwh_personnel' ? <OfflineUploads /> : null}
+      // Offline 360° photos are uploaded by the accounts that upload photos: DPWH Personnel (027) and contractors (029).
+      // The queue is per account (lib/offlineUploads.js), so one account never sends another's photos.
+      headerExtra={role === 'dpwh_personnel' || contractor ? <OfflineUploads /> : null}
       headerLeft={
         <p className="truncate">
           <span className="font-semibold text-slate-900">{ROLE_LABELS[role]}</span>
-          {profile?.position && <span className="hidden text-slate-500 sm:inline"> · {profile.position}</span>}
+          {contractor && profile?.contractor?.name && <span className="text-slate-500"> · {profile.contractor.name}</span>}
+          {!contractor && profile?.position && <span className="hidden text-slate-500 sm:inline"> · {profile.position}</span>}
         </p>
       }
     />

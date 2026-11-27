@@ -10,6 +10,7 @@ import ProgressBar from '../../../components/common/ProgressBar.jsx';
 import { useToast } from '../../../context/ToastContext.jsx';
 import { useApi } from '../../../hooks/useApi.js';
 import { api } from '../../../lib/api.js';
+import { byLabel } from '../../../lib/contractor.js';
 import { date, pct, todayIso } from '../../../lib/format.js';
 
 /** Same formula as the API (server/src/services/completion.js): Σ(weight × accomplishment) ÷ Σ(weight). */
@@ -37,7 +38,8 @@ function ServerError({ err, title }) {
  * update form used by DPWH personnel.
  */
 export default function ProgressTab() {
-  const { project, reloadProject, canEdit } = useOutletContext();
+  // canEdit: the phase plan (DPWH Personnel); canReport: progress reports (Personnel and the project's contractor, 029).
+  const { project, reloadProject, canEdit, canReport, canConfirmCompletion } = useOutletContext();
   const toast = useToast();
   const phases = useApi(`/projects/${project.id}/phases`, undefined, { select: (r) => r.data });
   const history = useApi(`/projects/${project.id}/progress`, undefined, { select: (r) => r.data });
@@ -94,10 +96,10 @@ export default function ProgressTab() {
           title="Construction phases"
           description="Overall completion = Σ (weight × accomplishment) ÷ 100. The black mark on each bar is where the schedule says the phase should be today."
           actions={
-            canEdit && (
+            (canEdit || canReport) && (
               <>
-                <Button size="sm" variant="secondary" icon={Wrench} onClick={() => setPlanning(true)}>Edit phase plan</Button>
-                <Button size="sm" icon={TrendingUp} onClick={() => setReporting(true)}>Submit progress update</Button>
+                {canEdit && <Button size="sm" variant="secondary" icon={Wrench} onClick={() => setPlanning(true)}>Edit phase plan</Button>}
+                {canReport && <Button size="sm" icon={TrendingUp} onClick={() => setReporting(true)}>Submit progress update</Button>}
               </>
             )
           }
@@ -146,7 +148,7 @@ export default function ProgressTab() {
       </Card>
 
       <Card className="overflow-hidden">
-        <CardHeader title="Progress report history" description="Every update submitted by DPWH personnel, newest first. Click a row to see the phases at that date." />
+        <CardHeader title="Progress report history" description="Every update submitted by DPWH personnel or the contractor, newest first. Click a row to see the phases at that date." />
         {reports.length === 0 ? (
           <p className="px-5 py-6 text-sm text-slate-500">No progress reports yet.</p>
         ) : (
@@ -175,7 +177,7 @@ export default function ProgressTab() {
                           {change > 0 ? '+' : ''}{change.toFixed(2)}
                         </td>
                         <td className="max-w-xs px-4 py-2.5 text-slate-600">{u.remarks || '—'}</td>
-                        <td className="whitespace-nowrap px-4 py-2.5 text-slate-600">{u.submitted_by_name || '—'}</td>
+                        <td className="whitespace-nowrap px-4 py-2.5 text-slate-600">{byLabel(u.submitted_by_name, u.submitted_by_role)}</td>
                         <td className="px-4 py-2.5 text-right">
                           <button type="button" aria-expanded={open} aria-label="Show phases" className="rounded p-1 text-slate-400 hover:bg-slate-100">
                             <ChevronDown className={`h-4 w-4 transition-transform ${open ? 'rotate-180' : ''}`} />
@@ -205,7 +207,7 @@ export default function ProgressTab() {
         )}
       </Card>
 
-      <ProgressModal open={reporting} onClose={() => setReporting(false)} project={project} phases={d.phases} lastReport={reports[0]} onSaved={(r) => saved(`Progress update saved. Overall completion is now ${pct(r.overall_progress, 2)}.`)} />
+      <ProgressModal open={reporting} onClose={() => setReporting(false)} project={project} phases={d.phases} lastReport={reports[0]} canConfirmCompletion={canConfirmCompletion} onSaved={(r) => saved(`Progress update saved. Overall completion is now ${pct(r.overall_progress, 2)}.`)} />
       <PhasePlanModal open={planning} onClose={() => setPlanning(false)} project={project} phases={d.phases} onSaved={() => saved('Phase plan updated.')} />
     </div>
   );
@@ -222,8 +224,11 @@ function phasePlannedToday(ph) {
   return ((t - s) / (e - s)) * 100;
 }
 
-/** WEEK 2 — Progress update form for DPWH personnel (Tracy Ann Milaflores). */
-function ProgressModal({ open, onClose, project, phases, lastReport, onSaved }) {
+/**
+ * WEEK 2 — Progress update form for DPWH personnel (Tracy Ann Milaflores), also used by the project's contractor (029).
+ * Only DPWH Personnel confirm completion (canConfirmCompletion), so a contractor never sends an actual completion date.
+ */
+function ProgressModal({ open, onClose, project, phases, lastReport, canConfirmCompletion = false, onSaved }) {
   const [rows, setRows] = useState([]);
   const [reportDate, setReportDate] = useState(todayIso());
   const [remarks, setRemarks] = useState('');
@@ -254,7 +259,7 @@ function ProgressModal({ open, onClose, project, phases, lastReport, onSaved }) 
       const res = await api.post(`/projects/${project.id}/progress`, {
         report_date: reportDate,
         remarks: remarks.trim() || undefined,
-        actual_completion_date: all100 && completion ? completion : undefined,
+        actual_completion_date: canConfirmCompletion && all100 && completion ? completion : undefined,
         // send only the phases that changed (at least one row is required)
         phases: (rows.filter((r) => Number(r.accomplishment) !== r.previous).length ? rows.filter((r) => Number(r.accomplishment) !== r.previous) : rows).map((r) => ({
           phase_id: r.phase_id,
@@ -316,7 +321,10 @@ function ProgressModal({ open, onClose, project, phases, lastReport, onSaved }) 
             ))}
           </div>
         </fieldset>
-        {all100 && (
+        {all100 && !canConfirmCompletion && (
+          <Alert tone="info">Every phase is at 100%. DPWH Personnel confirm the actual completion date and the final as-built 360° image.</Alert>
+        )}
+        {all100 && canConfirmCompletion && (
           <Field label="Actual completion date" hint="Every phase is at 100%. Enter the completion date; the project becomes Completed once a final as-built 360° image is also uploaded.">
             {(a) => <Input {...a} type="date" value={completion} max={todayIso()} onChange={(e) => setCompletion(e.target.value)} />}
           </Field>

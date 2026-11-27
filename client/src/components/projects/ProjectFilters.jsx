@@ -2,8 +2,11 @@ import { RotateCcw } from 'lucide-react';
 import { PROJECT_TYPES, STATUS_META } from '../../lib/constants.js';
 import { Field, Select } from '../common/Form.jsx';
 
-/** Project list filters: municipality, barangay, office, contractor, status and type. */
-export default function ProjectFilters({ reference: refData, filters, onChange, compact = false }) {
+/**
+ * Project list filters: municipality, barangay, office, contractor, status and type.
+ * showContractor=false hides the contractor filter (a contractor account sees only its own company's projects, 029).
+ */
+export default function ProjectFilters({ reference: refData, filters, onChange, compact = false, showContractor = true }) {
   const set = (k) => (e) => onChange({ ...filters, [k]: e.target.value, ...(k === 'municipality_id' ? { barangay_id: '' } : {}) });
   const barangays = (refData?.barangays || []).filter((b) => String(b.municipality_id) === String(filters.municipality_id));
   const active = Object.values(filters).some(Boolean);
@@ -48,18 +51,20 @@ export default function ProjectFilters({ reference: refData, filters, onChange, 
             </Select>
           )}
         </Field>
-        <Field label="Contractor">
-          {(a) => (
-            <Select {...a} value={filters.contractor_id || ''} onChange={set('contractor_id')}>
-              <option value="">All contractors</option>
-              {refData?.contractors.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </Select>
-          )}
-        </Field>
+        {showContractor && (
+          <Field label="Contractor">
+            {(a) => (
+              <Select {...a} value={filters.contractor_id || ''} onChange={set('contractor_id')}>
+                <option value="">All contractors</option>
+                {refData?.contractors.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+        )}
         <Field label="Status">
           {(a) => (
             <Select {...a} value={filters.status || ''} onChange={set('status')}>

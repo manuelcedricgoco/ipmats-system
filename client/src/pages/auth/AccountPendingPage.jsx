@@ -31,7 +31,8 @@ export default function AccountPendingPage() {
         ) : (
           <>
             <p className="mt-2 font-semibold">Your request for {ROLE_LABELS[profile.requested_role] || 'staff'} access is being reviewed.</p>
-            <p className="mt-1">You&rsquo;ll be able to open the staff workspace once the System Administrator approves it; until then you can browse the public portal only. Requested {dateTime(profile.requested_at)}.</p>
+            {profile.requested_contractor && <p className="mt-1">Company: {profile.requested_contractor.name}</p>}
+            <p className="mt-1">You&rsquo;ll be able to open {profile.requested_role === 'contractor' ? 'your company’s projects' : 'the staff workspace'} once the System Administrator approves it; until then you can browse the public portal only. Requested {dateTime(profile.requested_at)}.</p>
           </>
         )}
       </div>

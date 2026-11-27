@@ -181,7 +181,14 @@ There are three layers. Only the last two actually protect data.
 
 ### 1. Frontend route guards (convenience only)
 `client/src/routes/ProtectedRoute.jsx` and `App.jsx`:
-- `/app/**`: signed-in staff (admin, DPWH personnel, auditor). Others go to `/login`, or to `/` if they have no role.
+- `/app/**`: signed-in staff (admin, DPWH personnel, auditor) and contractor accounts (029). Others go to `/login`,
+  or to `/` if they have no role.
+- Contractor accounts (029): only `/app` (their own dashboard), `/app/projects`, the project page and its six tabs,
+  and `/app/account`. Any other `/app` page, including ones added later, sends them to `/app`
+  (`lib/contractor.js` `canOpenWorkspacePath`, checked by `ProtectedRoute`); the staff pages are also inside a
+  staff-only route. On the project page they see "Submit progress update" and "Upload 360° image" only: no phase
+  plan, finance, documents, review, findings or delete buttons, no completion date or final as-built mark, no PACC
+  case chip and no audit-report PDF (`projectPermissions`).
 - `/app/projects/new` and `/app/projects/:id/edit`: DPWH personnel only (027).
 - `/app/activity`: admin and auditor.
 - `/app/users`, `/app/deletion-requests` and `/app/settings`: admin.

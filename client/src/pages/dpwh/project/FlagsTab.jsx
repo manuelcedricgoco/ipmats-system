@@ -21,7 +21,8 @@ import { date, dateTime, titleCase } from '../../../lib/format.js';
  * with the auditor's confirm / override and audit findings (Jonalyn Pagilagan).
  */
 export default function FlagsTab() {
-  const { project, reloadProject } = useOutletContext();
+  // A contractor (029) views the flag, its reasons, the auditor decisions and findings, read only.
+  const { project, reloadProject, isStaff } = useOutletContext();
   const { hasRole, profile } = useAuth();
   const toast = useToast();
   const canAudit = hasRole('auditor', 'admin');
@@ -80,7 +81,8 @@ export default function FlagsTab() {
             description={project.auto_flag_evaluated_at ? `Checked automatically ${dateTime(project.auto_flag_evaluated_at)}` : 'Not evaluated yet'}
             actions={
               <>
-                <Button size="sm" variant="secondary" icon={Download} loading={downloading} onClick={downloadReport}>Audit report (PDF)</Button>
+                {/* Reports are staff only (the API refuses a contractor) */}
+                {isStaff && <Button size="sm" variant="secondary" icon={Download} loading={downloading} onClick={downloadReport}>Audit report (PDF)</Button>}
                 {canAudit && project.auto_flag && <Button size="sm" icon={ShieldCheck} onClick={() => setReviewing(true)}>Review flag</Button>}
               </>
             }

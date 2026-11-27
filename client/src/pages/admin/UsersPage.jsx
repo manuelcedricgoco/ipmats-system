@@ -16,10 +16,14 @@ import { useDebounce } from '../../hooks/useDebounce.js';
 import { useReference } from '../../hooks/useReference.js';
 import { useRowBusy } from '../../hooks/useRowBusy.js';
 import { api } from '../../lib/api.js';
-import { ROLE_LABELS, STAFF_ROLES } from '../../lib/constants.js';
+import { ROLE_LABELS } from '../../lib/constants.js';
+import { ASSIGNABLE_ROLES, isContractor, licenceCheck, userAccountPayload } from '../../lib/contractor.js';
 import { date, dateTime } from '../../lib/format.js';
 
-/** WEEK 1 — User accounts and role-based access (admin). Approves sign-ups from the Register page. */
+/**
+ * WEEK 1 — User accounts and role-based access (admin). Approves sign-ups from the Register page.
+ * 029: contractor accounts too, each linked to one contractor company (required for the Contractor role).
+ */
 export default function UsersPage() {
   const { profile } = useAuth();
   const [role, setRole] = useState('');
@@ -89,7 +93,15 @@ export default function UsersPage() {
                       <span className="block text-xs text-slate-500">{[u.agency?.name, u.position].filter(Boolean).join(' · ')}</span>
                     </td>
                     <td className="break-all px-4 py-3 text-xs text-slate-600">{u.email}</td>
-                    <td className="px-4 py-3">{ROLE_LABELS[u.requested_role] || '—'}</td>
+                    <td className="px-4 py-3">
+                      {ROLE_LABELS[u.requested_role] || '—'}
+                      {isContractor(u.requested_role) && (
+                        <span className="block text-xs text-slate-500">
+                          {u.requested_contractor?.name || 'Company not found'}
+                          {u.requested_contractor_license_matches === false && <span className="ml-1 font-semibold text-amber-700">· licence does not match</span>}
+                        </span>
+                      )}
+                    </td>
                     <td className="whitespace-nowrap px-4 py-3 text-xs">{dateTime(u.requested_at)}</td>
                     <td className="whitespace-nowrap px-4 py-3 text-right">
                       <RowActions name={u.email} busy={rows.isBusy(u.id)} onApprove={() => setApproving(u)} onReject={() => setDeclining(u)} />
@@ -108,7 +120,7 @@ export default function UsersPage() {
         </div>
         <Select aria-label="Role" className="sm:w-56" value={role} onChange={(e) => { setRole(e.target.value); setPage(1); }}>
           <option value="">All roles</option>
-          {STAFF_ROLES.map((k) => <option key={k} value={k}>{ROLE_LABELS[k]}</option>)}
+          {ASSIGNABLE_ROLES.map((k) => <option key={k} value={k}>{ROLE_LABELS[k]}</option>)}
         </Select>
         <button
           type="button"
@@ -139,6 +151,7 @@ export default function UsersPage() {
                 <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
                   <AccountStatus user={u} />
                   <span className="text-slate-700">{ROLE_LABELS[u.role] || 'No role'}{u.position ? ` · ${u.position}` : ''}</span>
+                  {u.contractor && <span className="text-slate-500">{u.contractor.name}</span>}
                 </div>
                 <SuspensionNote user={u} />
                 <p className="mt-1 text-xs text-slate-500">{u.agency?.name || 'No office'} · Created {date(u.created_at)}</p>
@@ -166,7 +179,11 @@ export default function UsersPage() {
                 {data.data.map((u) => (
                   <tr key={u.id} className={u.is_active ? '' : 'bg-slate-50 text-slate-500'}>
                     <td className="px-4 py-3"><span className="font-semibold text-slate-900">{u.full_name || '—'}</span>{u.id === profile.id && <span className="ml-1 text-xs text-slate-500">(you)</span>}<span className="block text-xs text-slate-500">{u.email}</span></td>
-                    <td className="px-4 py-3">{ROLE_LABELS[u.role] || 'No role'}<span className="block text-xs text-slate-500">{u.position}</span></td>
+                    <td className="px-4 py-3">
+                      {ROLE_LABELS[u.role] || 'No role'}
+                      {u.contractor && <span className="block text-xs font-medium text-slate-700">{u.contractor.name}{u.contractor.is_active === false ? ' (inactive company)' : ''}</span>}
+                      <span className="block text-xs text-slate-500">{u.position}</span>
+                    </td>
                     <td className="px-4 py-3 text-xs">{u.agency?.name || '—'}</td>
                     <td className="px-4 py-3"><AccountStatus user={u} /><SuspensionNote user={u} /></td>
                     <td className="whitespace-nowrap px-4 py-3 text-xs">{date(u.created_at)}</td>
@@ -206,7 +223,15 @@ function UserModal({ value, self, onClose, onSaved }) {
   const [err, setErr] = useState(null);
   useEffect(() => {
     if (open) {
-      setForm({ email: value.email || '', password: '', full_name: value.full_name || '', role: value.role || 'dpwh_personnel', agency_id: value.agency_id || '', position: value.position || '' });
+      setForm({
+        email: value.email || '',
+        password: '',
+        full_name: value.full_name || '',
+        role: value.role || 'dpwh_personnel',
+        agency_id: value.agency_id || '',
+        position: value.position || '',
+        contractor_id: value.contractor_id || value.requested_contractor_id || '',
+      });
       setErr(null);
     }
   }, [open, value]);
@@ -218,11 +243,14 @@ function UserModal({ value, self, onClose, onSaved }) {
     setSaving(true);
     setErr(null);
     try {
+      // Role, company (Contractor only), office and position.
+      const { role, contractor_id, ...rest } = userAccountPayload(form);
+      const company = contractor_id !== undefined ? { contractor_id } : {};
       if (editing) {
         // Suspension is done only with the Suspend / Lift suspension buttons, not from this form.
-        await api.patch(`/users/${value.id}`, { full_name: form.full_name, ...(value.approval_status === 'approved' ? { role: form.role } : {}), agency_id: form.agency_id || null, position: form.position || null });
+        await api.patch(`/users/${value.id}`, { full_name: form.full_name, ...(value.approval_status === 'approved' ? { role, ...company } : {}), ...rest });
       } else {
-        await api.post('/users', { email: form.email, password: form.password, full_name: form.full_name, role: form.role, agency_id: form.agency_id || null, position: form.position || null });
+        await api.post('/users', { email: form.email, password: form.password, full_name: form.full_name, role, ...company, ...rest });
       }
       toast.success(editing ? 'Account updated.' : 'Account created.');
       onSaved();
@@ -236,7 +264,7 @@ function UserModal({ value, self, onClose, onSaved }) {
   return (
     <Modal open={open} onClose={onClose} title={editing ? 'Edit account' : 'Create account'} description={editing ? value.email : 'The account is confirmed immediately; share the temporary password securely.'} footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button type="submit" form="user-form" loading={saving}>Save</Button></>}>
       <form id="user-form" onSubmit={submit} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        {err && !err.details && <Alert tone="error" className="sm:col-span-2">{err.message}</Alert>}
+        {err && (!err.details || err.details.some((d) => !SHOWN_FIELDS.includes(d.field))) && <Alert tone="error" className="sm:col-span-2">{err.message}</Alert>}
         {!editing && (
           <>
             <Field label="Email" required error={fe.email}>{(a) => <Input {...a} type="email" value={form.email} onChange={set('email')} required autoComplete="off" />}</Field>
@@ -247,10 +275,20 @@ function UserModal({ value, self, onClose, onSaved }) {
         <Field label="Role" required hint={isSelf ? 'You cannot change your own role.' : editing && value.approval_status !== 'approved' ? 'Approve the access request to grant a role.' : undefined}>
           {(a) => (
             <Select {...a} value={form.role} onChange={set('role')} disabled={isSelf || (editing && value.approval_status !== 'approved')}>
-              {STAFF_ROLES.map((k) => <option key={k} value={k}>{ROLE_LABELS[k]}</option>)}
+              {ASSIGNABLE_ROLES.map((k) => <option key={k} value={k}>{ROLE_LABELS[k]}</option>)}
             </Select>
           )}
         </Field>
+        {isContractor(form.role) && (
+          <CompanyField
+            className="sm:col-span-2"
+            value={form.contractor_id}
+            onChange={set('contractor_id')}
+            error={fe.contractor_id}
+            disabled={editing && value.approval_status !== 'approved'}
+            hint="The contractor company this account represents. It sees only this company's projects."
+          />
+        )}
         <Field label="Office">{(a) => <Select {...a} value={form.agency_id} onChange={set('agency_id')}><option value="">None</option>{ref?.agencies.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</Select>}</Field>
         <Field label="Position" className="sm:col-span-2">{(a) => <Input {...a} value={form.position} onChange={set('position')} />}</Field>
       </form>
@@ -266,7 +304,7 @@ function ApproveModal({ user, run, onClose, onSaved }) {
   const [err, setErr] = useState(null);
   useEffect(() => {
     if (user) {
-      setForm({ role: user.requested_role || 'dpwh_personnel', agency_id: user.agency_id || '', position: user.position || '' });
+      setForm({ role: user.requested_role || 'dpwh_personnel', agency_id: user.agency_id || '', position: user.position || '', contractor_id: user.requested_contractor_id || '' });
       setErr(null);
     }
   }, [user]);
@@ -275,7 +313,7 @@ function ApproveModal({ user, run, onClose, onSaved }) {
     e.preventDefault();
     setSaving(true);
     try {
-      await run(user.id, () => api.post(`/users/${user.id}/approve`, { role: form.role, agency_id: form.agency_id || null, position: form.position || null }));
+      await run(user.id, () => api.post(`/users/${user.id}/approve`, userAccountPayload(form)));
       toast.success(`${user.full_name || user.email} approved as ${ROLE_LABELS[form.role]}.`);
       onSaved();
     } catch (e2) {
@@ -299,17 +337,74 @@ function ApproveModal({ user, run, onClose, onSaved }) {
             <Select {...a} value={form.role} onChange={set('role')}>
               <option value="dpwh_personnel">DPWH Personnel</option>
               <option value="auditor">Auditor</option>
+              <option value="contractor">Contractor</option>
               <option value="admin">System Administrator</option>
             </Select>
           )}
         </Field>
+        {user && isContractor(user.requested_role) && <ContractorRequest user={user} />}
+        {isContractor(form.role) && (
+          <CompanyField
+            className="sm:col-span-2"
+            value={form.contractor_id}
+            onChange={set('contractor_id')}
+            error={fieldErrors(err).contractor_id}
+            hint="Confirm the company asked for, or choose the right one. The account sees only this company's projects."
+          />
+        )}
         <Field label="Office">
           {(a) => <Select {...a} value={form.agency_id} onChange={set('agency_id')}><option value="">None</option>{ref?.agencies.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</Select>}
         </Field>
         <Field label="Position" className="sm:col-span-2">{(a) => <Input {...a} value={form.position} onChange={set('position')} />}</Field>
-        <Alert className="sm:col-span-2">Verify the person&rsquo;s identity and designation with their DPWH office before granting access.</Alert>
+        <Alert className="sm:col-span-2">
+          {isContractor(form.role)
+            ? 'Verify with the contractor company that this person represents it before granting access.'
+            : <>Verify the person&rsquo;s identity and designation with their DPWH office before granting access.</>}
+        </Alert>
       </form>
     </Modal>
+  );
+}
+
+/** Fields of the account form the page shows a field error under; other errors are shown at the top. */
+const SHOWN_FIELDS = ['email', 'password', 'full_name', 'contractor_id'];
+
+/** The contractor company of a Contractor account (029): required, from the contractor list (inactive ones marked). */
+function CompanyField({ value, onChange, error, hint, disabled, className }) {
+  const { ref } = useReference();
+  return (
+    <Field label="Contractor company" required error={error} hint={hint} className={className}>
+      {(a) => (
+        <Select {...a} value={value} onChange={onChange} required disabled={disabled}>
+          <option value="">Select the company</option>
+          {(ref?.contractors || []).map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}{c.is_active === false ? ' (inactive)' : ''}
+            </option>
+          ))}
+        </Select>
+      )}
+    </Field>
+  );
+}
+
+/** What a contractor applicant asked for: the company, the licence typed, and whether it matches the company's. */
+function ContractorRequest({ user: u }) {
+  const check = licenceCheck(u.requested_contractor_license_matches);
+  const cls = { success: 'text-emerald-800', warning: 'text-amber-800', info: 'text-slate-600' }[check.tone];
+  return (
+    <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 rounded-md bg-slate-50 px-3 py-2 text-sm sm:col-span-2">
+      <dt className="text-slate-500">Requested company</dt>
+      <dd className="font-semibold text-slate-900">
+        {u.requested_contractor?.name || 'Not found'}
+        {u.requested_contractor?.is_active === false && <span className="ml-1 font-normal text-amber-700">(inactive company)</span>}
+      </dd>
+      <dt className="text-slate-500">PCAB licence typed</dt>
+      <dd className="font-mono text-xs leading-5 text-slate-900">{u.requested_contractor_license || '—'}</dd>
+      <dt className="text-slate-500">On file</dt>
+      <dd className="font-mono text-xs leading-5 text-slate-900">{u.requested_contractor?.pcab_license_no || '—'}</dd>
+      <dd className={`col-span-2 text-xs font-medium ${cls}`}>{check.text}</dd>
+    </dl>
   );
 }
 
@@ -364,7 +459,7 @@ function UserSummary({ user: u }) {
       <dt className="sr-only">Email</dt>
       <dd className="break-all text-xs text-slate-600">{u.email}</dd>
       <dt className="sr-only">Role</dt>
-      <dd className="text-xs text-slate-600">{ROLE_LABELS[u.role] || u.role}</dd>
+      <dd className="text-xs text-slate-600">{ROLE_LABELS[u.role] || u.role}{u.contractor ? ` · ${u.contractor.name}` : ''}</dd>
     </dl>
   );
 }
