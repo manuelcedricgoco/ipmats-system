@@ -7,9 +7,11 @@ who uses it, what it does, and what it touches. API routes are relative to `/api
 - Tables and columns: [database.md](database.md)
 - Step-by-step flows: [workflows.md](workflows.md)
 
-The app has two parts:
-- **Public portal** (`/`, `/projects`, `/map`): open to everyone, no account. Top navigation bar.
+The app has three parts:
+- **Public portal** (`/`, `/projects`, `/map`, `/report-status`): open to everyone, no account. Top navigation bar.
 - **Staff workspace** (`/app/...`): for signed-in, approved Admins, DPWH Personnel and Auditors. Left sidebar.
+- **PACC portal** (`/pacc/...`): for signed-in PACC accounts only (Presidential Anti-Corruption Commission). Left
+  sidebar, the same look as the staff workspace. See [PACC portal](#pacc-portal) below.
 
 ---
 
@@ -22,6 +24,10 @@ reasons, audit findings, finances, phases, progress reports and logs are never s
 [roles-and-permissions](roles-and-permissions.md#3-row-level-security-the-real-enforcement-point-for-reads)).
 
 Accounts waiting for approval, or declined, see the same portal with a status banner at the top.
+
+Anyone can also report a problem on a project to PACC, anonymously and with photo proof
+([Magsumbong](#magsumbong--report-a-problem)), and later check the report's status with a tracking code
+([Check a report](#check-a-report)). Reports, their counts and their contents are never shown on the portal.
 
 ### Dashboard (public landing page)
 - **In the UI:** "Dashboard" in the top bar; page at `/`.
@@ -63,6 +69,11 @@ Accounts waiting for approval, or declined, see the same portal with a status ba
     - Status and physical progress, with start and target dates.
     - Contract cost.
     - Location, office and contractor.
+    - **PACC case status**, only when PACC switched "show status to public" on for the project's open case:
+      "Under PACC investigation" or "Case filed", next to the status and flag. Nothing else about the case is
+      shown (no respondents, charges or report counts), and resolved or dismissed cases show nothing. It appears
+      in the drawer only, never on project cards or map pins.
+    - A **"Magsumbong / Report a problem"** button (see below).
   - **Closing and sharing:** close with the X, the Escape key, or a click on the map. The open project is kept in
     the address (`?project=<id>`), so it can be linked to. A **recenter** button moves the map back to the project.
   - **Staff link:** signed-in, approved staff also get **View full project**, which opens the staff project page.
@@ -70,8 +81,8 @@ Accounts waiting for approval, or declined, see the same portal with a status ba
   - Pages and components: `pages/public/PublicMapPage.jsx`, `components/public/PublicProjectMap.jsx`,
     `ProjectDrawer.jsx`, `components/map/ProjectMap.jsx`, `components/viewer360/PanoramaViewer.jsx`.
   - API: `GET /public/map`, `GET /public/projects/:id`.
-  - Data: `v_public_projects`, `site_images` (every photo; public as soon as it is uploaded); files in the `panoramas` bucket
-    through expiring signed links.
+  - Data: `v_public_projects` (including `pacc_public_status`, migration 024), `site_images` (every photo; public
+    as soon as it is uploaded); files in the `panoramas` bucket through expiring signed links.
 
 ### 360° viewer
 - **In the UI:** the photo panel in the project drawer (and in the staff pages).
@@ -80,6 +91,56 @@ Accounts waiting for approval, or declined, see the same portal with a status ba
 - **What it does:** shows an equirectangular (2:1) panorama in an interactive viewer (drag to look around, zoom,
   full screen). When a project has several public photos, buttons with the inspection dates switch between them.
 - **Touches:** `components/viewer360/PanoramaViewer.jsx` (Pannellum).
+
+### Magsumbong / Report a problem
+- **In the UI:** the **"Magsumbong / Report a problem"** button at the bottom of the project drawer (on the
+  Dashboard map and the Project Map; a project card opens the map with the drawer, so it works from the Projects
+  page too). It opens a dialog.
+- **Why:** an independent, anonymous channel for the public to tell PACC about a project that looks wrong.
+- **Who:** everyone, with or without an account. The report is anonymous even for a signed-in visitor: the
+  browser sends it without the sign-in token (`anonymous: true` in `lib/api.js`), and the API route does not look
+  at sign-in at all.
+- **What it does:**
+  - **Form:** the kind of problem (site doesn't match the photos, substandard materials, overpricing or ghost
+    project, work not being done, other), a description (20–2000 characters, with a live counter) and **1 to 3
+    proof photos** (JPEG, PNG or WebP, up to 10 MB each, with previews). The browser checks these first; the
+    server checks again and its message is the one shown.
+  - **Notice:** "No name, account or location is saved. Photo details such as GPS are removed." and that false
+    reports may be dismissed.
+  - **On the server:** the photos pass the format check, then are re-encoded (orientation applied, first frame
+    only, at most 2560 px wide, JPEG) so all EXIF/XMP/IPTC metadata such as GPS, date and camera is dropped. Files
+    get random names in the private `citizen-reports` bucket. The report keeps the project, category,
+    description, status, the submission **date only** (Asia/Manila, no time) and a keyed hash of the tracking code.
+    No IP, user agent, account or session is stored or logged, and nothing goes to the activity log.
+  - **Tracking code:** after sending, the dialog shows a 10-character code (`XXXXX-XXXXX`) with a Copy button
+    and "Save this code; it is shown only once." Closing the dialog discards it; the browser does not keep it.
+  - **Limits:** 3 reports per day per connection and 1 per project per day per connection (HTTP 429 "Too many
+    reports from this connection today. Please try again tomorrow."). See
+    [roles-and-permissions → rate limits](roles-and-permissions.md#permission-matrix).
+  - **Where it goes:** only to PACC ([PACC inbox](#pacc-inbox)). A report never changes the project's
+    Green/Yellow/Red flag.
+- **Touches:**
+  - Components: `components/public/ProjectDrawer.jsx`, `components/public/ReportProblemModal.jsx`, `lib/pacc.js`.
+  - API: `POST /public/projects/:id/reports` (multipart: `category`, `description`, `proof` × 1–3).
+  - Server code: `routes/publicReports.js`, `controllers/citizenReportsController.js`,
+    `services/citizenReports.js`, `middleware/anonymousLimits.js`.
+  - Data: `citizen_reports`, `citizen_report_files`, bucket `citizen-reports`.
+- **Known limits:** hosting providers (Render, Vercel, Supabase) keep their own request logs with IPs, and
+  Supabase Storage records an exact `created_at` per file. IPMATS cannot control these, and nothing in IPMATS
+  links them to a report.
+
+### Check a report
+- **In the UI:** "Check a report" link in the portal footer; page at `/report-status`.
+- **Why:** a reporter can follow up without identifying themselves.
+- **Who:** anyone with a tracking code.
+- **What it does:** the visitor types the code (upper or lower case, with or without the dash; the box formats it
+  as `XXXXX-XXXXX` and drops characters that cannot be in a code). The page then shows only the status —
+  **Received** (PACC has not looked at it yet), **Under review** (PACC opened it or attached it to a case) or
+  **Closed** — and the date it was sent. Like the report itself, the check is sent without the sign-in token.
+  At most 20 checks per hour per connection, failed ones included (HTTP 429 "Too many checks. Please try again
+  later.").
+- **Touches:** `pages/public/CheckReportPage.jsx`, `lib/pacc.js` (`formatTrackingCodeInput`);
+  `GET /public/reports/:code`; `citizen_reports` (looked up by the code's hash).
 
 ### Sign in, Register and Awaiting approval
 - **In the UI:** "Sign in" (top right), the Register page (`/register`), the Awaiting approval page
@@ -332,6 +393,10 @@ Sidebar items appear only for the roles that can use them. "All staff" = Admin, 
   - **Suspend:** with a reason; it blocks sign-in and every API call. Lift the suspension later.
   - **Delete:** only accounts with no records in the system.
   - **Find accounts:** search, and filter by role, status and approval.
+  - **PACC accounts are not here:** the list does not show them, and the API refuses to create an account with the PACC
+    role, or to approve, decline, edit, suspend, reactivate or delete a PACC account ("PACC accounts are managed by
+    PACC."). PACC manages its own
+    accounts (see [PACC Members](#pacc-members)).
 - **Touches:** `pages/admin/UsersPage.jsx`; `GET/POST /users`, `PATCH/DELETE /users/:userId`,
   `POST /users/:userId/approve|reject|suspend|unsuspend`; `profiles`, Supabase Auth users.
 
@@ -341,7 +406,8 @@ Sidebar items appear only for the roles that can use them. "All staff" = Admin, 
 - **Who:** Admin and Auditor.
 - **What it does:** lists every logged action, newest first, including the automatic daily flag check, logged as
   "System". You can search by summary or person, and filter by area, role and date range. Nobody can edit or
-  delete an entry: the database refuses it.
+  delete an entry: the database refuses it. PACC actions are never written here; they go to the
+  [PACC activity log](#pacc-activity-log), which only PACC can read.
 - **Touches:** `pages/admin/ActivityLogPage.jsx`; `GET /activity`; `activity_logs` (written by
   `server/src/services/activityLog.js` from every change endpoint).
 
@@ -377,6 +443,77 @@ Sidebar items appear only for the roles that can use them. "All staff" = Admin, 
 - **Photo hash backfill (one-off):** `node --env-file=.env scripts/backfill-phash.mjs` (from `server/`) computes
   the perceptual hash of photos uploaded before migration 020. Photos without a hash are skipped by the
   near-duplicate check until it has run. Code: `server/scripts/backfill-phash.mjs`.
+
+---
+
+## PACC portal
+
+The PACC (Presidential Anti-Corruption Commission) portal receives projects with serious problems and anonymous
+citizen reports, and records PACC's cases. The name is kept as the course instructor recommended; the real PACC was
+abolished in 2022, so this is a modelled role.
+
+- **Who:** active, approved `pacc` accounts only. They sign in on the normal sign-in page and land on `/pacc`.
+  Opening `/app` sends them to `/pacc`, and staff opening `/pacc` are sent to `/app`.
+- **What PACC can read:** citizen reports and their proof, cases, case documents and the PACC activity log — and
+  nobody else can, not the Admin, Auditors or DPWH Personnel, not even directly through Supabase with their own
+  login (RLS `is_pacc()` plus `requireRole('pacc')` on `/api/pacc`). PACC can also read the project records it needs
+  to investigate (as an Auditor can) but cannot change any DPWH data.
+- **First account:** created once with `server/scripts/bootstrap-pacc.mjs` (see the root README). After that PACC
+  adds its own members.
+
+### PACC inbox
+- **In the UI:** "Inbox" (`/pacc`).
+- **Why:** shows what needs PACC's attention.
+- **What it does:** lists the projects **referred** to PACC, with the reason: **Auditor-confirmed Red** (the flag an
+  auditor confirmed or overrode to is Red), **Citizen reports (10+)** (10 or more open reports) or **Open case**.
+  Each row shows the open report count, the last report date (a date, never a time) and the case status. Referral
+  is computed live: when PACC closes reports, the count drops at once. A row opens the investigation page.
+- **Touches:** `pages/pacc/PaccInboxPage.jsx`; `GET /pacc/inbox`; `citizen_reports`, `pacc_cases`, `projects`.
+
+### Investigation page
+- **In the UI:** a project from the inbox (`/pacc/projects/:id`).
+- **What it does:** project facts, the flag and its reasons, auditor decisions and findings, and the citizen
+  reports with their proof photos (expiring signed links). Opening it marks new reports "Under review". PACC can
+  close one report, or all open reports of the project, with an outcome (valid, invalid, duplicate), and open a
+  case on the project, attaching open reports to it.
+- **Touches:** `pages/pacc/PaccProjectPage.jsx`, `components/pacc/OpenCaseModal.jsx`; `GET /pacc/projects/:id`,
+  `POST /pacc/reports/:reportId/close`, `POST /pacc/projects/:id/reports/close-all`, `POST /pacc/projects/:id/cases`;
+  bucket `citizen-reports`.
+
+### Cases
+- **In the UI:** "Cases" (`/pacc/cases`) and a case page (`/pacc/cases/:caseId`).
+- **What it does:**
+  - A case belongs to one project; a project has at most one case that is not closed. It records the
+    **respondents** (a contractor from the contractor list and/or officials named as free text), the **charges**,
+    the **status**, **notes** (append-only) and **documents** (PDF, JPEG, PNG or WebP, in the private
+    `pacc-case-documents` bucket).
+  - **Status:** Under investigation → Case filed → Resolved or Dismissed; Under investigation → Dismissed. Closing
+    is final (open a new case instead). Closing a case closes its attached reports in the same database
+    transaction (migration 025).
+  - **Show status to public** (off by default): while on, and the case is Under investigation or Case filed, the
+    public project drawer shows "Under PACC investigation" or "Case filed" (`projects.pacc_public_status`, kept by a
+    database trigger). Nothing else about the case is public.
+- **Touches:** `pages/pacc/PaccCasesPage.jsx`, `PaccCasePage.jsx`; `GET /pacc/cases`, `GET/PATCH /pacc/cases/:caseId`,
+  `POST /pacc/cases/:caseId/notes`, `POST /pacc/cases/:caseId/documents`; `pacc_cases`, `pacc_case_notes`,
+  `pacc_case_documents`, `projects.pacc_public_status`.
+
+### PACC Members
+- **In the UI:** "Members" (`/pacc/members`).
+- **Why:** PACC manages its own accounts; the System Administrator cannot.
+- **What it does:** any PACC member can add a member (email, name, position and a temporary password), suspend
+  one with a reason, lift a suspension, or remove a member with no case records. Nobody can act on their own
+  account, and the last active PACC account cannot be suspended or removed.
+- **Touches:** `pages/pacc/PaccMembersPage.jsx`; `GET/POST /pacc/members`,
+  `POST /pacc/members/:userId/suspend|unsuspend`, `DELETE /pacc/members/:userId`; `profiles`, Supabase Auth users.
+
+### PACC activity log
+- **In the UI:** "Activity log" (`/pacc/activity`).
+- **What it does:** every PACC action (reports closed, cases opened and changed, notes, documents, members), newest
+  first, with a search box and a date range. Append-only, and readable only by PACC; it is separate from the staff Activity Logs.
+- **Touches:** `pages/pacc/PaccActivityPage.jsx`; `GET /pacc/activity`; `pacc_activity`.
+
+### My account (PACC)
+- **In the UI:** "My account" (`/pacc/account`): the same page as the staff one.
 
 ---
 

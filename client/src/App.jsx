@@ -12,6 +12,7 @@ import ProtectedRoute from './routes/ProtectedRoute.jsx';
 const PortalHome = lazy(() => import('./pages/public/PortalHome.jsx'));
 const PublicProjectsPage = lazy(() => import('./pages/public/PublicProjectsPage.jsx'));
 const PublicMapPage = lazy(() => import('./pages/public/PublicMapPage.jsx'));
+const CheckReportPage = lazy(() => import('./pages/public/CheckReportPage.jsx'));
 // Authentication
 const LoginPage = lazy(() => import('./pages/auth/LoginPage.jsx'));
 const RegisterPage = lazy(() => import('./pages/auth/RegisterPage.jsx'));
@@ -62,6 +63,7 @@ export default function App() {
           <Route index element={<PortalHome />} />
           <Route path="/projects" element={<PublicProjectsPage />} />
           <Route path="/map" element={<PublicMapPage />} />
+          <Route path="/report-status" element={<CheckReportPage />} />
         </Route>
         {/* Earlier portal addresses keep working */}
         <Route path="/portal" element={<Navigate to="/" replace />} />

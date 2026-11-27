@@ -32,8 +32,12 @@ export function buildQuery(params = {}) {
   return s ? `?${s}` : '';
 }
 
-async function request(method, path, { body, query, signal, raw } = {}) {
-  const headers = { ...(await authHeader()) };
+/**
+ * `anonymous: true` never reads the session and sends no Authorization header, even when the visitor is signed in.
+ * Used by the public citizen-report routes, so nothing links a report or a status check to an account.
+ */
+async function request(method, path, { body, query, signal, raw, anonymous = false } = {}) {
+  const headers = anonymous ? {} : { ...(await authHeader()) };
   let payload;
   if (body instanceof FormData) payload = body;
   else if (body !== undefined) {
