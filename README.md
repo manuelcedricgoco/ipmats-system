@@ -108,7 +108,7 @@ Used only by the scripts in `server/scripts/`: `API_URL` (default `http://localh
 
 ### Database migrations
 
-There is no migration runner in this repository. Apply the files in `database/migrations/` **in numeric order** in the Supabase SQL Editor (or with the Supabase CLI / MCP). The IPMATS project already has `001`–`021` applied; `022` is new (it makes every photo public). Never edit or renumber a migration that has been applied; write a new one that changes or reverses it.
+There is no migration runner in this repository. Apply the files in `database/migrations/` **in numeric order** in the Supabase SQL Editor (or with the Supabase CLI / MCP). The IPMATS project already has `001`–`022` applied; `023` and `024` are new (the PACC role, then the PACC portal and anonymous citizen reports). Apply `023` on its own, before `024`: a new enum value must be committed before it can be used. Never edit or renumber a migration that has been applied; write a new one that changes or reverses it.
 
 #### Upgrading to this version
 
@@ -174,7 +174,7 @@ ipmats-system/
 │   ├── src/tests/          server tests
 │   └── scripts/            demo-data scripts (placeholder panoramas, sample project, cleanup)
 ├── database/
-│   ├── migrations/         schema, Row Level Security and data migrations 001–022
+│   ├── migrations/         schema, Row Level Security and data migrations 001–024
 │   └── seed/               fictional demo data
 └── docker-compose.yml      API + web containers
 ```
@@ -199,7 +199,7 @@ ipmats-system/
 | `v_project_summary` | Staff view: project with names, progress, finance totals and flags |
 | `v_public_projects` | Public view: only the columns the portal shows, the auditor-reviewed flag (`public_flag`), no automatic flags or finances |
 
-Migrations are numbered in the order they were applied: `001`–`006` Weeks 1–2 and the first public portal, `007`–`011` Week 3 and later improvements, `012` office status, `013` and `014` a data-provenance experiment and its reversal, `015` office restructure, `016` reopens the public portal to the anonymous role (reverses `006`), `017` removes the Public role and adds admin approval, `018` fixes the sign-in ban set by `017`, `019` keeps an auditor's flag decision from being lowered automatically, `020` adds the perceptual photo hash, `021` shows the auditor-reviewed flag on the public portal, `022` makes every 360° photo public on upload.
+Migrations are numbered in the order they were applied: `001`–`006` Weeks 1–2 and the first public portal, `007`–`011` Week 3 and later improvements, `012` office status, `013` and `014` a data-provenance experiment and its reversal, `015` office restructure, `016` reopens the public portal to the anonymous role (reverses `006`), `017` removes the Public role and adds admin approval, `018` fixes the sign-in ban set by `017`, `019` keeps an auditor's flag decision from being lowered automatically, `020` adds the perceptual photo hash, `021` shows the auditor-reviewed flag on the public portal, `022` makes every 360° photo public on upload, `023` adds the PACC role, `024` adds the PACC portal and anonymous citizen reports.
 
 ## Known limitations and unfinished work
 
