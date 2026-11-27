@@ -6,11 +6,12 @@
  *
  * What it does:
  *   - creates the Auth user (random password that is never shown) or finds the existing one;
- *   - makes the profile an approved, active PACC account;
+ *   - makes the profile an approved, active PACC account; an existing account (for example a suspended
+ *     PACC member) also has its suspension cleared and its Supabase Auth sign-in block lifted;
  *   - prints a one-time recovery link. Open it to choose a password.
  *
- * It refuses when an active PACC account already exists, unless you pass --force (recovery when
- * PACC has no usable account left). It never turns an admin, DPWH personnel or auditor account into PACC.
+ * It refuses when an active, approved PACC account already exists, unless you pass --force (recovery
+ * when PACC has no usable account left: give a suspended member's email or a new email). It never turns an admin, DPWH personnel or auditor account into PACC.
  * The redirect URL must be allowed in Supabase: Authentication -> URL Configuration -> Redirect URLs.
  */
 import { randomBytes } from 'node:crypto';
@@ -73,7 +74,7 @@ async function findUserByEmail(target) {
 
 try {
   if (!args.force) {
-    const { count, error } = await db.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'pacc').eq('is_active', true);
+    const { count, error } = await db.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'pacc').eq('is_active', true).eq('approval_status', 'approved');
     if (error) throw new Error(`Checking for PACC accounts: ${error.message}`);
     if (count > 0) fail('an active PACC account already exists. Add more members from the PACC Members page, or pass --force to create another one anyway.');
   }
@@ -99,12 +100,25 @@ try {
   must(
     await db
       .from('profiles')
-      .update({ full_name: fullName, role: 'pacc', approval_status: 'approved', is_active: true, suspended_at: null, reviewed_by: null, reviewed_at: now, review_note: 'Created by the PACC bootstrap script' })
+      .update({
+        full_name: fullName,
+        role: 'pacc',
+        approval_status: 'approved',
+        is_active: true,
+        suspended_at: null,
+        suspended_by: null,
+        suspension_reason: null,
+        reviewed_by: null,
+        reviewed_at: now,
+        review_note: 'Created by the PACC bootstrap script',
+      })
       .eq('id', user.id)
       .select('id')
       .single(),
     'Setting up the PACC profile',
   );
+  // An existing account may be suspended or deactivated: Supabase Auth would still refuse its sign-in.
+  if (!created) must(await db.auth.admin.updateUserById(user.id, { ban_duration: 'none' }), 'Lifting the sign-in block');
 
   const link = must(await db.auth.admin.generateLink({ type: 'recovery', email, options: { redirectTo } }), 'Creating the set-password link');
   const url = link?.properties?.action_link;

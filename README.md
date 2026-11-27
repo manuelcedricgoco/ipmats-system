@@ -72,16 +72,20 @@ PACC is the body that receives citizen reports about projects and decides what t
   node --env-file=.env scripts/bootstrap-pacc.mjs --email <email> --name "<full name>" --redirect https://<your-site>/set-password
   ```
 
-  The script creates the account with a random password that is never shown, makes it an approved PACC account and prints a one-time set-password link. Open the link to choose a password. In Supabase, **Authentication → URL Configuration** must allow `<your-site>/set-password` as a redirect URL (the set-password page is added in a later change). It refuses if an active PACC account exists (add `--force` to override) and refuses to turn an Admin, DPWH Personnel or Auditor account into PACC.
+  The script creates the account with a random password that is never shown, makes it an approved PACC account and prints a one-time set-password link. Open the link to choose a password. In Supabase, **Authentication → URL Configuration** must allow `<your-site>/set-password` as a redirect URL (the link opens the site's set-password page). It refuses if an active, approved PACC account exists (add `--force` to override) and refuses to turn an Admin, DPWH Personnel or Auditor account into PACC.
 - **Later members** are added, suspended, reactivated and removed from the **PACC Members** page. An account cannot act on itself, and the last active account cannot be suspended or removed.
-- **Recovery.** If the last two PACC members suspend each other at the same moment, PACC is left with no active account. Run the bootstrap script again with `--force`.
+- **Recovery.** If the last two PACC members suspend each other at the same moment, PACC is left with no active account. Run the bootstrap script again with `--force`, giving either a suspended member's email or a new email. For an existing account it clears the suspension, lifts the Supabase Auth sign-in block and prints a new set-password link.
+- **Before announcing public reporting**, confirm `TRUST_PROXY` is right: set `DEBUG_PROXY=1` briefly, check in the API logs that `req.ip` is the visitor's own IP (see "Verifying the client IP" below), then turn `DEBUG_PROXY` off again (it logs IPs). With a wrong value every citizen shares one rate-limit key, so three reports a day from anyone would block everyone.
 
 ### Known limits of the anonymous reports
 
-- IPMATS stores no reporter IP, user agent, account or exact time, but hosting providers (Render, Vercel, Supabase) keep their own request logs with IPs, and Supabase Storage keeps an exact `created_at` for every file. IPMATS cannot control these, and nothing in IPMATS links them to a report.
+- IPMATS stores no reporter IP, user agent, account or exact time. But hosting providers (Render, Vercel, Supabase) keep their own request logs with IPs and exact times, and Supabase Storage keeps an exact `created_at` for every proof photo. Each report's photo record (`citizen_report_files.storage_path`) points to its Storage object, so someone with **both** database access (for example the Supabase project owner) **and** the hosting request logs could match a photo's upload time to a logged request and so link an IP to a report. IPMATS's own API and the Admin role in the app cannot do this. IPMATS cannot control the providers' logs.
+- The tracking code is sent in the request body of the status check, never in the URL, so it is not in the providers' request logs.
 - Rate-limit counters are held in memory, are keyed by a daily-rotating HMAC of the IP (an IPv6 address by its /64 prefix), reset on every restart or deploy, and count per Manila day.
 - Keep `DEBUG_PROXY` off in production: it logs client IPs.
 - Tracking codes are stored as an HMAC keyed from `SUPABASE_SERVICE_ROLE_KEY`. Rotating that key invalidates every existing tracking code.
+- Showing or hiding a case's status on the public portal changes `projects.updated_at`, so the project may move in lists sorted by last update. Nothing else changes.
+- PACC's own activity log entry for opening a project with new reports ("… now under review") has an exact time, which narrows down when those reports arrived. Only PACC can read that log.
 
 ## Setup
 

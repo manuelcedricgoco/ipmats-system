@@ -127,9 +127,12 @@ Anyone can also report a problem on a project to PACC, anonymously and with phot
   - Server code: `routes/publicReports.js`, `controllers/citizenReportsController.js`,
     `services/citizenReports.js`, `middleware/anonymousLimits.js`.
   - Data: `citizen_reports`, `citizen_report_files`, bucket `citizen-reports`.
-- **Known limits:** hosting providers (Render, Vercel, Supabase) keep their own request logs with IPs, and
-  Supabase Storage records an exact `created_at` per file. IPMATS cannot control these, and nothing in IPMATS
-  links them to a report.
+- **Known limits:** hosting providers (Render, Vercel, Supabase) keep their own request logs with IPs and exact
+  times, and Supabase Storage records an exact `created_at` per proof photo. Each photo's record
+  (`citizen_report_files.storage_path`) points to its Storage object, so someone with both database access (for
+  example the Supabase project owner) and the hosting request logs could match an upload time to a logged request
+  and link an IP to a report. IPMATS's own API and the Admin role in the app cannot. IPMATS cannot control the
+  providers' logs.
 
 ### Check a report
 - **In the UI:** "Check a report" link in the portal footer; page at `/report-status`.

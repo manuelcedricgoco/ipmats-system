@@ -93,3 +93,13 @@ describe('a member editing their own account', () => {
     assert.deepEqual(l.calls.staff, [{ action: 'account.update', entityType: 'user', entityId: 'u2', summary: 'Updated own name / position' }]);
   });
 });
+
+describe('the PACC bootstrap script (recovery)', () => {
+  it('counts only approved active PACC accounts and fully reinstates an existing one', async () => {
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync(new URL('../../scripts/bootstrap-pacc.mjs', import.meta.url), 'utf8');
+    assert.match(src, /\.eq\('role', 'pacc'\)\.eq\('is_active', true\)\.eq\('approval_status', 'approved'\)/);
+    for (const field of ['suspended_at: null', 'suspended_by: null', 'suspension_reason: null']) assert.ok(src.includes(field), field);
+    assert.match(src, /if \(!created\) must\(await db\.auth\.admin\.updateUserById\(user\.id, \{ ban_duration: 'none' \}\)/);
+  });
+});
