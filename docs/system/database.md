@@ -380,12 +380,15 @@ Who did what, and when. **Append-only.** Name and role are copied in, so an entr
 
 ### citizen_reports
 Anonymous problem reports ("Magsumbong") from the public portal (024). **Readable only by PACC.** No account, IP,
-device or exact time is stored: there is **no `timestamptz` column**, only the submission date.
+device or exact time is stored: there is **no `timestamptz` column**, only the submission date. A report survives a
+project delete: `project_id` becomes empty and the project code and name stay.
 
 | Column | Type | Null | Default | Description |
 |---|---|---|---|---|
 | id | uuid | no | gen_random_uuid() | Primary key |
-| project_id | uuid | no | — | Project the report is about |
+| project_id | uuid | yes | — | Project the report is about; empty once the project is deleted |
+| project_code | text | no | — | Project ID at submission (snapshot taken by the API) |
+| project_name | text | no | — | Project title at submission (snapshot) |
 | category | text | no | — | See [lookup values](#text-columns-with-a-fixed-list-of-values) |
 | description | text | no | — | 20–2000 characters |
 | status | text | no | `'received'` | `received`, `under_review` or `closed` |
@@ -407,12 +410,15 @@ Proof photos of a citizen report, re-encoded by the API without metadata. The fi
 
 ### pacc_cases
 Cases PACC records on a project (024). **Readable only by PACC.** A project has at most one non-closed case
-(`under_investigation` or `case_filed`): a partial unique index refuses a second one.
+(`under_investigation` or `case_filed`): a partial unique index refuses a second one. A case survives a project
+delete: `project_id` becomes empty and the project code and name stay.
 
 | Column | Type | Null | Default | Description |
 |---|---|---|---|---|
 | id | uuid | no | gen_random_uuid() | Primary key |
-| project_id | uuid | no | — | Project under investigation |
+| project_id | uuid | yes | — | Project under investigation; empty once the project is deleted |
+| project_code | text | no | — | Project ID when the case was opened (snapshot taken by the API) |
+| project_name | text | no | — | Project title when the case was opened (snapshot) |
 | contractor_id | uuid | yes | — | Contractor named as respondent |
 | other_respondents | text | yes | — | Officials or others named as respondents, up to 1000 characters |
 | charges | text | no | — | Charges / allegations, 10–4000 characters |
@@ -505,10 +511,10 @@ Both views use `security_invoker`, so the reader's own permissions (RLS) apply.
 | audit_findings.project_id | projects | cascade | Findings on one project |
 | audit_findings.phase_id | project_phases | set null | Phase the finding is about |
 | activity_logs.project_id | projects | set null | The log entry stays when the project is deleted |
-| citizen_reports.project_id | projects | cascade | Reports belong to one project |
+| citizen_reports.project_id | projects | set null | The report stays (with the project code and name) when the project is deleted |
 | citizen_reports.case_id | pacc_cases | set null | The case a report is attached to |
 | citizen_report_files.report_id | citizen_reports | cascade | Proof belongs to one report |
-| pacc_cases.project_id | projects | cascade | A case is about one project |
+| pacc_cases.project_id | projects | set null | The case stays (with the project code and name) when the project is deleted |
 | pacc_cases.contractor_id | contractors | set null | Contractor named as respondent |
 | pacc_case_notes.case_id, pacc_case_documents.case_id | pacc_cases | cascade | Notes and documents belong to one case |
 | pacc_activity.project_id | projects | set null | The log entry stays when the project is deleted |
@@ -517,8 +523,8 @@ Both views use `security_invoker`, so the reader's own permissions (RLS) apply.
 | audit_findings.assigned_to | profiles | set null | Person responsible for the corrective action |
 | "Who did it" columns: `*.created_by`, `updated_by`, `submitted_by`, `uploaded_by`, `reviewed_by`, `suspended_by`, `public_reviewed_by`, `published_by`, `action_updated_by`, `activity_logs.actor_id`, `system_settings.updated_by`, `pacc_cases.opened_by`, `pacc_case_documents.uploaded_by`, `pacc_activity.actor_id` | profiles | set null | Records who acted |
 
-Deleting a project removes its phases, reports, finances, photos, documents, flag history, reviews and findings,
-and its citizen reports and PACC cases with their notes and documents (cascade). The append-only trigger allows this only as part of such a cascade. The API additionally refuses to
+Deleting a project removes its phases, reports, finances, photos, documents, flag history, reviews and findings
+(cascade). Its citizen reports and PACC cases are kept: they lose the link but keep the project code and name. The append-only trigger allows this only as part of such a cascade. The API additionally refuses to
 delete a user who has any of these records ([roles-and-permissions](roles-and-permissions.md)).
 
 ## Enums and lookup values
@@ -568,7 +574,7 @@ These are `text` columns limited by a `CHECK` rule, not enum types.
 | `handle_new_user` | after a new Auth user is created | Creates the profile with **no role**. A requested role of DPWH Personnel or Auditor makes the account `pending`; anything else makes it `rejected` |
 | `projects_assign_code` | before a project insert | Assigns the next Project ID for the year (Asia/Manila time) |
 | `projects_lock_code` | before a project update | Refuses any change to the Project ID |
-| `prevent_modification` | before update or delete on `flag_history`, `flag_reviews`, `activity_logs`, `pacc_case_notes`, `pacc_activity` | Makes them append-only (deletes allowed only through a project cascade) |
+| `prevent_modification` | before update or delete on `flag_history`, `flag_reviews`, `activity_logs`, `pacc_case_notes`, `pacc_activity` | Makes them append-only (deletes allowed only through a cascade (project or case)) |
 | `set_updated_at` | before update on tables with `updated_at` | Sets `updated_at = now()` |
 | `private.app_role()` | used by RLS | The caller's role, only if the account is active **and approved** |
 | `private.is_staff()` | used by RLS | True when `app_role()` is admin, DPWH personnel or auditor |
@@ -630,10 +636,9 @@ write files. It hands out signed links that expire (1 hour by default, `SIGNED_U
 ## Migrations
 
 The migration files are in `database/migrations/`. They are numbered and run in number order, `001` to `024`.
-The live database's migration history lists 001–021 as applied, in that order (019 and 020 on 25 November
-2026, 021 on 27 November 2026, each before the matching API was deployed). 022 makes every photo public; the
-API no longer has a show/hide route, so it works with or without 022 applied. 023 (PACC role) and 024 (PACC portal
-and citizen reports) are new; 023 must be applied on its own before 024, because a new enum value must be committed
+The live database's migration history lists 001–022 as applied, in that order (019 and 020 on 25 November
+2026, 021 and 022 on 27 November 2026, each before the matching API was deployed). 023 (PACC role) and 024 (PACC
+portal and citizen reports) are new; 023 must be applied on its own before 024, because a new enum value must be committed
 before it can be used.
 
 Rules the project follows:
@@ -666,4 +671,4 @@ Rules the project follows:
 | 021 | public_reviewed_flag | Adds the generated `projects.public_flag` (flag only after auditor review), grants anon that one column, and appends it to `v_public_projects` |
 | 022 | photos_public_on_upload | `site_images.is_public` defaults to true and every hidden photo is made public: photos are public on upload, with no approval step |
 | 023 | pacc_role | Adds `pacc` to `user_role` (only that, so it is committed before 024 uses it) |
-| 024 | pacc_portal | `private.is_pacc()` / `can_investigate()`; tables `citizen_reports`, `citizen_report_files`, `pacc_cases` (one open case per project), `pacc_case_notes`, `pacc_case_documents`, `pacc_activity`, readable only by PACC; PACC read policies on project records; `projects.pacc_public_status` with an anon column grant, kept by a trigger and appended to `v_public_projects`; buckets `citizen-reports` and `pacc-case-documents` |
+| 024 | pacc_portal | `private.is_pacc()` / `can_investigate()`; tables `citizen_reports`, `citizen_report_files`, `pacc_cases` (one open case per project), `pacc_case_notes`, `pacc_case_documents`, `pacc_activity`, readable only by PACC (cases and reports keep the project code and name and survive a project delete); PACC read policies on project records; `projects.pacc_public_status` with an anon column grant, kept by a trigger and appended to `v_public_projects`; buckets `citizen-reports` and `pacc-case-documents` |

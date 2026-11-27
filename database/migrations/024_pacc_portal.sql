@@ -12,6 +12,10 @@
 --   pacc_activity         PACC's own activity log (append-only). PACC actions never go to
 --                         activity_logs, which Admins and Auditors can read.
 --
+-- PACC records survive a project delete: pacc_cases.project_id and citizen_reports.project_id
+-- are set to NULL (not cascaded), and both tables keep a snapshot of the project code and name
+-- (project_code, project_name), taken by the API when the case is opened / the report submitted.
+--
 -- Anonymity: a report stores no account, IP, user agent, session or exact time. It keeps the
 -- submission DATE only (submitted_on, Asia/Manila, set by the API) and the HMAC of its tracking
 -- code. citizen_reports and citizen_report_files have no timestamptz column on purpose.
@@ -67,7 +71,9 @@ grant execute on function private.can_investigate() to authenticated, service_ro
 -- ---------------------------------------------------------------------------
 create table if not exists public.pacc_cases (
   id                uuid primary key default gen_random_uuid(),
-  project_id        uuid not null references public.projects(id) on delete cascade,
+  project_id        uuid references public.projects (id) on delete set null,  -- NULL once the project is deleted
+  project_code      text not null,                   -- snapshot taken when the case is opened
+  project_name      text not null,                   -- snapshot taken when the case is opened
   contractor_id     uuid references public.contractors(id) on delete set null,
   other_respondents text check (char_length(other_respondents) <= 1000),  -- officials named as free text
   charges           text not null check (char_length(charges) between 10 and 4000),
@@ -79,12 +85,13 @@ create table if not exists public.pacc_cases (
   updated_at        timestamptz not null default now(),
   closed_at         timestamptz                      -- set when resolved or dismissed
 );
-comment on table public.pacc_cases is 'Cases PACC records on a project. At most one non-closed case per project. Readable only by PACC.';
+comment on table public.pacc_cases is 'Cases PACC records on a project. At most one non-closed case per project. Kept (with the project code and name) when the project is deleted. Readable only by PACC.';
 create index if not exists pacc_cases_project_idx on public.pacc_cases (project_id, created_at desc);
 create index if not exists pacc_cases_contractor_idx on public.pacc_cases (contractor_id);
 create index if not exists pacc_cases_opened_by_idx on public.pacc_cases (opened_by);
 -- Only one open case per project, so the public status is never ambiguous
 -- (two PACC members opening a case at the same moment: the second insert fails with 23505).
+-- Cases whose project was deleted have project_id NULL; NULLs never collide in a unique index.
 create unique index if not exists pacc_cases_one_open_per_project
   on public.pacc_cases (project_id)
   where status in ('under_investigation', 'case_filed');
@@ -128,7 +135,9 @@ create index if not exists pacc_case_documents_uploaded_by_idx on public.pacc_ca
 -- ---------------------------------------------------------------------------
 create table if not exists public.citizen_reports (
   id            uuid primary key default gen_random_uuid(),
-  project_id    uuid not null references public.projects(id) on delete cascade,
+  project_id    uuid references public.projects (id) on delete set null,  -- NULL once the project is deleted
+  project_code  text not null,                       -- snapshot taken when the report is submitted
+  project_name  text not null,                       -- snapshot taken when the report is submitted
   category      text not null
                   check (category in ('photo_mismatch', 'substandard_materials', 'overpricing_or_ghost', 'work_not_done', 'other')),
   description   text not null check (char_length(description) between 20 and 2000),
@@ -139,7 +148,7 @@ create table if not exists public.citizen_reports (
   submitted_on  date not null,                       -- Asia/Manila date only, never the time
   constraint citizen_reports_outcome_when_closed check (outcome is null or status = 'closed')
 );
-comment on table public.citizen_reports is 'Anonymous problem reports from the public portal. Stores no reporter identity and no exact time. Readable only by PACC.';
+comment on table public.citizen_reports is 'Anonymous problem reports from the public portal. Stores no reporter identity and no exact time. Kept (with the project code and name) when the project is deleted. Readable only by PACC.';
 create index if not exists citizen_reports_project_idx on public.citizen_reports (project_id, status);
 create index if not exists citizen_reports_case_idx on public.citizen_reports (case_id);
 
@@ -302,6 +311,9 @@ begin
   end if;
 
   foreach v_project in array v_projects loop
+    -- A case whose project was deleted (project_id NULL): nothing to update.
+    continue when v_project is null;
+
     -- At most one non-closed case per project (pacc_cases_one_open_per_project).
     -- No row found sets v_status to NULL.
     select c.status into v_status
