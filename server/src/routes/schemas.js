@@ -3,6 +3,7 @@
  * the API answers 400 with the field and the reason.
  */
 import { z } from 'zod';
+import { REPORT_CATEGORIES, normalizeTrackingCode } from '../services/citizenReports.js';
 
 const empty = (v) => (v === '' || v === 'null' || v === undefined ? undefined : v);
 const opt = (schema) => z.preprocess(empty, schema.optional());
@@ -252,3 +253,12 @@ export const flagRulesUpdate = z
   .refine((r) => r.slippage_green_max < r.slippage_yellow_max, { message: 'The Yellow slippage limit must be higher than the Green limit', path: ['slippage_yellow_max'] })
   .refine((r) => r.gps_tolerance_m < r.gps_red_m, { message: 'The Red GPS distance must be larger than the Yellow distance', path: ['gps_red_m'] })
   .refine((r) => r.financial_variance_yellow < r.financial_variance_red, { message: 'The Red payment gap must be larger than the Yellow gap', path: ['financial_variance_red'] });
+
+// Anonymous citizen reports (public portal).
+export const citizenReport = z.object({
+  category: z.enum(REPORT_CATEGORIES, { message: 'Choose what kind of problem this is.' }),
+  description: z.string().trim().min(20, 'Describe the problem in at least 20 characters.').max(2000),
+});
+export const trackingCodeParam = z.object({
+  code: z.string().transform((v) => normalizeTrackingCode(v)).refine((v) => v !== null, 'Enter the 10-character tracking code.'),
+});

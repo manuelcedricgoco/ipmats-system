@@ -41,3 +41,13 @@ const DOCUMENT_MIME_TYPES = [
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 ];
 export const uploadDocument = make(25 * MB, DOCUMENT_MIME_TYPES, 'file');
+
+/** Citizen report proof: 1-3 JPEG / PNG / WebP photos up to 10 MB each (field "proof"). */
+export const uploadProof = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * MB, files: 3 },
+  fileFilter: (_req, file, cb) => {
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype)) return cb(badRequest('The file is not a JPEG, PNG or WebP image.'));
+    return cb(null, true);
+  },
+}).array('proof', 3);
