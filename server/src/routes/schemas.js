@@ -273,3 +273,28 @@ export const trackingCodeParam = z.object({
 
 // PACC: close a citizen report (or every open report of a project) with an outcome.
 export const reportClose = z.object({ outcome: z.enum(['valid', 'invalid', 'duplicate'], { message: 'Choose an outcome: valid, invalid or duplicate.' }) });
+
+// PACC cases. A case names at least one respondent: a contractor and/or officials as free text.
+export const CASE_STATUSES = ['under_investigation', 'case_filed', 'resolved', 'dismissed'];
+const respondentText = nullable(text(1000)).transform((v) => (v === '' ? null : v));
+const charges = text(4000).min(10, 'Describe the charges in at least 10 characters.');
+export const caseCreate = z
+  .object({
+    contractor_id: nullable(z.string().uuid()),
+    other_respondents: respondentText,
+    charges,
+    report_ids: z.array(z.string().uuid()).max(200, 'Attach at most 200 reports at a time.').optional(),
+  })
+  .refine((o) => Boolean(o.contractor_id || o.other_respondents), { message: 'Name at least one respondent.', path: ['contractor_id'] });
+export const caseUpdate = z
+  .object({
+    status: z.enum(CASE_STATUSES, { message: 'Choose a valid case status.' }).optional(),
+    show_public: z.boolean().optional(),
+    charges: charges.optional(),
+    other_respondents: respondentText,
+    contractor_id: nullable(z.string().uuid()),
+  })
+  .refine((o) => Object.values(o).some((v) => v !== undefined), 'Nothing to update');
+export const caseNote = z.object({ body: text(4000).min(1, 'Write the note.') });
+/** Case document (multipart field next to "file"). */
+export const caseDocumentUpload = z.object({ title: text(200).min(3, 'Give the document a title (at least 3 characters)') });

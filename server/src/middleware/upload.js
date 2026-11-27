@@ -14,12 +14,12 @@ export const uploadAvatar = multer({
 }).single('avatar');
 
 // WEEK 3
-function make(maxBytes, mimeTypes, field) {
+function make(maxBytes, mimeTypes, field, message) {
   return multer({
     storage: multer.memoryStorage(),
     limits: { fileSize: maxBytes, files: 1 },
     fileFilter: (_req, file, cb) => {
-      if (!mimeTypes.includes(file.mimetype)) return cb(badRequest(`Unsupported file type: ${file.mimetype}`));
+      if (!mimeTypes.includes(file.mimetype)) return cb(badRequest(message ?? `Unsupported file type: ${file.mimetype}`));
       return cb(null, true);
     },
   }).single(field);
@@ -41,6 +41,9 @@ const DOCUMENT_MIME_TYPES = [
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 ];
 export const uploadDocument = make(25 * MB, DOCUMENT_MIME_TYPES, 'file');
+
+/** PACC case document: PDF or image up to 25 MB (field "file"), the same limits as the pacc-case-documents bucket. */
+export const uploadCaseDocument = make(25 * MB, ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'], 'file', 'Attach a PDF, JPEG, PNG or WebP file.');
 
 /** Citizen report proof: 1-3 JPEG / PNG / WebP photos up to 10 MB each (field "proof"). */
 export const uploadProof = multer({

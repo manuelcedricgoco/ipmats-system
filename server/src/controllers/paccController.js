@@ -4,14 +4,22 @@
  *   GET  /pacc/projects/:id                       investigation view (opening it marks new reports "under review")
  *   POST /pacc/reports/:reportId/close            close one citizen report with an outcome
  *   POST /pacc/projects/:id/reports/close-all     close every open report of a project with one outcome
+ *   GET  /pacc/cases                              every case, newest first
+ *   GET  /pacc/cases/:caseId                      a case with its notes, documents (signed links) and attached reports
+ *   POST /pacc/projects/:id/cases                 open a case on a project (optionally attaching open reports)
+ *   PATCH /pacc/cases/:caseId                     change status, respondents, charges or the "show status to public" switch
+ *   POST /pacc/cases/:caseId/notes                add a note (append-only; also allowed on a closed case)
+ *   POST /pacc/cases/:caseId/documents            upload a case document (PDF, JPEG, PNG or WebP)
  *   GET/POST /pacc/members, POST /pacc/members/:userId/(suspend|unsuspend), DELETE /pacc/members/:userId   PACC manages its own accounts
  * Reports never expose tracking_hash. Every write is recorded in pacc_activity.
  */
+import { randomUUID } from 'node:crypto';
 import { adminClient } from '../config/supabase.js';
-import { referralReasons } from '../services/citizenReports.js';
+import { canTransition, isClosedCaseStatus, referralReasons } from '../services/citizenReports.js';
 import { removeAvatarFile } from '../services/avatars.js';
 import { logPacc } from '../services/paccActivity.js';
-import { signedUrls } from '../services/storage.js';
+import { detectImageFormat } from '../services/imageFormat.js';
+import { signedUrl, signedUrls } from '../services/storage.js';
 import { HttpError, badRequest, conflict, notFound, unwrap } from '../utils/httpError.js';
 import { suspendAccount, unsuspendAccount } from '../services/accountSuspension.js';
 
@@ -176,6 +184,257 @@ export async function closeAllReports(req, res) {
     });
   }
   res.json({ data: { closed: done.length, outcome } });
+}
+
+// ---------------------------------------------------------------------------
+// PACC cases (one non-closed case per project; closed is final)
+// ---------------------------------------------------------------------------
+
+const CASE_BUCKET = 'pacc-case-documents';
+const OPEN_CASE_EXISTS = 'This project already has an open PACC case.';
+const CANNOT_ATTACH = 'Only open reports of this project that are not in another case can be attached.';
+const CASE_CLOSED = 'This case is closed.';
+const STATUS_LABELS = { under_investigation: 'under investigation', case_filed: 'case filed', resolved: 'resolved', dismissed: 'dismissed' };
+
+/**
+ * Outcome given to a closed case's open reports: resolved → valid, dismissed → invalid.
+ * The database applies this same mapping: the trigger of migration 025 (private.close_pacc_case_reports)
+ * closes the reports in the same transaction as the case update, so the API only updates the case.
+ */
+export function outcomeForClosedCase(status) {
+  if (status === 'resolved') return 'valid';
+  if (status === 'dismissed') return 'invalid';
+  return null;
+}
+
+/** What a case document really is, from its first bytes (the client's MIME type is not trusted). */
+export function caseDocumentFormat(buffer) {
+  if (Buffer.isBuffer(buffer) && buffer.subarray(0, 4).toString('latin1') === '%PDF') return { ext: 'pdf', mime: 'application/pdf' };
+  const image = detectImageFormat(buffer);
+  if (image === 'jpeg') return { ext: 'jpg', mime: 'image/jpeg' };
+  if (image) return { ext: image, mime: `image/${image}` };
+  return null;
+}
+
+async function loadCase(caseId, columns = '*') {
+  const cs = unwrap(await adminClient.from('pacc_cases').select(columns).eq('id', caseId).maybeSingle());
+  if (!cs) throw notFound('Case not found.');
+  return cs;
+}
+
+export async function listCases(req, res) {
+  const rows = await allRows(() =>
+    req.db
+      .from('pacc_cases')
+      .select('id, project_id, project_code, project_name, status, show_public, created_at, closed_at, contractor:contractors(name)')
+      .order('created_at', { ascending: false })
+      .order('id'),
+  );
+  res.json({ data: rows.map(({ contractor, ...c }) => ({ ...c, contractor_name: contractor?.name ?? null })) });
+}
+
+export async function getCase(req, res) {
+  const { caseId } = req.params;
+  const cs = unwrap(
+    await req.db
+      .from('pacc_cases')
+      .select('*, contractor:contractors(name), opener:profiles!pacc_cases_opened_by_fkey(full_name)')
+      .eq('id', caseId)
+      .maybeSingle(),
+  );
+  if (!cs) throw notFound('Case not found.');
+  const [notes, documents, reports] = await Promise.all([
+    req.db
+      .from('pacc_case_notes')
+      .select('id, body, author_id, created_at, author:profiles!pacc_case_notes_author_id_fkey(full_name)')
+      .eq('case_id', caseId)
+      .order('created_at')
+      .order('id')
+      .then(unwrap),
+    req.db
+      .from('pacc_case_documents')
+      .select('id, title, storage_path, file_name, mime_type, size_bytes, uploaded_by, created_at, uploader:profiles!pacc_case_documents_uploaded_by_fkey(full_name)')
+      .eq('case_id', caseId)
+      .order('created_at', { ascending: false })
+      .order('id')
+      .then(unwrap),
+    req.db
+      .from('citizen_reports')
+      .select('id, category, status, outcome, submitted_on')
+      .eq('case_id', caseId)
+      .order('submitted_on', { ascending: false })
+      .order('id')
+      .then(unwrap),
+  ]);
+  const urls = await signedUrls(CASE_BUCKET, documents.map((d) => d.storage_path));
+  const { contractor, opener, ...rest } = cs;
+  res.json({
+    data: {
+      ...rest,
+      contractor_name: contractor?.name ?? null,
+      opened_by_name: opener?.full_name ?? null,
+      notes: notes.map(({ author, ...n }) => ({ ...n, author_name: author?.full_name ?? null })),
+      documents: documents.map(({ uploader, ...d }) => ({ ...d, uploaded_by_name: uploader?.full_name ?? null, url: urls[d.storage_path] ?? null })),
+      reports,
+    },
+  });
+}
+
+/** Only open reports of the project that are in no other case may be attached. */
+const attachable = (q, projectId) => q.eq('project_id', projectId).neq('status', 'closed').is('case_id', null);
+
+/** Run a query per chunk of 100 ids (keeps the request URL short) and collect the rows. */
+async function inChunks(ids, run) {
+  const rows = [];
+  for (let i = 0; i < ids.length; i += 100) rows.push(...unwrap(await run(ids.slice(i, i + 100))));
+  return rows;
+}
+
+export async function createCase(req, res) {
+  const { id } = req.params;
+  const { contractor_id = null, other_respondents = null, charges } = req.body;
+  const reportIds = [...new Set(req.body.report_ids ?? [])];
+  const project = unwrap(await req.db.from('projects').select('id, project_code, name').eq('id', id).maybeSingle());
+  if (!project) throw notFound('Project not found');
+
+  if (reportIds.length) {
+    const found = await inChunks(reportIds, (chunk) => attachable(req.db.from('citizen_reports').select('id').in('id', chunk), id));
+    if (found.length !== reportIds.length) throw badRequest(CANNOT_ATTACH);
+  }
+
+  const cs = unwrap(
+    await adminClient
+      .from('pacc_cases')
+      .insert({ project_id: id, project_code: project.project_code, project_name: project.name, contractor_id, other_respondents, charges, status: 'under_investigation', opened_by: req.user.id })
+      .select('*')
+      .single(),
+    { conflictMessage: OPEN_CASE_EXISTS, foreignKeyMessage: 'Contractor not found.' },
+  );
+
+  if (reportIds.length) {
+    try {
+      const attached = await inChunks(reportIds, (chunk) =>
+        attachable(adminClient.from('citizen_reports').update({ status: 'under_review', case_id: cs.id }).in('id', chunk), id).select('id'),
+      );
+      // Someone closed or attached one of them since the check above.
+      if (attached.length !== reportIds.length) throw badRequest(CANNOT_ATTACH);
+    } catch (err) {
+      // No half-made case: deleting it also unlinks the reports (citizen_reports.case_id ON DELETE SET NULL).
+      const { error } = await adminClient.from('pacc_cases').delete().eq('id', cs.id);
+      if (error) console.error('[pacc] case cleanup failed', error.message);
+      throw err;
+    }
+  }
+
+  await logPacc(req, {
+    action: 'case.create',
+    entityType: 'case',
+    entityId: cs.id,
+    projectId: id,
+    summary: `Opened a PACC case on ${project.project_code}${reportIds.length ? ` with ${reportIds.length} citizen report${reportIds.length === 1 ? '' : 's'} attached` : ''}.`,
+    details: { contractor_id, report_count: reportIds.length },
+  });
+  res.status(201).json({ data: cs });
+}
+
+/** Plain-English list of what a case update changed, for the activity trail. */
+function describeCaseChanges(patch) {
+  const parts = [];
+  if (patch.status) parts.push(`status ${STATUS_LABELS[patch.status]}`);
+  if (patch.show_public !== undefined) parts.push(patch.show_public ? 'status shown to the public' : 'status hidden from the public');
+  if (patch.charges !== undefined) parts.push('charges edited');
+  if (patch.contractor_id !== undefined || patch.other_respondents !== undefined) parts.push('respondents edited');
+  return parts.join(', ');
+}
+
+export async function updateCase(req, res) {
+  const cs = await loadCase(req.params.caseId);
+  if (isClosedCaseStatus(cs.status)) throw badRequest(CASE_CLOSED);
+
+  const patch = Object.fromEntries(Object.entries(req.body).filter(([, v]) => v !== undefined));
+  if (patch.status === cs.status) delete patch.status; // same status sent back: not a change
+  if (patch.status) {
+    if (!canTransition(cs.status, patch.status)) throw badRequest('That status change is not allowed.');
+    if (isClosedCaseStatus(patch.status)) patch.closed_at = new Date().toISOString();
+  }
+  const contractorId = patch.contractor_id !== undefined ? patch.contractor_id : cs.contractor_id;
+  const others = patch.other_respondents !== undefined ? patch.other_respondents : cs.other_respondents;
+  if (!contractorId && !others) throw badRequest('Name at least one respondent.');
+  if (!Object.keys(patch).length) return res.json({ data: cs });
+
+  // Guarded by the status we read: of two concurrent changes, only the first applies.
+  // Closing the case also closes its open reports (trigger of migration 025, same transaction).
+  const rows = unwrap(await adminClient.from('pacc_cases').update(patch).eq('id', cs.id).eq('status', cs.status).select('*'), {
+    foreignKeyMessage: 'Contractor not found.',
+  });
+  if (!rows.length) throw conflict('The case was changed by someone else. Reload and try again.');
+
+  const closing = Boolean(patch.status && isClosedCaseStatus(patch.status));
+  await logPacc(req, {
+    action: closing ? 'case.close' : 'case.update',
+    entityType: 'case',
+    entityId: cs.id,
+    projectId: cs.project_id,
+    summary: closing
+      ? `Closed the PACC case on ${cs.project_code} as ${patch.status}; attached open citizen reports are closed as ${outcomeForClosedCase(patch.status)}.`
+      : `Updated the PACC case on ${cs.project_code}: ${describeCaseChanges(patch)}.`,
+    details: { changed: Object.keys(patch).filter((k) => k !== 'closed_at'), from_status: cs.status, to_status: patch.status ?? cs.status, ...(patch.show_public !== undefined && { show_public: patch.show_public }) },
+  });
+  res.json({ data: rows[0] });
+}
+
+export async function addCaseNote(req, res) {
+  // Notes are append-only history, so they may be added to a closed case too (follow-up records).
+  const cs = await loadCase(req.params.caseId, 'id, project_id, project_code');
+  const note = unwrap(await adminClient.from('pacc_case_notes').insert({ case_id: cs.id, body: req.body.body, author_id: req.user.id }).select('*').single());
+  await logPacc(req, {
+    action: 'case.note',
+    entityType: 'case',
+    entityId: cs.id,
+    projectId: cs.project_id,
+    summary: `Added a note to the PACC case on ${cs.project_code}.`,
+    details: { note_id: note.id },
+  });
+  res.status(201).json({ data: { ...note, author_name: req.user.profile?.full_name ?? null } });
+}
+
+export async function uploadCaseDocument(req, res) {
+  if (!req.file) throw badRequest('Attach the document in the "file" field.');
+  const cs = await loadCase(req.params.caseId, 'id, project_id, project_code, status');
+  if (isClosedCaseStatus(cs.status)) throw badRequest(CASE_CLOSED);
+  const format = caseDocumentFormat(req.file.buffer);
+  if (!format) throw badRequest('Attach a PDF, JPEG, PNG or WebP file.');
+
+  const storagePath = `${cs.id}/${randomUUID()}.${format.ext}`;
+  const up = await adminClient.storage.from(CASE_BUCKET).upload(storagePath, req.file.buffer, { contentType: format.mime, upsert: false });
+  if (up.error) throw Object.assign(new Error('Storage upload failed'), { cause: up.error });
+
+  const insert = await adminClient
+    .from('pacc_case_documents')
+    .insert({
+      case_id: cs.id,
+      title: req.body.title,
+      storage_path: storagePath,
+      file_name: String(req.file.originalname || 'document').slice(0, 200),
+      mime_type: format.mime,
+      size_bytes: req.file.size,
+      uploaded_by: req.user.id,
+    })
+    .select('*')
+    .single();
+  if (insert.error) {
+    await adminClient.storage.from(CASE_BUCKET).remove([storagePath]); // never leave an orphan file
+    unwrap(insert);
+  }
+  await logPacc(req, {
+    action: 'case.document',
+    entityType: 'case',
+    entityId: cs.id,
+    projectId: cs.project_id,
+    summary: `Added document "${req.body.title}" to the PACC case on ${cs.project_code}.`,
+    details: { document_id: insert.data.id, file_name: insert.data.file_name, size_bytes: req.file.size },
+  });
+  res.status(201).json({ data: { ...insert.data, url: await signedUrl(CASE_BUCKET, storagePath) } });
 }
 
 // ---------------------------------------------------------------------------

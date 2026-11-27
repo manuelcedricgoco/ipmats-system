@@ -2,7 +2,7 @@
 
 The database is PostgreSQL 17, hosted by Supabase (project **IPMATS**). This page was written from the live
 database on 22 November 2026, not only from the migration files, and updated on 25 November 2026 for migrations
-019 and 020. The PACC parts (migrations 023 and 024, 27 November 2026) are written from the migration files.
+019 and 020. The PACC parts (migrations 023, 024 and 025, 27 November 2026) are written from the migration files.
 Where the two differ, the live schema wins.
 
 - What each table is used for in the app: [features.md](features.md)
@@ -393,7 +393,7 @@ project delete: `project_id` becomes empty and the project code and name stay.
 | description | text | no | — | 20–2000 characters |
 | status | text | no | `'received'` | `received`, `under_review` or `closed` |
 | outcome | text | yes | — | `valid`, `invalid` or `duplicate`; only on a closed report |
-| case_id | uuid | yes | — | PACC case the report is attached to |
+| case_id | uuid | yes | — | PACC case the report is attached to. Closing that case closes the report (trigger, 025) |
 | tracking_hash | text | no | — | HMAC-SHA256 (64 hex characters) of the tracking code; the code itself is never stored (unique) |
 | submitted_on | date | no | — | Submission date (Asia/Manila), never the time |
 
@@ -581,6 +581,7 @@ These are `text` columns limited by a `CHECK` rule, not enum types.
 | `private.is_pacc()` | used by RLS | True when `app_role()` is `pacc` (024). PACC is **not** staff |
 | `private.can_investigate()` | helper | True for staff or PACC (024) |
 | `private.sync_pacc_public_status()` | after insert, delete, or update of `project_id`, `status` or `show_public` on `pacc_cases` | Security definer. Sets `projects.pacc_public_status` to the status of the project's non-closed case with `show_public` on, or null; writes only when the value changes |
+| `private.close_pacc_case_reports()` | after update of `status` on `pacc_cases` | Security definer (025). When a case becomes `resolved` or `dismissed`, closes its attached reports that are not yet closed, in the same transaction: outcome `valid` for resolved, `invalid` for dismissed. Reports PACC already closed keep their outcome |
 | `private.next_project_code()` | used by the code trigger | Increments the yearly counter and returns the next free code |
 
 ## Row Level Security
@@ -635,11 +636,11 @@ write files. It hands out signed links that expire (1 hour by default, `SIGNED_U
 
 ## Migrations
 
-The migration files are in `database/migrations/`. They are numbered and run in number order, `001` to `024`.
+The migration files are in `database/migrations/`. They are numbered and run in number order, `001` to `025`.
 The live database's migration history lists 001–022 as applied, in that order (019 and 020 on 25 November
-2026, 021 and 022 on 27 November 2026, each before the matching API was deployed). 023 (PACC role) and 024 (PACC
-portal and citizen reports) are new; 023 must be applied on its own before 024, because a new enum value must be committed
-before it can be used.
+2026, 021 and 022 on 27 November 2026, each before the matching API was deployed). 023 (PACC role), 024 (PACC
+portal and citizen reports) and 025 (closing a case closes its reports) are new; 023 must be applied on its own before 024, because a new enum value must be committed
+before it can be used. 025 must be applied after 024 and before the API that closes cases is deployed.
 
 Rules the project follows:
 - An applied migration is never edited or deleted. A mistake is undone by a new migration (013 → 014, 006 → 016).
@@ -672,3 +673,4 @@ Rules the project follows:
 | 022 | photos_public_on_upload | `site_images.is_public` defaults to true and every hidden photo is made public: photos are public on upload, with no approval step |
 | 023 | pacc_role | Adds `pacc` to `user_role` (only that, so it is committed before 024 uses it) |
 | 024 | pacc_portal | `private.is_pacc()` / `can_investigate()`; tables `citizen_reports`, `citizen_report_files`, `pacc_cases` (one open case per project), `pacc_case_notes`, `pacc_case_documents`, `pacc_activity`, readable only by PACC (cases and reports keep the project code and name and survive a project delete); PACC read policies on project records; `projects.pacc_public_status` with an anon column grant, kept by a trigger and appended to `v_public_projects`; buckets `citizen-reports` and `pacc-case-documents` |
+| 025 | pacc_case_closes_reports | Trigger `pacc_cases_close_reports` (`private.close_pacc_case_reports()`): closing a case (resolved or dismissed) closes its attached open reports in the same transaction, outcome `valid` or `invalid` |
