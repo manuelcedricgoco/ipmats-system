@@ -1,7 +1,7 @@
 /**
  * Shared layout for every IPMATS PDF report (pdfkit).
  *
- * One look for all reports: DPWH 360° letterhead with the portal logo on page 1, a running header
+ * One look for all reports: InfraWatch PH letterhead with the portal logo on page 1, a running header
  * on later pages, numbered sections, summary cards, bordered tables that repeat their header row
  * after a page break, record cards for long text, a signature block and a footer with page numbers.
  * Colours and the typeface (Public Sans) are the web portal's.
@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 import PDFDocument from 'pdfkit';
 
 const asset = (p) => fileURLToPath(new URL(`../assets/${p}`, import.meta.url));
-const LOGO = asset('dpwh-logo.png');
+const LOGO = asset('infrawatch-logo.png');
 const FONT_FILES = {
   Body: asset('fonts/public-sans-latin-400-normal.woff'),
   Semibold: asset('fonts/public-sans-latin-600-normal.woff'),
@@ -85,7 +85,7 @@ export class Report {
       size: 'A4',
       bufferPages: true,
       margins: MARGIN,
-      info: { Title: `${docType} — ${this.title}`, Author: 'IPMATS — DPWH 360° Occidental Mindoro', Subject: docType, Creator: 'IPMATS' },
+      info: { Title: `${docType} — ${this.title}`, Author: 'IPMATS — InfraWatch PH, Occidental Mindoro', Subject: docType, Creator: 'IPMATS' },
     });
     this.fonts = { ...FALLBACK };
     for (const [name, file] of Object.entries(FONT_FILES)) {
@@ -146,7 +146,7 @@ export class Report {
     doc.circle(this.left + 26, 48, 27).fill(COLORS.white);
     if (existsSync(LOGO)) doc.image(LOGO, this.left + 3, 25, { width: 46, height: 46 });
     const tx = this.left + 66;
-    this.font('Bold', 17, COLORS.white).text('DPWH 360°', tx, 24, { lineBreak: false });
+    this.font('Bold', 17, COLORS.white).text('InfraWatch PH', tx, 24, { lineBreak: false });
     this.font('Semibold', 9.5, COLORS.brandLine).text('Infrastructure Project Monitoring and Transparency System', tx, 47, { lineBreak: false });
     this.font('Body', 8.5, COLORS.brandSoft).text('Occidental Mindoro  ·  MIMAROPA Region', tx, 61, { lineBreak: false });
     const rw = 190;
@@ -418,7 +418,7 @@ export class Report {
       doc.page.margins.bottom = 0; // draw in the margin without creating a page
       if (i > range.start) {
         if (existsSync(LOGO)) doc.image(LOGO, this.left, 20, { width: 22, height: 22 });
-        this.font('Bold', 9, COLORS.navy).text('DPWH 360°', this.left + 30, 21, { lineBreak: false });
+        this.font('Bold', 9, COLORS.navy).text('InfraWatch PH', this.left + 30, 21, { lineBreak: false });
         this.font('Body', 7.8, COLORS.muted).text(this.title, this.left + 30, 33, { width: this.width - 230, height: 10, ellipsis: true });
         this.font('Semibold', 7.6, COLORS.navy).text(this.docType, W - MARGIN.right - 200, 21, { width: 200, align: 'right', height: 10, ellipsis: true });
         this.font('Body', 7.6, COLORS.muted).text(`Ref. ${this.reference}`, W - MARGIN.right - 200, 33, { width: 200, align: 'right', height: 10, ellipsis: true });
@@ -426,7 +426,7 @@ export class Report {
       }
       doc.moveTo(this.left, H - 42).lineTo(W - MARGIN.right, H - 42).lineWidth(0.6).stroke(COLORS.brandLine);
       this.font('Body', 7.3, COLORS.muted).text(
-        `IPMATS · DPWH 360° Occidental Mindoro  ·  Generated ${fmt.dateTime(this.generatedAt)} by ${this.generatedBy}`,
+        `InfraWatch PH (IPMATS) · Occidental Mindoro  ·  Generated ${fmt.dateTime(this.generatedAt)} by ${this.generatedBy}`,
         this.left,
         H - 34,
         { width: this.width - 80, height: 10, ellipsis: true },

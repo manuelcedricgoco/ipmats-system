@@ -1,6 +1,6 @@
 # Features
 
-Every feature of IPMATS (DPWH 360°), page by page. Each entry says what it is called in the app, why it exists,
+Every feature of IPMATS (InfraWatch PH), page by page. Each entry says what it is called in the app, why it exists,
 who uses it, what it does, and what it touches. API routes are relative to `/api`.
 
 - Exact rights per role: [roles-and-permissions.md](roles-and-permissions.md)

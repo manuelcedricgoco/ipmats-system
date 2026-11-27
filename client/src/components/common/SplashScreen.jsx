@@ -7,7 +7,7 @@ const STEPS = ['Verifying your account', 'Loading your portal', 'Preparing your 
 
 /**
  * Formal entry screen shown after "Sign in" is clicked, before the person's portal opens:
- * DPWH and Province of Occidental Mindoro seals, system name, progress — with staged entrance
+ * the InfraWatch PH logo (largest) between the DPWH and Province of Occidental Mindoro seals, system name, progress — with staged entrance
  * animations and a fade into the system. It lasts SPLASH_MS; if signing in takes longer, it waits
  * for `ready` and then fades out.
  */
@@ -71,18 +71,26 @@ export default function SplashScreen({ onDone, ready = true, durationMs = SPLASH
       </div>
 
       <main className="relative flex flex-1 flex-col items-center justify-center px-6 text-center">
-        {/* seals */}
-        <div className="flex items-center gap-6 sm:gap-10">
+        {/* logos: the two seals at the sides, the InfraWatch PH logo in the middle and larger */}
+        <div className="flex items-center gap-3 sm:gap-8">
           {[
-            ['/dpwh-logo.png', 'Department of Public Works and Highways seal', 0],
-            ['/occidental-seal.png', 'Province of Occidental Mindoro seal', 140],
-          ].map(([src, alt, d], i) => (
+            ['/dpwh-logo.png', 'Department of Public Works and Highways seal', 140, false],
+            ['/infrawatch-logo.png', 'InfraWatch PH logo', 0, true],
+            ['/occidental-seal.png', 'Province of Occidental Mindoro seal', 280, false],
+          ].map(([src, alt, d, main], i) => (
             <div key={src} className="contents">
-              {i === 1 && <span className="h-16 w-px origin-center animate-grow-y bg-white/25 sm:h-24" style={delay(260)} aria-hidden />}
+              {i > 0 && <span className="h-14 w-px origin-center animate-grow-y bg-white/25 sm:h-20" style={delay(260)} aria-hidden />}
               <span className="relative grid place-items-center">
                 <span className="absolute inset-0 animate-ring rounded-full border-2 border-accent-300/60" style={delay(700 + d)} aria-hidden />
-                <span className="grid h-24 w-24 animate-pop-in place-items-center rounded-full bg-white shadow-[0_0_40px_-6px_rgba(246,185,43,0.55)] sm:h-32 sm:w-32" style={delay(d)}>
-                  <img src={src} alt={alt} className="h-20 w-20 object-contain sm:h-28 sm:w-28" />
+                <span
+                  className={`grid animate-pop-in place-items-center rounded-full bg-white ${
+                    main
+                      ? 'h-32 w-32 shadow-[0_0_56px_-4px_rgba(246,185,43,0.7)] sm:h-48 sm:w-48'
+                      : 'h-16 w-16 shadow-[0_0_32px_-8px_rgba(246,185,43,0.5)] sm:h-24 sm:w-24'
+                  }`}
+                  style={delay(d)}
+                >
+                  <img src={src} alt={alt} className={main ? 'h-28 w-28 object-contain sm:h-44 sm:w-44' : 'h-12 w-12 object-contain sm:h-20 sm:w-20'} />
                 </span>
               </span>
             </div>
@@ -91,10 +99,10 @@ export default function SplashScreen({ onDone, ready = true, durationMs = SPLASH
 
         {/* system name */}
         <p className="mt-9 animate-blur-in text-[10px] font-semibold uppercase tracking-[0.14em] text-accent-300 sm:text-xs sm:tracking-[0.24em]" style={delay(380)}>
-          Department of Public Works and Highways
+          Occidental Mindoro
         </p>
         <h1 className="mt-2 animate-blur-in bg-gradient-to-r from-white via-brand-100 to-white bg-clip-text text-5xl font-bold tracking-tight text-transparent sm:text-6xl" style={delay(480)}>
-          DPWH 360°
+          InfraWatch PH
         </h1>
         <p className="mt-3 max-w-md animate-blur-in text-sm text-brand-100 sm:text-base" style={delay(580)}>
           Infrastructure Project Monitoring and Transparency System
