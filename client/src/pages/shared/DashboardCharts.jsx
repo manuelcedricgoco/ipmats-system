@@ -26,7 +26,7 @@ export default function DashboardCharts() {
           <CardBody><FlagDonut counts={p.by_flag} /></CardBody>
         </Card>
         <Card>
-          <CardHeader title="Projects by status" description={`${p.delayed} delayed`} />
+          <CardHeader title="Projects by status" description={`${p.delayed} delayed · ${p.completed} completed`} />
           <CardBody><StatusBar counts={p.by_status} /></CardBody>
         </Card>
         <Card>

@@ -61,7 +61,7 @@ export async function deleteContractor(req, res) {
   unwrap({ data: used, error });
   if (count) {
     const codes = used.map((p) => p.project_code).join(', ') + (count > used.length ? ', …' : '');
-    throw conflict(`This contractor is assigned to ${count} project(s) (${codes}). Reassign them or mark the contractor inactive instead.`);
+    throw conflict(`This contractor is assigned to ${count} project(s) (${codes}). Reassign them, or edit the contractor and untick "Active" instead.`);
   }
   unwrap(await adminClient.from('contractors').delete().eq('id', contractorId));
   await logActivity(req, {

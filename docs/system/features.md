@@ -35,7 +35,7 @@ Anyone can also report a problem on a project to PACC, anonymously and with phot
 - **Who:** everyone.
 - **What it does:**
   - **Search box:** a name or municipality search that opens the Projects page with the results.
-  - **Four counters:** Total projects, Ongoing, Completed, and "Delayed or stalled" (delayed plus suspended projects).
+  - **Four counters:** Total projects, On-going, Completed and Delayed.
   - **Project map:** see [Project map](#project-map-public) below.
   - **Project cards:** see [Projects](#projects-public) below. Clicking a card opens the project drawer on the map.
 - **Touches:**
@@ -210,9 +210,12 @@ Sidebar items appear only for the roles that can use them. "All staff" = Admin, 
       after saving.
     - The target completion date is computed as NTP + duration.
     - The contract amount cannot exceed the approved budget.
-    - The status is **automatic**. Staff can only set Suspended or Terminated, or put it back to automatic.
-      A Suspended or Terminated project still shows that status, but its schedule reasons (target date passed,
-      slippage) still count toward the flag, together with a Suspended (Yellow) or Terminated (Red) reason.
+    - The status is **automatic** (Not started, On-going, Delayed, Completed). When registering a project, staff
+      may choose Automatic, Not started or On-going as the starting status; the next evaluation (a progress
+      report, a photo, or the daily check) recalculates it from the Notice to Proceed and progress. Completed is
+      never chosen by hand: it is set once every phase is at 100%, with a completion date and a final as-built
+      photo. The Suspended and Terminated statuses were removed (no project used them); editing a project
+      cannot set a status.
   - **Project page tabs:** Overview, Phases & progress, Finance, 360° images, Flag & audit, Documents (described
     below). Non-editors see a "Read-only" label.
   - **Delete:** an Admin can delete a project, which also deletes all of its records.
@@ -374,8 +377,9 @@ Sidebar items appear only for the roles that can use them. "All staff" = Admin, 
 - **What it does:**
   - **List:** licence, contact details, number of projects and total contract amount. Expand a row to see the
     contractor's projects.
-  - **Actions column:** Edit, Suspend / Reactivate, Delete. A contractor used by a project cannot be deleted.
-  - **Effect of suspending:** a suspended contractor is no longer offered in the project form. Only the form
+  - **Actions column:** Edit, Delete. A contractor used by a project cannot be deleted; edit it and untick
+    "Active" instead (there is no separate Suspend button any more).
+  - **Effect of "Active" off:** an inactive contractor is no longer offered in the project form. Only the form
     hides it; the API does not block it.
 - **Touches:** `pages/dpwh/ContractorsPage.jsx`, `components/common/RowActions.jsx`;
   `GET/POST /contractors`, `GET/PATCH/DELETE /contractors/:id`; `contractors`, `v_project_summary`.
@@ -383,10 +387,10 @@ Sidebar items appear only for the roles that can use them. "All staff" = Admin, 
 ### Offices & Agencies
 - **In the UI:** "Offices & Agencies" (`/app/agencies`).
 - **Why:** every project has an implementing office, and every staff member belongs to one.
-- **Who:** all staff view. Only the Admin adds, edits, suspends or deletes.
+- **Who:** all staff view. Only the Admin adds, edits or deletes.
 - **What it does:** lists the offices with code, type (District Engineering Office, Field Office, Other) and
-  address. A suspended office is no longer offered for new projects. An office used by a project or a user
-  account cannot be deleted.
+  address. An office used by a project or a user account cannot be deleted. The page has no Suspend button
+  any more; an office already marked inactive still shows "Inactive" and is not offered for new projects.
 - **Touches:** `pages/dpwh/AgenciesPage.jsx`; `GET /reference`, `POST /agencies`, `PATCH/DELETE /agencies/:id`;
   `agencies`.
 

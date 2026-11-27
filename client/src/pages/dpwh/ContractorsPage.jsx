@@ -68,7 +68,7 @@ export default function ContractorsPage() {
                   <div><dt className="text-slate-500">PCAB licence</dt><dd className="font-mono text-slate-800">{c.pcab_license_no || '—'}{c.classification && <span className="font-sans text-slate-500"> · Cat. {c.classification}</span>}</dd></div>
                   <div><dt className="text-slate-500">Projects</dt><dd className="tabular-nums text-slate-800">{c.project_count} · {pesoCompact(c.total_contract)}</dd></div>
                   <div className="col-span-2"><dt className="text-slate-500">Contact</dt><dd className="break-words text-slate-700">{[c.contact_person, c.contact_number].filter(Boolean).join(' · ') || '—'}{c.email && <span className="block break-all">{c.email}</span>}</dd></div>
-                  <div className="col-span-2"><dt className="sr-only">Status</dt><dd className="flex gap-3 tabular-nums"><span className="text-brand-700">{c.ongoing} on-going</span></dd></div>
+                  <div className="col-span-2"><dt className="sr-only">Status</dt><dd className="flex gap-3 tabular-nums"><span className="text-brand-700">{c.ongoing} on-going</span><span className="text-emerald-700">{c.completed} completed</span></dd></div>
                 </dl>
                 {expanded === c.id && (
                   <div className="mt-3 rounded-md bg-slate-50 p-2">
@@ -117,6 +117,7 @@ export default function ContractorsPage() {
                       <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums">{pesoCompact(c.total_contract)}</td>
                       <td className="px-4 py-3 text-xs">
                         <span className="block whitespace-nowrap tabular-nums text-brand-700">{c.ongoing} on-going</span>
+                        <span className="block whitespace-nowrap tabular-nums text-emerald-700">{c.completed} completed</span>
                       </td>
                       {canEdit && <td className="whitespace-nowrap px-4 py-3 text-right">{rowActions(c)}</td>}
                     </tr>
@@ -165,7 +166,7 @@ export default function ContractorsPage() {
               <dt className="sr-only">PCAB licence</dt>
               <dd className="text-xs text-slate-600">PCAB licence <span className="font-mono">{deleting.pcab_license_no || '—'}</span></dd>
             </dl>
-            <p><strong>This cannot be undone.</strong> A contractor that is still assigned to projects cannot be deleted; mark it inactive instead.</p>
+            <p><strong>This cannot be undone.</strong> A contractor that is still assigned to projects cannot be deleted; edit it and untick "Active" instead.</p>
           </>
         )}
       </ConfirmDialog>

@@ -33,7 +33,7 @@ which are the real enforcement point for every write.
 |---|---|---|---|---|---|
 | Public portal (dashboard, projects, map, public 360° photos) | V | V | V | V | V |
 | Projects | V C E D | V C E⁷ | V | V⁸ | V (public fields only) |
-| Project status: set Suspended / Terminated | E | E | — | — | — |
+| Project starting status at registration (Automatic, Not started, On-going) | C | C | — | — | — |
 | Construction phases (plan) | V C E D¹ | V C E D¹ | V | V⁸ | — |
 | Progress reports | V C | V C | V | V⁸ | — (only the overall %) |
 | Financial records | V C D | V C | V | V⁸ | — (only the contract amount) |
@@ -86,7 +86,7 @@ Other limits enforced by the API:
 - An auditor's flag decision cannot be lowered by the automatic evaluation. When the automatic flag changes, the
   shown flag becomes the worse of the new automatic flag and the auditor's decision (`projects.reviewed_flag`),
   and goes back to "pending" for another review. Personnel therefore cannot clear a reviewed flag by editing the
-  project, for example by setting it to Suspended and back.
+  project (status is automatic and cannot be set by hand).
 - Uploaded photos are checked by their actual bytes: only real JPEG, PNG or WebP files reach the image decoder.
 - **Rate limits** (HTTP 429 "Too many requests, please slow down."):
 

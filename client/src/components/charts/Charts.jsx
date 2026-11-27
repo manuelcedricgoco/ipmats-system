@@ -24,7 +24,7 @@ export function FlagDonut({ counts = {}, height = 'h-56' }) {
 /** Projects by status (horizontal bars). */
 export function StatusBar({ counts = {} }) {
   const keys = Object.keys(STATUS_META).filter((k) => counts[k]);
-  const colors = { not_started: PALETTE.slate, ongoing: PALETTE.brand, delayed: PALETTE.yellow };
+  const colors = { not_started: PALETTE.slate, ongoing: PALETTE.brand, delayed: PALETTE.yellow, completed: PALETTE.green };
   const data = { labels: keys.map((k) => STATUS_META[k].label), datasets: [{ data: keys.map((k) => counts[k]), backgroundColor: keys.map((k) => colors[k]), borderRadius: 4 }] };
   return (
     <div className="relative h-56">

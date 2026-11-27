@@ -345,7 +345,7 @@ function UploadModal({ open, onClose, project, phases, onDone }) {
           <Field label="Caption">{(a) => <Input {...a} value={form.caption || ''} onChange={set('caption')} maxLength={300} placeholder="e.g. Station 0+250, facing north" />}</Field>
           <Checkbox
             label="Final as-built 360° image"
-            description="Needed alongside every phase at 100% and an actual completion date to record the project as finished."
+            description="Needed (with every phase at 100% and an actual completion date) for the project to count as Completed."
             checked={Boolean(form.is_final)}
             onChange={set('is_final')}
           />

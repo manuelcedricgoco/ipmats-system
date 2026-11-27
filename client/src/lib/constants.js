@@ -3,8 +3,11 @@ export const STATUS_META = {
   not_started: { label: 'Not started', cls: 'bg-slate-100 text-slate-700', color: '#64748b' },
   ongoing: { label: 'On-going', cls: 'bg-brand-50 text-brand-700', color: '#1d4ed8' },
   delayed: { label: 'Delayed', cls: 'bg-orange-50 text-orange-800', color: '#ea580c' },
+  // Set automatically once every phase is at 100%, with a completion date and a final as-built photo. Never chosen by hand.
+  completed: { label: 'Completed', cls: 'bg-emerald-50 text-emerald-800', color: '#059669' },
 };
-// Registration can start with these statuses; later status changes are calculated automatically.
+// Registration can start with these statuses (or Automatic); later status changes are calculated automatically.
+// Completed is never offered: a new project cannot be finished yet.
 export const MANUAL_STATUSES = [];
 export const REGISTRATION_STATUSES = ['not_started', 'ongoing'];
 

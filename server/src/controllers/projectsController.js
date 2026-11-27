@@ -22,7 +22,7 @@ const LIST_COLUMNS =
   'overall_progress, phase_count, revised_contract_amount, total_disbursed, remaining_balance, ' +
   // Week 3
   'current_flag, flag_review_status, planned_progress, image_count';
-const FILTERABLE_STATUSES = new Set(['not_started', 'ongoing', 'delayed']);
+const FILTERABLE_STATUSES = new Set(['not_started', 'ongoing', 'delayed', 'completed']);
 
 /** Filters shared by the list endpoint. */
 export function applyProjectFilters(query, f) {
