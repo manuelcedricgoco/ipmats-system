@@ -44,6 +44,19 @@ export function withoutPaccFields(row, user) {
   return Object.fromEntries(Object.entries(row).filter(([key]) => !key.startsWith('pacc_')));
 }
 
+/** Keys of a photo's validation record that name other projects (their ids). */
+const OTHER_PROJECT_KEYS = ['reused_in_projects', 'near_duplicate_in_projects'];
+
+/**
+ * A photo's validation details as a contractor may see them: without the ids of the other
+ * projects where the same or a near-identical photo was found (they may be other companies'
+ * projects). The warnings text and the reused_elsewhere flag stay. Other roles: unchanged.
+ */
+export function contractorSafeValidation(validation, user) {
+  if (user?.role !== 'contractor' || !validation || typeof validation !== 'object') return validation;
+  return Object.fromEntries(Object.entries(validation).filter(([key]) => !OTHER_PROJECT_KEYS.includes(key)));
+}
+
 /** "12 345" and "12345" are the same licence: compared without case or spaces. null when either is missing. */
 export function licenceMatches(typed, onFile) {
   const norm = (v) => String(v ?? '').replace(/\s+/g, '').toLowerCase();

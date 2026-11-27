@@ -12,6 +12,7 @@ import {
   CONTRACTOR_PROJECT_MESSAGE,
   assertContractorDoesNotComplete,
   assertContractorOwnsProject,
+  contractorSafeValidation,
   licenceMatches,
   withoutPaccFields,
 } from '../services/contractorAccess.js';
@@ -289,6 +290,23 @@ describe('withoutPaccFields', () => {
   });
 });
 
+describe('contractorSafeValidation', () => {
+  const v = { distance_m: 12, reused_elsewhere: true, reused_in_projects: [OTHER], near_duplicate_in_projects: [OTHER], warnings: ['An identical file has already been uploaded.'] };
+  it("drops other projects' ids for a contractor and keeps the warnings", () => {
+    assert.deepEqual(contractorSafeValidation(v, contractor()), { distance_m: 12, reused_elsewhere: true, warnings: ['An identical file has already been uploaded.'] });
+  });
+  it('keeps everything for staff, and copes with a missing record', () => {
+    assert.equal(contractorSafeValidation(v, { role: 'dpwh_personnel' }), v);
+    assert.equal(contractorSafeValidation(null, contractor()), null);
+  });
+  it('the photo list and the upload response use it', () => {
+    const src = readFileSync(new URL('../controllers/imagesController.js', import.meta.url), 'utf8');
+    assert.match(src, /validation: contractorSafeValidation\(r\.validation, req\.user\)/);
+    assert.match(src, /contractorSafeValidation\(insert\.data\.validation, req\.user\)/);
+    assert.match(src, /contractorSafeValidation\(\{ \.\.\.v\.validation, compressed: stored\.compressed \}, req\.user\)/);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Names on records (a contractor reads only its own profile)
 // ---------------------------------------------------------------------------
@@ -438,7 +456,8 @@ describe('migration 029', () => {
     assert.match(code, /requested_role in \('dpwh_personnel', 'auditor', 'contractor'\)/);
     assert.match(code, /v_req not in \('dpwh_personnel', 'auditor', 'contractor'\)/);
     assert.match(code, /select c\.id into v_contractor from public\.contractors c/);
-    assert.match(code, /if v_contractor is null then\s+v_req := null;/);
+    assert.match(code, /if v_contractor is null then\s+v_req := null;\s+v_unknown_company := true;/);
+    assert.match(code, /when v_req is null and v_unknown_company then 'The contractor company was not found\. Choose your company again\.'\s+when v_req is null then 'No staff role was requested\. Browsing the public portal needs no account\.'/);
     // the inserted role is always NULL
     assert.match(code, /coalesce\(meta ->> 'full_name', ''\), 120\),\s+null,/);
   });
@@ -485,6 +504,6 @@ describe('migration 029', () => {
     assert.match(view, /end as financial_progress,\s+ps\.case_status as pacc_case_status\s+from public\.projects p/);
     assert.match(view, /left join public\.project_pacc_status ps on ps\.project_id = p\.id;$/);
     assert.doesNotMatch(view, /p\.pacc_case_status/);
-    assert.match(code, /revoke all on public\.v_project_summary from public, anon;\s+grant select on public\.v_project_summary to authenticated;\s+grant all on public\.v_project_summary to service_role;/);
+    assert.match(code, /revoke all on public\.v_project_summary from public, anon, authenticated, service_role;\s+grant select on public\.v_project_summary to authenticated;\s+grant all on public\.v_project_summary to service_role;/);
   });
 });

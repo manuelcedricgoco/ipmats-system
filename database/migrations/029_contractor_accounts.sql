@@ -1,10 +1,14 @@
 -- =============================================================================
 -- 029 — Contractor accounts: a contractor company's representatives update their own projects
 --
--- Apply AFTER 028 (it adds the 'contractor' role value this file uses) and BEFORE deploying the
--- API that reads profiles.contractor_id (the sign-in check selects it for every account) and
--- project_pacc_status (deletion requests). The API before this one selects
--- projects.pacc_case_status in the deletion-request pages, which fail between the two steps.
+-- Deploy order: 028 -> 029 -> deploy the API from PR #15 (contractor accounts) -> the client.
+--   * Apply AFTER 028 (it adds the 'contractor' role value this file uses).
+--   * The API of PR #15 must NEVER run before 029: its sign-in check selects
+--     profiles.contractor_id, so every signed-in request fails without it.
+--   * The API before #15 (PRs #13/#14) selects projects.pacc_case_status, which 029 drops: between
+--     applying 029 and deploying #15, GET /projects/:id/deletion-request (every project page for
+--     DPWH Personnel and the Admin) and GET /deletion-requests (the Admin's sidebar badge and page)
+--     fail. Deploy #15 right after applying 029.
 -- Design: docs/superpowers/specs/2026-11-27-contractor-accounts-design.md
 --
 --   profiles.contractor_id      The contractor company the account represents. Required for the
@@ -103,6 +107,7 @@ declare
   v_agency     smallint;
   v_contractor uuid;
   v_license    text;
+  v_unknown_company boolean := false;
 begin
   if v_req is not null and v_req not in ('dpwh_personnel', 'auditor', 'contractor') then
     v_req := null;
@@ -115,6 +120,7 @@ begin
     end if;
     if v_contractor is null then
       v_req := null;
+      v_unknown_company := true;
     else
       v_license := nullif(left(btrim(coalesce(meta ->> 'requested_contractor_license', '')), 50), '');
     end if;
@@ -137,7 +143,10 @@ begin
     v_req::public.user_role,
     case when v_req is null then 'rejected' else 'pending' end,
     now(),
-    case when v_req is null then 'No staff role was requested. Browsing the public portal needs no account.' end,
+    case
+      when v_req is null and v_unknown_company then 'The contractor company was not found. Choose your company again.'
+      when v_req is null then 'No staff role was requested. Browsing the public portal needs no account.'
+    end,
     v_contractor,
     v_license
   )
@@ -392,7 +401,7 @@ left join lateral (
 ) img on true
 left join public.project_pacc_status ps on ps.project_id = p.id;
 
-revoke all on public.v_project_summary from public, anon;
+revoke all on public.v_project_summary from public, anon, authenticated, service_role;
 grant select on public.v_project_summary to authenticated;
 grant all on public.v_project_summary to service_role;
 

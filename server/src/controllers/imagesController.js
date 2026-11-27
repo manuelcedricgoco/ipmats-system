@@ -18,6 +18,7 @@ import { dHash, findNearDuplicates } from '../services/perceptualHash.js';
 import { logActivity, projectCode } from '../services/activityLog.js';
 import { loadHashedImages, reevaluate } from '../services/projectEvaluation.js';
 import { getFlagRules } from '../services/settings.js';
+import { contractorSafeValidation } from '../services/contractorAccess.js';
 import { fillMissingNames } from '../services/profileNames.js';
 import { signedUrls } from '../services/storage.js';
 import { badRequest, notFound, unwrap } from '../utils/httpError.js';
@@ -68,6 +69,7 @@ export async function listImages(req, res) {
   const urls = await signedUrls(BUCKET, rows.map((r) => r.storage_path));
   const data = rows.map(({ phase, uploader, ...r }) => ({
     ...r,
+    validation: contractorSafeValidation(r.validation, req.user),
     phase_name: phase?.name ?? null,
     uploaded_by_name: uploader?.full_name ?? null,
     uploaded_by_role: uploader?.role ?? null,
@@ -160,7 +162,10 @@ export async function uploadImage(req, res) {
     summary: `Uploaded a 360° photo (inspection ${body.inspection_date}${body.is_final ? ', final as-built' : ''}) to ${await projectCode(id)}${v.validation.warnings?.length ? ` — ${v.validation.warnings.length} warning(s)` : ''}`,
     details: { warnings: v.validation.warnings || [], distance_m: v.validation.distance_m ?? null, compressed: stored.compressed, original_size_bytes: req.file.size, stored_size_bytes: stored.buffer.length, flag: evaluation?.flag ?? null },
   });
-  res.status(201).json({ data: { image: insert.data, validation: { ...v.validation, compressed: stored.compressed }, evaluation } });
+  // A contractor is not told which other projects hold the same photo (their ids); the warnings say it was found.
+  const image = { ...insert.data, validation: contractorSafeValidation(insert.data.validation, req.user) };
+  const validation = contractorSafeValidation({ ...v.validation, compressed: stored.compressed }, req.user);
+  res.status(201).json({ data: { image, validation, evaluation } });
 }
 
 export async function updateImage(req, res) {

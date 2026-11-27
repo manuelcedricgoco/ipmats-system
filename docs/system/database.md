@@ -618,7 +618,7 @@ These are `text` columns limited by a `CHECK` rule, not enum types.
 
 | Name | On | What it does |
 |---|---|---|
-| `handle_new_user` | after a new Auth user is created | Creates the profile with **no role**. A requested role of DPWH Personnel or Auditor makes the account `pending`; so does Contractor (029) when `requested_contractor_id` is an existing company (saved with the typed licence, at most 50 characters); anything else, including a contractor request without an existing company, makes it `rejected` |
+| `handle_new_user` | after a new Auth user is created | Creates the profile with **no role**. A requested role of DPWH Personnel or Auditor makes the account `pending`; so does Contractor (029) when `requested_contractor_id` is an existing company (saved with the typed licence, at most 50 characters); anything else makes it `rejected` (a contractor request without an existing company too, with the note "The contractor company was not found. Choose your company again.") |
 | `projects_assign_code` | before a project insert | Assigns the next Project ID for the year (Asia/Manila time) |
 | `projects_lock_code` | before a project update | Refuses any change to the Project ID |
 | `prevent_modification` | before update or delete on `flag_history`, `flag_reviews`, `activity_logs`, `pacc_case_notes`, `pacc_activity` | Makes them append-only (deletes allowed only through a cascade (project or case)) |
@@ -705,11 +705,13 @@ must be committed before it can be used, and 025 must be applied after 024 and b
 deployed. Apply 026 after 025 and before deploying the API that writes `pacc_cases.contractor_name`
 (without it, opening or editing a case fails). Apply 027 after 026 and before deploying
 the API that reads `project_deletion_requests` and `v_project_summary.pacc_case_status` (without it, the project list fails).
-029 moves the staff-visible PACC case status from `projects.pacc_case_status` to the new table `project_pacc_status`
-(the deletion-request pages of the API before 029 select the old column and fail until the new API is deployed).
-028 and 029 (contractor accounts) are new and not yet applied: apply 028 on its own first (a new enum value must be
-committed before it is used), then 029, both before deploying the API, which selects `profiles.contractor_id` on every
-signed-in request (without 029, every signed-in request fails).
+028 and 029 (contractor accounts) are new and not yet applied. **Deploy order: 028 → 029 → the API from PR #15 → the
+client.** Apply 028 on its own first (a new enum value must be committed before it is used). The PR #15 API must never
+run before 029: it selects `profiles.contractor_id` on every signed-in request, so every one fails without it. 029
+moves the staff-visible PACC case status from `projects.pacc_case_status` to the new table `project_pacc_status`, so
+the older API (PRs #13/#14) fails between applying 029 and deploying #15 on `GET /projects/:id/deletion-request`
+(every project page for DPWH Personnel and the Admin) and `GET /deletion-requests` (the Admin's sidebar badge and
+page). Deploy #15 right after 029.
 
 Rules the project follows:
 - An applied migration is never edited or deleted. A mistake is undone by a new migration (013 → 014, 006 → 016).
