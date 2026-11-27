@@ -24,8 +24,8 @@ export function PaccDeletionWarning({ status }) {
  * Project page header buttons for deleting a project (migration 027).
  *   System Administrator: "Delete project", directly.
  *   DPWH Personnel: "Request deletion" → (pending) "Cancel deletion request" → (approved, for 7 days) "Delete project".
- * `request` is the project's latest deletion request (GET /projects/:id/deletion-request), `requestLoaded` false while it
- * loads; the API checks everything again.
+ * `request` is the project's latest deletion request (GET /projects/:id/deletion-request), `requestLoaded` false until it
+ * first loads or when loading it failed (Personnel then see no deletion buttons); the API checks everything again.
  */
 export default function DeleteProjectControls({ project, request, requestLoaded = true, onChanged }) {
   const { role, profile } = useAuth();
@@ -36,7 +36,7 @@ export default function DeleteProjectControls({ project, request, requestLoaded 
 
   const isAdmin = role === 'admin';
   if (!isAdmin && role !== 'dpwh_personnel') return null;
-  if (!isAdmin && !requestLoaded) return null; // Personnel: wait for the request, so the right button shows
+  if (!isAdmin && !requestLoaded) return null; // Personnel: only with the request's state known, so the right button shows
   const state = isAdmin ? null : deletionRequestState(request, profile?.id);
   const canAsk = ['none', 'expired', 'declined'].includes(state);
 

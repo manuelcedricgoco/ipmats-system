@@ -1,5 +1,6 @@
 import { CloudOff, CloudUpload, RotateCcw, Trash2, WifiOff } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useAuth } from '../../context/AuthContext.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
 import { api } from '../../lib/api.js';
 import { flushUploads, listUploads, onQueueChange, removeUpload, retryUpload, toFormData } from '../../lib/offlineUploads.js';
@@ -10,28 +11,43 @@ import Modal from './Modal.jsx';
 /**
  * Gap fix — offline capture: shows how many 360° photos are waiting on this device and sends them
  * automatically when the connection comes back (and every minute while there is a connection).
+ * Only the signed-in account's own photos are listed and sent (lib/offlineUploads.js ownUploads).
  */
 export default function OfflineUploads() {
   const toast = useToast();
+  const { profile } = useAuth();
+  const userId = profile?.id ?? null;
+  // The account signed in right now: a send that started for another account stops instead of using this one's sign-in.
+  const userRef = useRef(userId);
+  useEffect(() => {
+    userRef.current = userId;
+    return () => {
+      userRef.current = null;
+    };
+  }, [userId]);
   const [items, setItems] = useState([]);
   const [online, setOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  const refresh = useCallback(async () => setItems(await listUploads()), []);
+  const refresh = useCallback(async () => setItems(await listUploads(userId)), [userId]);
 
   const sync = useCallback(async () => {
     if (!navigator.onLine) return;
     setBusy(true);
     try {
-      const r = await flushUploads((item) => api.post(`/projects/${item.projectId}/images`, toFormData(item)));
+      const r = await flushUploads((item) => {
+        // status 0 = "try again later": the photo stays queued, untouched.
+        if (!userId || item.ownerId !== userRef.current) return Promise.reject(Object.assign(new Error('Signed out'), { status: 0 }));
+        return api.post(`/projects/${item.projectId}/images`, toFormData(item));
+      }, userId);
       if (r.sent.length) toast.success(`${r.sent.length} offline 360° photo(s) uploaded (${[...new Set(r.sent.map((i) => i.projectCode))].join(', ')}).`);
       if (r.failed.length) toast.error(`${r.failed.length} offline photo(s) were refused by the server. Open "Waiting uploads" to see why.`);
     } finally {
       setBusy(false);
       refresh();
     }
-  }, [refresh, toast]);
+  }, [refresh, toast, userId]);
 
   useEffect(() => {
     refresh();
@@ -96,7 +112,7 @@ export default function OfflineUploads() {
                 </div>
                 <div className="flex shrink-0 gap-1">
                   {i.status === 'failed' && (
-                    <button type="button" onClick={() => retryUpload(i.id)} className="rounded p-1.5 text-slate-500 hover:bg-slate-100 hover:text-brand-700" aria-label="Try again">
+                    <button type="button" onClick={() => retryUpload(i.id, userId)} className="rounded p-1.5 text-slate-500 hover:bg-slate-100 hover:text-brand-700" aria-label="Try again">
                       <RotateCcw className="h-4 w-4" />
                     </button>
                   )}

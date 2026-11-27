@@ -143,6 +143,7 @@ There is no migration runner in this repository. Apply the files in `database/mi
 #### Upgrading to this version
 
 1. Apply migrations `019` and `020` in the Supabase SQL Editor **before** deploying the API (before merging, if Render auto-deploys on push). The new API reads and writes `phash` and `reviewed_flag`, so it fails against a database without them. The same holds for `021`: the public portal API reads `public_flag`.
+   - Migration `027` (project deletion requests, staff-visible PACC case status) is already applied to the IPMATS project (27 November 2026). On a fresh or other database, apply it after `026` and **before** deploying the API, which reads `project_deletion_requests` and `v_project_summary.pacc_case_status` (without it the project list fails).
 2. Deploy the API, then the web client.
 3. From `server/`, run `node --env-file=.env scripts/backfill-phash.mjs` to hash the existing photos.
 4. From `server/`, run `npm run flags:recheck` to re-evaluate every project.
@@ -220,7 +221,7 @@ ipmats-system/
 | `projects` | Project records, location, budget, contract, schedule, status, automatic flag |
 | `project_phases`, `progress_updates` | Weighted phases and progress report history |
 | `financial_records` | Obligations, disbursements, variation orders, expenses |
-| `site_images` | 360° photos (files in the private `panoramas` bucket), GPS / time checks, public approval |
+| `site_images` | 360° photos (files in the private `panoramas` bucket), GPS / time checks; public as soon as they are uploaded (022) |
 | `flag_history`, `flag_reviews` | Automatic flag history and auditor decisions (append-only) |
 | `audit_findings` | Findings, recommendations, assignment and corrective actions |
 | `project_documents` | Supporting documents (private `project-documents` bucket) |

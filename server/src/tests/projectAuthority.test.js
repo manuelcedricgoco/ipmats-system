@@ -206,6 +206,14 @@ describe('location lock', () => {
     assert.doesNotThrow(() => projects.assertLocationEditable({ locationChanged: true, photoCount: 0 }));
     assert.doesNotThrow(() => projects.assertLocationEditable({ locationChanged: false, photoCount: 5 }));
   });
+  it('a location move (allowed before photos exist) is logged with the old and new coordinates', () => {
+    const current = { latitude: 13.1, longitude: 120.9 };
+    assert.deepEqual(projects.locationMoveDetails(current, { latitude: 13.2 }), {
+      location: { from: { latitude: 13.1, longitude: 120.9 }, to: { latitude: 13.2, longitude: 120.9 } },
+    });
+    assert.deepEqual(projects.locationMoveDetails(current, { latitude: 13.1, longitude: 120.9, name: 'x' }), {});
+    assert.deepEqual(projects.locationMoveDetails(current, { name: 'x' }), {});
+  });
 });
 
 describe('PACC entry when a project with an open case is deleted', () => {

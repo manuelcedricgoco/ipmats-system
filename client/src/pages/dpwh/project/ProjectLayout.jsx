@@ -30,7 +30,8 @@ export default function ProjectLayout() {
   const canDelete = hasRole('admin');
   const { data: p, loading, error, reload } = useApi(`/projects/${id}`, undefined, { select: (r) => r.data });
   // The project's latest deletion request: Personnel ask / cancel / use an approval; the Admin sees a pending one.
-  // Wrapped, so `null` means "not loaded yet" and a project with no request still reads as loaded.
+  // Wrapped, so `null` means "not loaded (yet), or the request failed" and a project with no request still reads as
+  // loaded. A reload keeps the last answer, so the buttons do not flicker.
   const deletion = useApi(`/projects/${id}/deletion-request`, undefined, { enabled: canEdit || canDelete, select: (r) => ({ request: r.data }) });
   const tabsRef = useRef(null);
   const { pathname } = useLocation();
@@ -56,7 +57,7 @@ export default function ProjectLayout() {
           actions={
             <>
               {canEdit && <Button icon={Pencil} to={`/app/projects/${id}/edit`}>Edit</Button>}
-              <DeleteProjectControls project={p} request={deletion.data?.request} requestLoaded={!(deletion.loading && !deletion.data)} onChanged={deletion.reload} />
+              <DeleteProjectControls project={p} request={deletion.data?.request} requestLoaded={Boolean(deletion.data)} onChanged={deletion.reload} />
             </>
           }
         />

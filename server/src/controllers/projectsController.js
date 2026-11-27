@@ -108,6 +108,17 @@ export function assertLocationEditable({ locationChanged, photoCount }) {
   if (locationChanged && photoCount > 0) throw forbidden(LOCATION_LOCKED_MESSAGE);
 }
 
+/** Activity-log details of a location move: the old and new coordinates; nothing when the location did not change. */
+export function locationMoveDetails(current, patch) {
+  if (!isLocationChange(current, patch)) return {};
+  return {
+    location: {
+      from: { latitude: current.latitude, longitude: current.longitude },
+      to: { latitude: patch.latitude ?? current.latitude, longitude: patch.longitude ?? current.longitude },
+    },
+  };
+}
+
 /** The pacc_activity row written (by "System") when a project with a non-closed PACC case is deleted. */
 export function paccDeletionEntry(project, user, openCase, now = new Date()) {
   const who = user?.profile?.full_name || user?.email || 'Unknown user';
@@ -217,7 +228,7 @@ export async function updateProject(req, res) {
     entityId: id,
     projectId: id,
     summary: `Updated project ${before.project_code}${changed.length ? ` (${changed.join(', ')})` : ''}`,
-    details: { changed },
+    details: { changed, ...locationMoveDetails(current, body) },
   });
   res.json({ data: { id, evaluation } });
 }

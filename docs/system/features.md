@@ -205,8 +205,10 @@ Sidebar items appear only for the roles that can use them. "All staff" = Admin, 
     - Location is picked on a map: search a place, click, or drag the pin. Points outside Occidental Mindoro are
       refused, in the browser and again by the API.
     - Once a project has 360° photos, nobody can move its location, the System Administrator included (027):
-      "The project location cannot be changed once 360° photos are on file." Saving the form with the same
-      coordinates does not count as a move.
+      "The project location cannot be changed once 360° photos are on file." To fix a wrong location, the Admin
+      deletes the photos, then Personnel edit the location and upload the photos again. Every location change is
+      recorded in the activity log with the old and new coordinates. Saving the form with the same coordinates does
+      not count as a move.
     - The **Project ID is created by the database** (e.g. `26OM0332`) and cannot be changed. A dialog shows it
       after saving.
     - The target completion date is computed as NTP + duration.
@@ -308,7 +310,8 @@ Sidebar items appear only for the roles that can use them. "All staff" = Admin, 
     approves or hides photos (migration 022); an Admin can delete a wrong upload.
   - **Final photo:** a photo marked **final** (as-built) is one of the requirements for a project to count as completed.
   - **Offline:** with no connection, a photo is kept on the device (IndexedDB). The top bar shows waiting uploads
-    (Personnel only), and they are sent automatically when the connection returns.
+    (Personnel only), and they are sent automatically when the connection returns. Each photo is listed and sent
+    only for the account that queued it; another account signed in on the same browser never sends it.
 - **Touches:**
   - Pages and components: `project/ImagesTab.jsx`, `components/common/OfflineUploads.jsx`, `lib/offlineUploads.js`.
   - API: `GET/POST /projects/:id/images`, `PATCH /projects/:id/images/:imageId`,
