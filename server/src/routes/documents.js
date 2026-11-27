@@ -1,4 +1,4 @@
-/** Gap fix — supporting project documents. View: staff · Upload: DPWH Personnel, Admin · Delete: Admin or uploader */
+/** Gap fix — supporting project documents. View: staff · Upload: DPWH Personnel only · Delete: Admin (any) or the Personnel uploader (own) */
 import { Router } from 'express';
 import * as c from '../controllers/documentsController.js';
 import { requireAuth } from '../middleware/auth.js';
@@ -12,9 +12,10 @@ import * as s from './schemas.js';
 
 const r = Router();
 uuidParams(r, 'id', 'documentId');
-const editors = requireRole(ROLES.PERSONNEL, ROLES.ADMIN);
+const editors = requireRole(ROLES.PERSONNEL);
+const deleters = requireRole(ROLES.PERSONNEL, ROLES.ADMIN); // the controller limits Personnel to their own uploads
 
 r.get('/projects/:id/documents', requireAuth, requireRole(STAFF), h(c.listDocuments));
 r.post('/projects/:id/documents', requireAuth, editors, uploadLimiter, requireWriteAccess, uploadDocument, validate(s.documentUpload), h(c.uploadDocument));
-r.delete('/projects/:id/documents/:documentId', requireAuth, editors, requireWriteAccess, h(c.deleteDocument));
+r.delete('/projects/:id/documents/:documentId', requireAuth, deleters, requireWriteAccess, h(c.deleteDocument));
 export default r;

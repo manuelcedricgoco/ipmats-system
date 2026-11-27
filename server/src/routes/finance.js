@@ -1,6 +1,6 @@
 /**
  * WEEK 2 — Financial monitoring routes (Objective 4)
- * View: every staff role. Add records: DPWH Personnel and Admin. Delete a wrong entry: Admin.
+ * View: every staff role. Add records: DPWH Personnel only. Delete a wrong entry: Admin.
  */
 import { Router } from 'express';
 import * as c from '../controllers/financeController.js';
@@ -14,7 +14,7 @@ import * as s from './schemas.js';
 const r = Router();
 uuidParams(r, 'id', 'recordId');
 const staff = requireRole(STAFF);
-const editors = requireRole(ROLES.PERSONNEL, ROLES.ADMIN);
+const editors = requireRole(ROLES.PERSONNEL);
 
 r.get('/finance/overview', requireAuth, staff, h(c.financeOverview));
 r.get('/projects/:id/finance', requireAuth, staff, h(c.listFinance));
