@@ -127,7 +127,7 @@ export default function PublicLayout() {
       </main>
       <footer className="mx-auto max-w-7xl px-4 pb-8 sm:px-6">
         <div className="flex flex-col gap-1 border-t border-slate-200 pt-4 text-xs text-slate-500 sm:flex-row sm:justify-between">
-          <p>IPMATS · DPWH 360° Infrastructure Project Monitoring and Transparency System · Occidental Mindoro (Region IV-B MIMAROPA)</p>
+          <p>InfraWatch PH · Infrastructure Project Monitoring and Transparency System (IPMATS) · Occidental Mindoro (Region IV-B MIMAROPA)</p>
           <p>Figures are reported by DPWH personnel. They are for transparency and do not replace an official audit.</p>
         </div>
         <p className="mt-2 text-xs">

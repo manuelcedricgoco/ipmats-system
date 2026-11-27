@@ -1,7 +1,7 @@
 {
   "name": "ipmats-system",
   "private": true,
-  "description": "IPMATS (DPWH 360°) – Infrastructure Project Monitoring and Transparency System, Occidental Mindoro. Week 1 build.",
+  "description": "IPMATS (InfraWatch PH) – Infrastructure Project Monitoring and Transparency System, Occidental Mindoro. Week 1 build.",
   "scripts": {
     "install:all": "npm --prefix server install && npm --prefix client install",
     "dev:server": "npm --prefix server run dev",

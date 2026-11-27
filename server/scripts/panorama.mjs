@@ -41,7 +41,7 @@ function svg({ width, height, title, subtitle, tag, progress = 0, seed = 1 }) {
   ${compass}
   ${label(W / 8, 'SAMPLE – NOT A REAL PHOTO')}
   ${label((3 * W) / 8, title)}
-  ${label((5 * W) / 8, 'IPMATS · DPWH 360°')}
+  ${label((5 * W) / 8, 'IPMATS · InfraWatch PH')}
   ${label((7 * W) / 8, 'SAMPLE – NOT A REAL PHOTO')}
 </svg>`;
 }
