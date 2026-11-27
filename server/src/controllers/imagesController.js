@@ -3,11 +3,11 @@
  *   GET    /projects/:id/images              list with short-lived view links
  *   POST   /projects/:id/images              upload: GPS + timestamp validation, storage, re-evaluation
  *   PATCH  /projects/:id/images/:imageId     caption / final as-built
- *   PATCH  /projects/:id/images/:imageId/public   Auditor / Admin: show to the public or hide (gap fix)
  *   DELETE /projects/:id/images/:imageId     admin: remove a wrong upload
  *
  * Gap fixes: large panoramas are compressed before storage (GPS, time and the reuse check use the
- * ORIGINAL file first), new photos are hidden from the public until approved, and every change is logged.
+ * ORIGINAL file first), every photo is shown on the public portal as soon as it is uploaded (no approval
+ * step; an Admin can still delete a wrong upload), and every change is logged.
  */
 import { randomUUID } from 'node:crypto';
 import sharp from 'sharp';
@@ -136,8 +136,8 @@ export async function uploadImage(req, res) {
       is_final: body.is_final,
       validation: { ...v.validation, original_size_bytes: req.file.size, compressed: stored.compressed },
       uploaded_by: req.user.id,
-      // hidden from the public until an Auditor or Admin approves it
-      is_public: false,
+      // shown on the public portal at once: DPWH personnel's photos need no approval
+      is_public: true,
     })
     .select('*')
     .single();
@@ -170,28 +170,6 @@ export async function updateImage(req, res) {
     summary: `${req.body.is_final === true ? 'Marked a 360° photo as final as-built' : req.body.is_final === false ? 'Unmarked a final 360° photo' : 'Edited a 360° photo caption'} on ${await projectCode(img.project_id)}`,
   });
   res.json({ data: { image: row, evaluation } });
-}
-
-/** Gap fix: Auditor / Admin approves a photo for the public portal, or hides it again. */
-export async function setImagePublic(req, res) {
-  const img = unwrap(await adminClient.from('site_images').select('id, project_id').eq('id', req.params.imageId).eq('project_id', req.params.id).maybeSingle());
-  if (!img) throw notFound('Image not found');
-  const row = unwrap(
-    await adminClient
-      .from('site_images')
-      .update({ is_public: req.body.is_public, public_reviewed_by: req.user.id, public_reviewed_at: new Date().toISOString() })
-      .eq('id', img.id)
-      .select('*')
-      .single(),
-  );
-  await logActivity(req, {
-    action: req.body.is_public ? 'image.publish' : 'image.unpublish',
-    entityType: 'image',
-    entityId: img.id,
-    projectId: img.project_id,
-    summary: `${req.body.is_public ? 'Approved a 360° photo for the public portal' : 'Hid a 360° photo from the public portal'} (${await projectCode(img.project_id)})`,
-  });
-  res.json({ data: row });
 }
 
 export async function deleteImage(req, res) {

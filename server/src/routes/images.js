@@ -1,4 +1,4 @@
-/** WEEK 3 — 360° images (Objective 2). View: staff · Upload/edit: DPWH Personnel, Admin · Show to public: Auditor, Admin · Delete: Admin */
+/** WEEK 3 — 360° images (Objective 2). View: staff · Upload/edit: DPWH Personnel, Admin · Delete: Admin. Every photo is public on upload. */
 import { Router } from 'express';
 import * as c from '../controllers/imagesController.js';
 import { requireAuth } from '../middleware/auth.js';
@@ -17,6 +17,5 @@ const editors = requireRole(ROLES.PERSONNEL, ROLES.ADMIN);
 r.get('/projects/:id/images', requireAuth, requireRole(STAFF), h(c.listImages));
 r.post('/projects/:id/images', requireAuth, editors, uploadLimiter, requireWriteAccess, uploadPanorama, validate(s.imageUpload), h(c.uploadImage));
 r.patch('/projects/:id/images/:imageId', requireAuth, editors, requireWriteAccess, validate(s.imageUpdate), h(c.updateImage));
-r.patch('/projects/:id/images/:imageId/public', requireAuth, requireRole(ROLES.AUDITOR, ROLES.ADMIN), requireWriteAccess, validate(s.publicToggle), h(c.setImagePublic));
 r.delete('/projects/:id/images/:imageId', requireAuth, requireRole(ROLES.ADMIN), requireWriteAccess, h(c.deleteImage));
 export default r;
