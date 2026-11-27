@@ -63,3 +63,22 @@ test('the 21st tracking lookup in an hour is refused', async () => {
   const res = await request(app).post('/r/x').set('X-Forwarded-For', ip).expect(429);
   assert.equal(res.body.error.message, 'Too many checks. Please try again later.');
 });
+
+test('a rejected attempt does not use the project quota', async () => {
+  const app = express();
+  app.set('trust proxy', 1);
+  app.post('/r/:id', reportProjectLimiter, (req, s) => s.sendStatus(req.query.bad ? 400 : 204));
+  const ip = '198.51.100.4';
+  await request(app).post('/r/p9?bad=1').set('X-Forwarded-For', ip).expect(400);
+  await request(app).post('/r/p9').set('X-Forwarded-For', ip).expect(204);
+  await request(app).post('/r/p9').set('X-Forwarded-For', ip).expect(429);
+});
+
+test('failed tracking lookups still count against the limit', async () => {
+  const app = express();
+  app.set('trust proxy', 1);
+  app.get('/g', trackingLookupLimiter, (_q, s) => s.sendStatus(404));
+  const ip = '198.51.100.5';
+  for (let i = 0; i < 20; i += 1) await request(app).get('/g').set('X-Forwarded-For', ip).expect(404);
+  await request(app).get('/g').set('X-Forwarded-For', ip).expect(429);
+});

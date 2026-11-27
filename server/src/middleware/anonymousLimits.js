@@ -23,7 +23,7 @@ export function anonKey(req, now = new Date()) {
   return `a:${digest}`;
 }
 
-const make = (windowMs, limit, text, keyGenerator) =>
+const make = (windowMs, limit, text, keyGenerator, skipFailedRequests = false) =>
   rateLimit({
     windowMs,
     limit,
@@ -31,11 +31,12 @@ const make = (windowMs, limit, text, keyGenerator) =>
     legacyHeaders: false,
     message: { error: { message: text } },
     keyGenerator,
+    skipFailedRequests,
   });
 
 const REPORT_MSG = 'Too many reports from this connection today. Please try again tomorrow.';
 const DAY = 24 * 60 * 60_000;
 
-export const reportSubmitLimiter = make(DAY, 3, REPORT_MSG, (req) => anonKey(req));
-export const reportProjectLimiter = make(DAY, 1, REPORT_MSG, (req) => `${anonKey(req)}:${req.params.id}`);
+export const reportSubmitLimiter = make(DAY, 3, REPORT_MSG, (req) => anonKey(req), true);
+export const reportProjectLimiter = make(DAY, 1, REPORT_MSG, (req) => `${anonKey(req)}:${req.params.id}`, true);
 export const trackingLookupLimiter = make(60 * 60_000, 20, 'Too many checks. Please try again later.', (req) => anonKey(req));

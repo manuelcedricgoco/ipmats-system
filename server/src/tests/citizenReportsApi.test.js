@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { before, describe, it } from 'node:test';
 import request from 'supertest';
+import { cleanProof } from '../controllers/citizenReportsController.js';
 
 const PROJECT = '9f343767-8d98-5863-903c-3bc97288d015';
 const PNG = Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex');
@@ -43,6 +44,16 @@ describe('public citizen reports', () => {
   it('a valid report without a service key gets the read-only 503', async () => {
     const res = await post().field('category', 'other').field('description', DESC).attach('proof', PNG, { filename: 'a.png', contentType: 'image/png' });
     assert.equal(res.status, 503);
+  });
+  it('sign-in never runs on the report routes', async () => {
+    const res = await post().set('Authorization', 'Bearer garbage').field('category', 'x').field('description', DESC).attach('proof', PNG, { filename: 'a.png', contentType: 'image/png' });
+    assert.equal(res.status, 400);
+    const lookup = await request(app).get('/api/public/reports/abc').set('X-Forwarded-For', ip()).set('Authorization', 'Bearer garbage');
+    assert.equal(lookup.status, 400);
+  });
+  it('a photo with valid magic bytes but a corrupt body is a 400, not a crash', async () => {
+    // Unit level: requireWriteAccess (503 without a service key) sits before the strip step in the route.
+    await assert.rejects(cleanProof(PNG), (e) => e.status === 400 && e.message === 'The file is not a JPEG, PNG or WebP image.');
   });
   it('the tracking lookup rejects malformed codes', async () => {
     const res = await request(app).get('/api/public/reports/abc').set('X-Forwarded-For', ip());

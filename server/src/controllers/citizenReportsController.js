@@ -15,6 +15,15 @@ import { HttpError, badRequest, notFound, unwrap } from '../utils/httpError.js';
 
 const BUCKET = 'citizen-reports';
 
+/** Re-encodes one photo; a file that passes the magic-byte check but cannot be decoded is a 400, not a crash. */
+export async function cleanProof(buffer) {
+  try {
+    return await stripImageMetadata(buffer);
+  } catch {
+    throw badRequest('The file is not a JPEG, PNG or WebP image.');
+  }
+}
+
 /** Runs before the schema check and before any database call: 1-3 real images. */
 export function requireProof(req, _res, next) {
   try {
@@ -40,7 +49,8 @@ export async function submitReport(req, res) {
   const project = unwrap(await anonClient.from('v_public_projects').select('id, project_code, name').eq('id', req.params.id).maybeSingle());
   if (!project) throw notFound('Project not found');
 
-  const cleaned = await Promise.all(req.files.map((f) => stripImageMetadata(f.buffer)));
+  const cleaned = [];
+  for (const f of req.files) cleaned.push(await cleanProof(f.buffer)); // one at a time: bounded memory
   const code = generateTrackingCode();
   const reportId = crypto.randomUUID();
   const uploaded = [];
