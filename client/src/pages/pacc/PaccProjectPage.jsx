@@ -1,7 +1,8 @@
-import { ArrowLeft, CheckCheck, FolderPlus, ImageOff } from 'lucide-react';
+import { ArrowLeft, CheckCheck, FolderOpen, FolderPlus, ImageOff } from 'lucide-react';
 import { useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import FlagReasons from '../../components/audit/FlagReasons.jsx';
+import OpenCaseModal from '../../components/pacc/OpenCaseModal.jsx';
 import { FlagBadge, Pill, StatusBadge } from '../../components/common/Badges.jsx';
 import Button from '../../components/common/Button.jsx';
 import { Card, CardBody, CardHeader, DetailList, PageHeader } from '../../components/common/Card.jsx';
@@ -13,7 +14,7 @@ import { useApi } from '../../hooks/useApi.js';
 import { api } from '../../lib/api.js';
 import { ACTION_STATUS, AUDIT_STATUS, PROJECT_TYPES, REVIEW_STATUS, SEVERITY_META } from '../../lib/constants.js';
 import { date, dateTime, number, pct, peso, titleCase } from '../../lib/format.js';
-import { CASE_STATUS_META, REPORT_CATEGORY_LABELS, REPORT_OUTCOME_LABELS, REPORT_STATUS_LABELS } from '../../lib/pacc.js';
+import { CASE_STATUS_META, REPORT_CATEGORY_LABELS, REPORT_OUTCOME_LABELS, REPORT_STATUS_LABELS, isClosedCaseStatus } from '../../lib/pacc.js';
 
 const REPORT_STATUS_CLS = { received: 'bg-brand-50 text-brand-800', under_review: 'bg-amber-50 text-amber-800', closed: 'bg-slate-100 text-slate-700' };
 
@@ -24,9 +25,11 @@ const REPORT_STATUS_CLS = { received: 'bg-brand-50 text-brand-800', under_review
 export default function PaccProjectPage() {
   const { id } = useParams();
   const toast = useToast();
+  const navigate = useNavigate();
   const { data, loading, error, reload } = useApi(`/pacc/projects/${id}`, undefined, { select: (r) => r.data });
   // { report } closes one report, { all: true } closes every open report of the project.
   const [closing, setClosing] = useState(null);
+  const [opening, setOpening] = useState(false);
 
   if (loading && !data) return <PageLoader label="Loading the project…" />;
   if (error) {
@@ -40,7 +43,7 @@ export default function PaccProjectPage() {
 
   const { project: p, reports, flag_history: history, flag_reviews: reviews, findings, cases } = data;
   const openReports = reports.filter((r) => r.status !== 'closed');
-  const openCase = cases.find((c) => !['resolved', 'dismissed'].includes(c.status));
+  const openCase = cases.find((c) => !isClosedCaseStatus(c.status));
 
   const confirmClose = async (outcome) => {
     if (closing.all) {
@@ -62,10 +65,11 @@ export default function PaccProjectPage() {
         title={p.name}
         description={`${[p.barangay_name, p.municipality_name].filter(Boolean).join(', ')} · ${p.contractor_name || 'No contractor'}`}
         actions={
-          // Opening a case comes with the PACC Cases page (next task of the PACC plan).
-          <Button icon={FolderPlus} disabled title={openCase ? 'This project already has an open case.' : 'Opening a case will be available soon.'}>
-            Open a case
-          </Button>
+          openCase ? (
+            <Button to={`/pacc/cases/${openCase.id}`} variant="secondary" icon={FolderOpen}>Go to the open case</Button>
+          ) : (
+            <Button icon={FolderPlus} onClick={() => setOpening(true)}>Open a case</Button>
+          )
         }
       />
 
@@ -133,6 +137,7 @@ export default function PaccProjectPage() {
                     <Pill className={CASE_STATUS_META[c.status]?.cls}>{CASE_STATUS_META[c.status]?.label || c.status}</Pill>
                     {c.show_public && <Pill className="bg-emerald-50 text-emerald-800">Status shown to the public</Pill>}
                     <span className="text-xs text-slate-500">Opened {date(c.created_at)}{c.closed_at ? ` · closed ${date(c.closed_at)}` : ''}</span>
+                    <Link to={`/pacc/cases/${c.id}`} className="ml-auto text-xs font-semibold text-brand-700 hover:underline">Open the case</Link>
                   </p>
                   <p className="mt-1 line-clamp-2 text-slate-700">{c.charges}</p>
                 </li>
@@ -213,6 +218,17 @@ export default function PaccProjectPage() {
         </Card>
       </div>
 
+      <OpenCaseModal
+        open={opening}
+        onClose={() => setOpening(false)}
+        project={p}
+        reports={openReports.filter((r) => !r.case_id)}
+        onCreated={(cs) => {
+          setOpening(false);
+          toast.success('Case opened.');
+          navigate(`/pacc/cases/${cs.id}`);
+        }}
+      />
       <CloseReportsDialog target={closing} openCount={openReports.length} onClose={() => setClosing(null)} onConfirm={confirmClose} />
     </>
   );

@@ -48,6 +48,20 @@ export const CASE_STATUS_META = {
   dismissed: { label: 'Dismissed', cls: 'bg-slate-100 text-slate-700' },
 };
 
+/** Case status changes PACC may make (mirrors the server's canTransition in services/citizenReports.js). Closed is final. */
+const CASE_TRANSITIONS = {
+  under_investigation: ['case_filed', 'dismissed'],
+  case_filed: ['resolved', 'dismissed'],
+  resolved: [],
+  dismissed: [],
+};
+
+export function nextCaseStatuses(status) {
+  return [...(CASE_TRANSITIONS[status] ?? [])];
+}
+
+export const isClosedCaseStatus = (status) => status === 'resolved' || status === 'dismissed';
+
 /** Where a signed-in account belongs: PACC → /pacc, staff → /app, anyone else → the public portal. */
 export function homePathForRole(role) {
   if (role === 'pacc') return '/pacc';

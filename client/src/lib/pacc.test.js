@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CASE_STATUS_META, REFERRAL_LABELS, REPORT_CATEGORY_LABELS, REPORT_OUTCOME_LABELS, REPORT_STATUS_LABELS, homePathForRole } from './pacc.js';
+import { CASE_STATUS_META, REFERRAL_LABELS, REPORT_CATEGORY_LABELS, REPORT_OUTCOME_LABELS, REPORT_STATUS_LABELS, homePathForRole, nextCaseStatuses } from './pacc.js';
 
 describe('homePathForRole', () => {
   it('sends PACC to /pacc, staff to /app and everyone else to the public portal', () => {
@@ -31,5 +31,17 @@ describe('PACC labels', () => {
   it('labels every report status and closing outcome', () => {
     expect(Object.keys(REPORT_STATUS_LABELS)).toEqual(['received', 'under_review', 'closed']);
     expect(Object.keys(REPORT_OUTCOME_LABELS)).toEqual(['valid', 'invalid', 'duplicate']);
+  });
+});
+
+describe('nextCaseStatuses', () => {
+  it('mirrors the server: under investigation → case filed or dismissed; case filed → resolved or dismissed', () => {
+    expect(nextCaseStatuses('under_investigation')).toEqual(['case_filed', 'dismissed']);
+    expect(nextCaseStatuses('case_filed')).toEqual(['resolved', 'dismissed']);
+  });
+  it('closed cases are final', () => {
+    expect(nextCaseStatuses('resolved')).toEqual([]);
+    expect(nextCaseStatuses('dismissed')).toEqual([]);
+    expect(nextCaseStatuses('unknown')).toEqual([]);
   });
 });

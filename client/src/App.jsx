@@ -45,7 +45,10 @@ const AccountPage = lazy(() => import('./pages/shared/AccountPage.jsx'));
 // PACC portal (Presidential Anti-Corruption Commission)
 const PaccInboxPage = lazy(() => import('./pages/pacc/PaccInboxPage.jsx'));
 const PaccProjectPage = lazy(() => import('./pages/pacc/PaccProjectPage.jsx'));
-const PaccPlaceholderPage = lazy(() => import('./pages/pacc/PaccPlaceholderPage.jsx'));
+const PaccCasesPage = lazy(() => import('./pages/pacc/PaccCasesPage.jsx'));
+const PaccCasePage = lazy(() => import('./pages/pacc/PaccCasePage.jsx'));
+const PaccMembersPage = lazy(() => import('./pages/pacc/PaccMembersPage.jsx'));
+const PaccActivityPage = lazy(() => import('./pages/pacc/PaccActivityPage.jsx'));
 
 const STAFF = ['admin', 'dpwh_personnel', 'auditor'];
 const EDITORS = ['admin', 'dpwh_personnel'];
@@ -113,10 +116,10 @@ export default function App() {
           <Route element={<PaccLayout />}>
             <Route index element={<PaccInboxPage />} />
             <Route path="projects/:id" element={<PaccProjectPage />} />
-            {/* Cases, Members and Activity log: placeholders until their pages are built */}
-            <Route path="cases" element={<PaccPlaceholderPage title="Cases" />} />
-            <Route path="members" element={<PaccPlaceholderPage title="Members" />} />
-            <Route path="activity" element={<PaccPlaceholderPage title="Activity log" />} />
+            <Route path="cases" element={<PaccCasesPage />} />
+            <Route path="cases/:caseId" element={<PaccCasePage />} />
+            <Route path="members" element={<PaccMembersPage />} />
+            <Route path="activity" element={<PaccActivityPage />} />
             <Route path="account" element={<AccountPage />} />
             <Route path="*" element={<NotFoundPage homeTo="/pacc" homeLabel="Back to the inbox" />} />
           </Route>
