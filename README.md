@@ -116,10 +116,12 @@ npm run install:all
 | `DAILY_FLAG_CHECK_CRON` | `15 1 * * *` | When the daily flag check runs (default 01:15) |
 | `TZ_NAME` | `Asia/Manila` | Time zone of the daily check (default Asia/Manila) |
 | `SIGNED_URL_TTL` | `3600` | Lifetime in seconds of signed links to private photos and files (default 3600) |
-| `TRUST_PROXY` | `1` | Number of proxy hops in front of the API, used for the client IP in rate limits (default 1; a non-integer falls back to 1) |
+| `TRUST_PROXY` | `1` | Number of proxy hops in front of the API, used for the client IP in rate limits (default 1; a non-integer falls back to 1). The live deployment behind Vercel uses `4`; see "Verifying the client IP" below |
 | `DEBUG_PROXY` | `1` | Logs `req.ip` and the `X-Forwarded-For` entry count for the first 20 requests |
 
 **Verifying the client IP (Render):** rate limits are keyed per user, and per IP for anonymous requests, so `req.ip` must be the visitor's public IP. Deploy once with `DEBUG_PROXY=1`, open the site from mobile data and from Wi-Fi, and check the Render logs for `[proxy-debug]`. If `req.ip` shows a Vercel or Render address, raise `TRUST_PROXY` by 1 and redeploy; then remove `DEBUG_PROXY`.
+
+The live IPMATS deployment (Vercel rewrites `/api` to Render) was checked this way on 27 November 2026. With `TRUST_PROXY=1` the API saw Render's private `10.x` addresses, with 4 `X-Forwarded-For` entries. That meant every anonymous visitor and citizen reporter shared the same rate-limit keys. With **`TRUST_PROXY=4`** it sees the visitor's own public IP, so the Render service now has `TRUST_PROXY=4`, `NODE_ENV=production` and `DEBUG_PROXY` off. Requests sent straight to `ipmats-system-api.onrender.com`, bypassing Vercel, pass through fewer proxies. Such a caller can put fake addresses in `X-Forwarded-For` and so get around the per-IP limits. The per-account limits and every access check still apply. If the frontend or the hosting changes, check again.
 
 Used only by the scripts in `server/scripts/`: `API_URL` (default `http://localhost:4000/api`), `SEED_EMAIL`, `SEED_PASSWORD`, `SEED_ADMIN`, `SEED_AUDITOR` (demo accounts the scripts sign in with).
 
