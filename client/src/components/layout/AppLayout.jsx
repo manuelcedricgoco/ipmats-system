@@ -1,4 +1,4 @@
-import { Building2, ClipboardCheck, Coins, FileBarChart, FolderKanban, History, Info, Landmark, LayoutDashboard, Map, SlidersHorizontal, TrendingUp, Users } from 'lucide-react';
+import { Building2, ClipboardCheck, Coins, FileBarChart, FolderKanban, History, Info, Landmark, LayoutDashboard, Map, SlidersHorizontal, Trash2, TrendingUp, Users } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useApi } from '../../hooks/useApi.js';
@@ -27,6 +27,7 @@ const SECTIONS = [
     title: 'Administration',
     items: [
       { to: '/app/users', label: 'User Management', icon: Users, roles: ['admin'] },
+      { to: '/app/deletion-requests', label: 'Deletion requests', icon: Trash2, roles: ['admin'] }, // 027
       { to: '/app/activity', label: 'Activity Logs', icon: History, roles: ['admin', 'auditor'] }, // gap fix
       { to: '/app/settings', label: 'System Settings', icon: SlidersHorizontal, roles: ['admin'] }, // gap fix
     ],
@@ -42,7 +43,9 @@ export default function AppLayout() {
   const { pathname } = useLocation();
   // Admins see how many staff access requests are waiting (refreshes on navigation).
   const pendingUsers = useApi('/users', { approval_status: 'pending', pageSize: 1, _: pathname }, { enabled: role === 'admin', select: (r) => r.total });
-  const badges = { '/app/users': pendingUsers.data || 0 };
+  // …and how many project deletion requests wait for a decision (027).
+  const pendingDeletions = useApi('/deletion-requests', { status: 'pending', pageSize: 1, _: pathname }, { enabled: role === 'admin', select: (r) => r.total });
+  const badges = { '/app/users': pendingUsers.data || 0, '/app/deletion-requests': pendingDeletions.data || 0 };
   const sections = SECTIONS.map((s) => ({ ...s, items: s.items.filter((i) => i.roles.includes(role)).map((i) => ({ ...i, badge: badges[i.to] })) }));
 
   return (
@@ -51,7 +54,8 @@ export default function AppLayout() {
       tag="Staff"
       sections={sections}
       footerLinks={FOOTER_LINKS}
-      headerExtra={['admin', 'dpwh_personnel'].includes(role) ? <OfflineUploads /> : null}
+      // Offline 360° photos are uploaded by DPWH Personnel only (027).
+      headerExtra={role === 'dpwh_personnel' ? <OfflineUploads /> : null}
       headerLeft={
         <p className="truncate">
           <span className="font-semibold text-slate-900">{ROLE_LABELS[role]}</span>

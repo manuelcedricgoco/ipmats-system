@@ -104,7 +104,7 @@ export default function PaccCasePage() {
                 <p className="mt-1 text-xs text-slate-500">
                   {closed
                     ? 'Closed cases are never shown on the public portal.'
-                    : 'While the case is open, the public sees only “Under PACC investigation” or “Case filed”, nothing else.'}
+                    : 'DPWH staff (Admin, Personnel, Auditor) always see the case status while the case is open; this switch controls only the public portal. There, the public sees only “Under PACC investigation” or “Case filed”, nothing else.'}
                 </p>
               </div>
             </CardBody>

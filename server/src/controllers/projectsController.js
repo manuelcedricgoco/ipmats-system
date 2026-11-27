@@ -7,6 +7,7 @@
  */
 import { adminClient } from '../config/supabase.js';
 import { addDays } from '../services/completion.js';
+import { canUseApproval } from './deletionRequestsController.js';
 import { pagination } from '../utils/pagination.js';
 import { changedFields, logActivity } from '../services/activityLog.js';
 import { reevaluate } from '../services/projectEvaluation.js';
@@ -21,7 +22,9 @@ const LIST_COLUMNS =
   // Week 2
   'overall_progress, phase_count, revised_contract_amount, total_disbursed, remaining_balance, ' +
   // Week 3
-  'current_flag, flag_review_status, planned_progress, image_count';
+  'current_flag, flag_review_status, planned_progress, image_count, ' +
+  // 027: status of a non-closed PACC case (staff only; never the case itself)
+  'pacc_case_status';
 const FILTERABLE_STATUSES = new Set(['not_started', 'ongoing', 'delayed', 'completed']);
 
 /** Filters shared by the list endpoint. */
@@ -95,6 +98,62 @@ function assertInsideProvince(latitude, longitude) {
   }
 }
 
+export const LOCATION_LOCKED_MESSAGE = 'The project location cannot be changed once 360° photos are on file.';
+export const DELETE_NEEDS_APPROVAL_MESSAGE = 'Ask a System Administrator to approve deleting this project first.';
+const ROLE_LABELS = { admin: 'System Administrator', dpwh_personnel: 'DPWH Personnel', auditor: 'Auditor' };
+const OPEN_CASE_STATUSES = ['under_investigation', 'case_filed'];
+
+/** Once 360° photos are on file, nobody may move the project site (027: the Admin included). */
+export function assertLocationEditable({ locationChanged, photoCount }) {
+  if (locationChanged && photoCount > 0) throw forbidden(LOCATION_LOCKED_MESSAGE);
+}
+
+/** Activity-log details of a location move: the old and new coordinates; nothing when the location did not change. */
+export function locationMoveDetails(current, patch) {
+  if (!isLocationChange(current, patch)) return {};
+  return {
+    location: {
+      from: { latitude: current.latitude, longitude: current.longitude },
+      to: { latitude: patch.latitude ?? current.latitude, longitude: patch.longitude ?? current.longitude },
+    },
+  };
+}
+
+/** The pacc_activity row written (by "System") when a project with a non-closed PACC case is deleted. */
+export function paccDeletionEntry(project, user, openCase, now = new Date()) {
+  const who = user?.profile?.full_name || user?.email || 'Unknown user';
+  const role = ROLE_LABELS[user?.role] || user?.role || 'unknown role';
+  return {
+    actor_id: null,
+    actor_name: 'System',
+    action: 'project.deleted',
+    entity_type: 'project',
+    entity_id: String(project.id),
+    project_id: project.id,
+    summary: `Project ${project.project_code} — ${project.name} was deleted by ${who} (${role}) while a PACC case was open.`.slice(0, 500),
+    details: {
+      case_id: openCase.id,
+      case_status: openCase.status,
+      deleted_by: { id: user?.id ?? null, name: who, role: user?.role ?? null },
+      deleted_at: now.toISOString(),
+    },
+  };
+}
+
+const ADMIN_DELETED_NOTE = 'The System Administrator deleted the project.';
+
+/**
+ * How an open deletion request is closed when the Admin deletes the project directly. A pending
+ * request gets the Admin as decider and a note; an approved one keeps its decision (who approved,
+ * when, and their note) and gets the note only if it has none.
+ */
+export function adminDeleteCancelPatch(request, adminId, now = new Date()) {
+  if (request.status === 'pending') {
+    return { status: 'cancelled', decided_by: adminId, decided_at: now.toISOString(), decision_note: ADMIN_DELETED_NOTE };
+  }
+  return { status: 'cancelled', ...(!request.decision_note && { decision_note: ADMIN_DELETED_NOTE }) };
+}
+
 async function getProjectOrThrow(id, columns = '*') {
   const data = unwrap(await adminClient.from('projects').select(columns).eq('id', id).maybeSingle());
   if (!data) throw notFound('Project not found');
@@ -135,12 +194,11 @@ export async function updateProject(req, res) {
   if (req.body.latitude !== undefined || req.body.longitude !== undefined) {
     assertInsideProvince(req.body.latitude ?? current.latitude, req.body.longitude ?? current.longitude);
   }
-  // Decision D3: once 360° photos exist, only a System Administrator may move the project site.
-  const locationChanged = isLocationChange(current, req.body);
-  if (locationChanged && req.user.role !== 'admin') {
+  // Once 360° photos exist, nobody may move the project site (027: the Admin included).
+  if (isLocationChange(current, req.body)) {
     const { count, error } = await adminClient.from('site_images').select('id', { count: 'exact', head: true }).eq('project_id', id);
     unwrap({ data: null, error });
-    if (count > 0) throw forbidden('The project location can only be changed by a System Administrator once 360° photos are on file.');
+    assertLocationEditable({ locationChanged: true, photoCount: count ?? 0 });
   }
   const body = { ...req.body };
   // "auto" requests a fresh status evaluation; any other status input is discarded.
@@ -170,22 +228,86 @@ export async function updateProject(req, res) {
     entityId: id,
     projectId: id,
     summary: `Updated project ${before.project_code}${changed.length ? ` (${changed.join(', ')})` : ''}`,
-    details: {
-      changed,
-      ...(locationChanged && {
-        location: {
-          from: { latitude: current.latitude, longitude: current.longitude },
-          to: { latitude: body.latitude ?? current.latitude, longitude: body.longitude ?? current.longitude },
-        },
-      }),
-    },
+    details: { changed, ...locationMoveDetails(current, body) },
   });
   res.json({ data: { id, evaluation } });
 }
 
+/**
+ * The Admin deletes directly. DPWH Personnel need their own approved, unexpired, unused deletion
+ * request for the project (027); it is marked used right before the delete. Every phase, report,
+ * finance record, photo and document of the project goes with it; PACC cases survive (024).
+ */
 export async function deleteProject(req, res) {
   const project = await getProjectOrThrow(req.params.id, 'id, project_code, name');
-  unwrap(await adminClient.from('projects').delete().eq('id', project.id));
-  await logActivity(req, { action: 'project.delete', entityType: 'project', entityId: project.id, summary: `Deleted project ${project.project_code} — ${project.name}` });
+  const now = new Date();
+
+  let approval = null;
+  if (req.user.role !== 'admin') {
+    const approvals = unwrap(
+      await adminClient
+        .from('project_deletion_requests')
+        .select('id, requested_by, status, approval_expires_at, used_at')
+        .eq('project_id', project.id)
+        .eq('requested_by', req.user.id)
+        .eq('status', 'approved'),
+    );
+    approval = approvals.find((r) => canUseApproval(r, req.user.id, now));
+    if (!approval) throw forbidden(DELETE_NEEDS_APPROVAL_MESSAGE);
+  }
+
+  const openCase = unwrap(
+    await adminClient.from('pacc_cases').select('id, status').eq('project_id', project.id).in('status', OPEN_CASE_STATUSES).limit(1).maybeSingle(),
+  );
+
+  let openRequests = [];
+  if (approval) {
+    // Single use: the status guard lets only one of two simultaneous deletes through.
+    const used = unwrap(
+      await adminClient
+        .from('project_deletion_requests')
+        .update({ status: 'used', used_at: now.toISOString() })
+        .eq('id', approval.id)
+        .eq('status', 'approved')
+        .select('id')
+        .maybeSingle(),
+    );
+    if (!used) throw forbidden(DELETE_NEEDS_APPROVAL_MESSAGE);
+  } else {
+    // The Admin deletes directly: open requests on the project are closed once the delete succeeds.
+    openRequests = unwrap(
+      await adminClient.from('project_deletion_requests').select('id, status, decision_note').eq('project_id', project.id).in('status', ['pending', 'approved']),
+    );
+  }
+
+  try {
+    // PACC keeps its case (project_id becomes NULL); tell PACC who deleted the project, before it goes.
+    if (openCase) unwrap(await adminClient.from('pacc_activity').insert(paccDeletionEntry(project, req.user, openCase, now)));
+    unwrap(await adminClient.from('projects').delete().eq('id', project.id));
+  } catch (err) {
+    // Nothing was deleted: give the approval back so it can be used again.
+    if (approval) {
+      await adminClient.from('project_deletion_requests').update({ status: 'approved', used_at: null }).eq('id', approval.id).eq('status', 'used');
+    }
+    throw err;
+  }
+
+  // project_id is now NULL on these rows, so they are updated by id.
+  for (const r of openRequests) {
+    const patch = adminDeleteCancelPatch(r, req.user.id, now);
+    const { error } = await adminClient.from('project_deletion_requests').update(patch).eq('id', r.id).eq('status', r.status);
+    if (error) console.error('[deletion-requests] could not close request', r.id, error.message);
+  }
+
+  await logActivity(req, {
+    action: 'project.delete',
+    entityType: 'project',
+    entityId: project.id,
+    summary: `Deleted project ${project.project_code} — ${project.name}`,
+    details: {
+      ...(approval && { deletion_request_id: approval.id }),
+      ...(openRequests.length > 0 && { cancelled_deletion_request_ids: openRequests.map((r) => r.id) }),
+    },
+  });
   res.status(204).end();
 }

@@ -5,6 +5,9 @@
  * its form fields and sent automatically as soon as the connection is back (see components/common/OfflineUploads.jsx).
  * The photo stays only on this device until it is uploaded; the server still checks GPS and time when it arrives.
  * Every call is wrapped so that private windows or blocked storage simply turn the queue off.
+ * Each photo keeps the id of the account that queued it (`ownerId`): only that account lists, sends or retries it, so
+ * a photo is never uploaded under another account signed in later on the same browser. Other accounts' photos are
+ * left as they are. Photos queued before owners were recorded have none and are never sent.
  */
 const DB_NAME = 'ipmats-offline';
 const STORE = 'uploads';
@@ -46,9 +49,17 @@ const changed = () => {
 /** True when an API error means "could not reach the server" (try again later), not "the server refused it". */
 export const isNetworkError = (err) => err && (err.status === 0 || err.status === 502 || err.status === 504);
 
-export async function queueUpload({ projectId, projectCode, fields, file }) {
+/** The photos queued by `userId`, oldest first. None without a signed-in account, and never one without an owner. */
+export function ownUploads(items, userId) {
+  if (!userId) return [];
+  return (items || []).filter((i) => i.ownerId === userId).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+}
+
+export async function queueUpload({ projectId, projectCode, fields, file, ownerId }) {
+  if (!ownerId) throw new Error('Sign in again to keep photos offline.');
   const item = {
     id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
+    ownerId,
     projectId,
     projectCode,
     fields,
@@ -63,10 +74,10 @@ export async function queueUpload({ projectId, projectCode, fields, file }) {
   return item;
 }
 
-export async function listUploads() {
+/** The photos waiting on this device for `userId` (see ownUploads). */
+export async function listUploads(userId) {
   try {
-    const rows = await tx('readonly', (s) => s.getAll());
-    return (rows || []).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    return ownUploads(await tx('readonly', (s) => s.getAll()), userId);
   } catch {
     return [];
   }
@@ -83,16 +94,18 @@ async function update(item) {
 }
 
 /**
- * Send every waiting photo with `send(item)` (returns a promise). Stops at the first network error
+ * Send every waiting photo of `userId` with `send(item)` (returns a promise). Stops at the first network error
  * (still offline); a refusal by the server (e.g. GPS outside the province) marks that photo as failed.
  * @returns {Promise<{ sent: object[], failed: object[], offline: boolean }>}
  */
 let flushing = null;
-export function flushUploads(send) {
-  if (flushing) return flushing;
+let flushingFor = null;
+export function flushUploads(send, userId) {
+  if (flushing && flushingFor === userId) return flushing;
+  flushingFor = userId;
   flushing = (async () => {
     const out = { sent: [], failed: [], offline: false };
-    const items = (await listUploads()).filter((i) => i.status === 'waiting');
+    const items = (await listUploads(userId)).filter((i) => i.status === 'waiting');
     for (const item of items) {
       try {
         const result = await send(item);
@@ -109,13 +122,16 @@ export function flushUploads(send) {
     }
     return out;
   })().finally(() => {
-    flushing = null;
+    if (flushingFor === userId) {
+      flushing = null;
+      flushingFor = null;
+    }
   });
   return flushing;
 }
 
-export async function retryUpload(id) {
-  const item = (await listUploads()).find((i) => i.id === id);
+export async function retryUpload(id, userId) {
+  const item = (await listUploads(userId)).find((i) => i.id === id);
   if (item) await update({ ...item, status: 'waiting', error: null });
 }
 

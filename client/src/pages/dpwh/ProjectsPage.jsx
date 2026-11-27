@@ -8,6 +8,7 @@ import { EmptyState, ErrorState, PageLoader } from '../../components/common/Feed
 import { Input, Select } from '../../components/common/Form.jsx';
 import Pagination from '../../components/common/Pagination.jsx';
 import ProgressBar from '../../components/common/ProgressBar.jsx';
+import PaccCaseChip from '../../components/projects/PaccCaseChip.jsx';
 import ProjectFilters from '../../components/projects/ProjectFilters.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useApi } from '../../hooks/useApi.js';
@@ -25,7 +26,7 @@ const KEYS = ['municipality_id', 'barangay_id', 'agency_id', 'contractor_id', 's
  */
 export default function ProjectsPage() {
   const { hasRole } = useAuth();
-  const canEdit = hasRole('dpwh_personnel', 'admin');
+  const canEdit = hasRole('dpwh_personnel'); // only DPWH Personnel register projects (027)
   const [params, setParams] = useSearchParams();
   const { ref } = useReference();
   const [search, setSearch] = useState(params.get('search') || '');
@@ -140,7 +141,7 @@ export default function ProjectsPage() {
                         <span className="mt-0.5 block text-xs text-slate-500">{p.target_completion_date ? `until ${date(p.target_completion_date)}` : 'No target date'}</span>
                       </td>
                       <td className="px-4 py-3">
-                        <div className="flex flex-wrap gap-1"><FlagBadge flag={p.current_flag} size="sm" /><StatusBadge status={p.status} /></div>
+                        <div className="flex flex-wrap gap-1"><FlagBadge flag={p.current_flag} size="sm" /><StatusBadge status={p.status} /><PaccCaseChip status={p.pacc_case_status} size="sm" /></div>
                         {Number(p.phase_count) > 0 ? <ProgressBar value={p.overall_progress} size="sm" className="mt-2" /> : <span className="mt-1 block text-[11px] text-slate-400">No phases yet</span>}
                       </td>
                       <td className="px-4 py-3 text-right">
@@ -161,6 +162,7 @@ export default function ProjectsPage() {
                       <p className="font-semibold text-slate-900">{p.name}</p>
                       <div className="flex shrink-0 gap-1"><FlagBadge flag={p.current_flag} size="sm" /><StatusBadge status={p.status} /></div>
                     </div>
+                    {p.pacc_case_status && <PaccCaseChip status={p.pacc_case_status} size="sm" />}
                     <p className="text-xs text-slate-500"><span className="font-mono">{p.project_code}</span> · {p.municipality_name} · {p.duration_days ? `${p.duration_days} days` : 'no duration'}</p>
                     <p className="text-xs text-slate-600">{p.contractor_name || 'Not yet awarded'} · ABC {pesoCompact(p.approved_budget)} · Contract {pesoCompact(p.contract_amount)}</p>
                     {Number(p.phase_count) > 0 && <ProgressBar value={p.overall_progress} size="sm" />}

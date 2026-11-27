@@ -36,7 +36,7 @@ function FileIcon({ mime }) {
 /**
  * Gap fix (concept document §7.2, workflow step 3): DPWH personnel upload supporting project documents —
  * contracts, programs of work, progress and inspection reports, variation orders, payment documents, plans.
- * Staff can open them; personnel and admins upload; the uploader or an admin can delete.
+ * Staff can open them; DPWH Personnel upload (027); the uploader or an admin can delete.
  */
 export default function DocumentsTab() {
   const { project, canEdit } = useOutletContext();

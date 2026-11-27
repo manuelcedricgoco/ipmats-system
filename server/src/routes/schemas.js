@@ -301,3 +301,9 @@ export const caseUpdate = z
 export const caseNote = z.object({ body: text(4000).min(1, 'Write the note.') });
 /** Case document (multipart field next to "file"). */
 export const caseDocumentUpload = z.object({ title: text(200).min(3, 'Give the document a title (at least 3 characters)') });
+
+// Project deletion requests (027): DPWH Personnel ask, the Admin approves or declines.
+export const deletionRequestCreate = z.object({
+  reason: text(500).min(10, 'Give a reason of at least 10 characters.'),
+});
+export const deletionRequestDecision = z.object({ note: nullable(text(500)) });

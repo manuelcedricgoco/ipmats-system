@@ -8,6 +8,7 @@ import { Alert, EmptyState, ErrorState, PageLoader } from '../../../components/c
 import { Checkbox, Field, Input, Select } from '../../../components/common/Form.jsx';
 import Modal from '../../../components/common/Modal.jsx';
 import PanoramaViewer from '../../../components/viewer360/PanoramaViewer.jsx';
+import { useAuth } from '../../../context/AuthContext.jsx';
 import { useToast } from '../../../context/ToastContext.jsx';
 import { useApi } from '../../../hooks/useApi.js';
 import { api } from '../../../lib/api.js';
@@ -196,6 +197,7 @@ export default function ImagesTab() {
 
 /** Upload one 360° panorama. The server validates GPS + timestamp, stores it and re-evaluates the flag. */
 function UploadModal({ open, onClose, project, phases, onDone }) {
+  const { profile } = useAuth();
   const [file, setFile] = useState(null);
   const [form, setForm] = useState({});
   const [saving, setSaving] = useState(false);
@@ -238,7 +240,7 @@ function UploadModal({ open, onClose, project, phases, onDone }) {
     // No signal: keep the photo on this device and send it later.
     const saveOffline = async () => {
       try {
-        await queueUpload({ projectId: project.id, projectCode: project.project_code, fields: form, file });
+        await queueUpload({ projectId: project.id, projectCode: project.project_code, fields: form, file, ownerId: profile?.id });
         setQueued(true);
       } catch (e3) {
         setErr({ message: `No connection, and this browser cannot keep the photo offline (${e3.message}).` });

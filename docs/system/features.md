@@ -195,7 +195,8 @@ Sidebar items appear only for the roles that can use them. "All staff" = Admin, 
 ### Project Management
 - **In the UI:** "Project Management" (`/app/projects`), "Register project", and the project page with six tabs.
 - **Why:** Objective 1 — one central record of every project: office, contractor, budget, duration and location.
-- **Who:** all staff view. Personnel and Admin register and edit. Admin deletes.
+- **Who:** all staff view. Only DPWH Personnel register and edit (migration 027). The Admin deletes directly;
+  Personnel delete only with an approved [deletion request](#deletion-requests).
 - **What it does:**
   - **List:** search by name, Project ID or contractor. Filter by municipality, barangay, office, contractor,
     status and type. Sort, and page through the results.
@@ -203,9 +204,11 @@ Sidebar items appear only for the roles that can use them. "All staff" = Admin, 
     location, approved budget (ABC), contract amount, Notice to Proceed, duration, fund source and status.
     - Location is picked on a map: search a place, click, or drag the pin. Points outside Occidental Mindoro are
       refused, in the browser and again by the API.
-    - Once a project has 360° photos, only a System Administrator can move its location (personnel get an
-      error). Every location change is recorded in the activity log with the old and new coordinates. Saving
-      the form with the same coordinates does not count as a move.
+    - Once a project has 360° photos, nobody can move its location, the System Administrator included (027):
+      "The project location cannot be changed once 360° photos are on file." To fix a wrong location, the Admin
+      deletes the photos, then Personnel edit the location and upload the photos again. Every location change is
+      recorded in the activity log with the old and new coordinates. Saving the form with the same coordinates does
+      not count as a move.
     - The **Project ID is created by the database** (e.g. `26OM0332`) and cannot be changed. A dialog shows it
       after saving.
     - The target completion date is computed as NTP + duration.
@@ -217,19 +220,36 @@ Sidebar items appear only for the roles that can use them. "All staff" = Admin, 
       photo. The Suspended and Terminated statuses were removed (no project used them); editing a project
       cannot set a status.
   - **Project page tabs:** Overview, Phases & progress, Finance, 360° images, Flag & audit, Documents (described
-    below). Non-editors see a "Read-only" label.
-  - **Delete:** an Admin can delete a project, which also deletes all of its records.
+    below). Auditors see a "Read-only" label. The editing buttons of every tab (phases, progress, adding finance
+    records, photo upload and mark final, document upload) are shown to Personnel only; the Admin keeps the
+    delete buttons.
+  - **PACC case status (staff):** while the project has a non-closed PACC case, the project header and the list
+    rows show a chip, "Under PACC investigation" or "Case filed" (`pacc_case_status`, 027), whether or not PACC
+    shows the status on the public portal. Only the status, never the case contents.
+  - **Delete:** deleting a project also deletes all of its records (PACC cases and citizen reports survive).
+    - Admin: "Delete project", with a confirmation.
+    - Personnel: "Request deletion" with a reason → while pending, "Cancel deletion request" → once approved,
+      "Delete project (approved until <date>)", usable once within 7 days. A line under the header says where the
+      request stands (waiting, approved until, expired, or declined with the Admin's note; after an expiry or a
+      decline they can ask again). The Admin sees a pending request there too, with a link to review it.
+    - The delete, request and approve dialogs warn when there is an open PACC case: "This project is under PACC
+      investigation. Deleting it removes records PACC may need." (or "A PACC case has been filed on this project.
+      …"). It is a warning, not a block; PACC's activity log gets an entry naming who deleted the project.
 - **Touches:**
   - Pages and components: `pages/dpwh/ProjectsPage.jsx`, `ProjectFormPage.jsx`, `project/ProjectLayout.jsx`,
-    `project/OverviewTab.jsx`, `components/map/LocationPicker.jsx`.
-  - API: `GET/POST /projects`, `GET/PATCH/DELETE /projects/:id`, `GET /reference`.
-  - Data: `projects`, `v_project_summary`, `municipalities`, `barangays`, `agencies`, `contractors`.
+    `project/OverviewTab.jsx`, `components/map/LocationPicker.jsx`, `components/projects/PaccCaseChip.jsx`,
+    `components/projects/DeleteProjectControls.jsx`, `lib/deletionRequests.js`.
+  - API: `GET/POST /projects`, `GET/PATCH/DELETE /projects/:id`, `GET /reference`,
+    `GET /projects/:id/deletion-request`, `POST /projects/:id/deletion-requests`,
+    `POST /deletion-requests/:requestId/cancel`.
+  - Data: `projects` (incl. `pacc_case_status`), `v_project_summary`, `project_deletion_requests`,
+    `municipalities`, `barangays`, `agencies`, `contractors`.
   - The place search uses the public OpenStreetMap Nominatim service.
 
 ### Progress Monitoring
 - **In the UI:** "Progress Monitoring" (`/app/progress`) and the project tab "Phases & progress".
 - **Why:** Objective 3 — track progress phase by phase instead of a single number someone types in.
-- **Who:** all staff view. Personnel and Admin set up phases and submit progress.
+- **Who:** all staff view. Personnel set up phases and submit progress (027: not the Admin).
 - **What it does:**
   - **Progress Monitoring list:** every project's completion bar, with a status filter and sorting.
   - **Set up phases:** a template for the project type is filled in, with dates spread over the contract.
@@ -246,7 +266,7 @@ Sidebar items appear only for the roles that can use them. "All staff" = Admin, 
 ### Financial Monitoring
 - **In the UI:** "Financial Monitoring" (`/app/finance`) and the project tab "Finance".
 - **Why:** Objective 4 — follow budgets, payments and fund use, and spot payments running ahead of the work.
-- **Who:** all staff view. Personnel and Admin add records. Admin deletes a wrong record.
+- **Who:** all staff view. Personnel add records (027: not the Admin). Admin deletes a wrong record.
 - **What it does:**
   - **Totals:** approved budget, contract amount (with variation orders), disbursed, remaining balance, and an
     overall utilization bar.
@@ -267,7 +287,7 @@ Sidebar items appear only for the roles that can use them. "All staff" = Admin, 
 - **Why:** Objective 2 — field evidence of the real site condition, with checks that the photo is genuine.
 - **Who:**
   - All staff view.
-  - Personnel and Admin upload, caption and mark a photo as final.
+  - Personnel upload, caption and mark a photo as final (027: not the Admin).
   - Admin deletes.
 - **What it does:**
   - **Upload:** JPEG, PNG or WebP, up to 30 MB, with an inspection date. The server:
@@ -289,19 +309,20 @@ Sidebar items appear only for the roles that can use them. "All staff" = Admin, 
   - **Public at once:** a photo uploaded by DPWH personnel appears on the public portal right away. Nobody
     approves or hides photos (migration 022); an Admin can delete a wrong upload.
   - **Final photo:** a photo marked **final** (as-built) is one of the requirements for a project to count as completed.
-  - **Offline:** with no connection, a photo is kept on the device (IndexedDB). The top bar shows waiting uploads,
-    and they are sent automatically when the connection returns.
+  - **Offline:** with no connection, a photo is kept on the device (IndexedDB). The top bar shows waiting uploads
+    (Personnel only), and they are sent automatically when the connection returns. Each photo is listed and sent
+    only for the account that queued it; another account signed in on the same browser never sends it.
 - **Touches:**
   - Pages and components: `project/ImagesTab.jsx`, `components/common/OfflineUploads.jsx`, `lib/offlineUploads.js`.
-  - API: `GET/POST /projects/:id/images`, `PATCH /projects/:id/images/:imageId`, `PATCH …/public`,
-    `DELETE /projects/:id/images/:imageId`.
+  - API: `GET/POST /projects/:id/images`, `PATCH /projects/:id/images/:imageId`,
+    `DELETE /projects/:id/images/:imageId`. Photos are public as soon as they are uploaded (no approval route).
   - Data: `site_images`, bucket `panoramas`.
 
 ### Documents (project tab)
 - **In the UI:** project tab "Documents".
 - **Why:** keeps supporting papers (contract, program of work, reports, variation orders, payment documents,
   as-built plans) with the project.
-- **Who:** all staff view and download. Personnel and Admin upload. The uploader or an Admin deletes.
+- **Who:** all staff view and download. Personnel upload (027: not the Admin). The uploader or an Admin deletes.
 - **What it does:** upload PDF, image, Word or Excel files up to 25 MB, with a title, type, date and optional
   phase. Download through an expiring link.
 - **Touches:** `project/DocumentsTab.jsx`; `GET/POST /projects/:id/documents`,
@@ -411,6 +432,24 @@ Sidebar items appear only for the roles that can use them. "All staff" = Admin, 
 - **Touches:** `pages/admin/UsersPage.jsx`; `GET/POST /users`, `PATCH/DELETE /users/:userId`,
   `POST /users/:userId/approve|reject|suspend|unsuspend`; `profiles`, Supabase Auth users.
 
+### Deletion requests
+- **In the UI:** "Deletion requests" (`/app/deletion-requests`). The sidebar badge shows the number of pending
+  requests.
+- **Why:** only DPWH Personnel encode project data, but deleting a whole project is checked by the System
+  Administrator first (migration 027).
+- **Who:** Admin only. DPWH Personnel ask from the project page (see [Project Management](#project-management)).
+- **What it does:**
+  - **List:** "Waiting for a decision" (default) or "All requests", newest first, paged. Each row shows the
+    project (code and name, linked while it exists), the PACC case-status chip, who asked and when, the reason, the
+    status (Waiting for approval, Approved, Declined, Cancelled, Project deleted, Expired) and the decision.
+  - **Approve:** optional note (at most 500 characters); the requester may then delete the project **once**, within
+    **7 days**. The dialog warns when the project has an open PACC case.
+  - **Decline:** optional note, shown to the requester on the project page; they can ask again.
+  - Only pending requests can be decided. Every step is in the activity log (`project.deletion_request`,
+    `.deletion_cancel`, `.deletion_approve`, `.deletion_decline`, then `project.delete`).
+- **Touches:** `pages/admin/DeletionRequestsPage.jsx`, `lib/deletionRequests.js`; `GET /deletion-requests?status=pending|all`,
+  `POST /deletion-requests/:requestId/approve|decline`; `project_deletion_requests`.
+
 ### Activity Logs
 - **In the UI:** "Activity Logs" (`/app/activity`).
 - **Why:** accountability — a permanent record of who changed what, and when.
@@ -508,6 +547,9 @@ abolished in 2022, so this is a modelled role.
   - **Show status to public** (off by default): while on, and the case is Under investigation or Case filed, the
     public project drawer shows "Under PACC investigation" or "Case filed" (`projects.pacc_public_status`, kept by a
     database trigger). Nothing else about the case is public.
+  - **DPWH staff always see the status:** Admin, Personnel and Auditor see "Under PACC investigation" or "Case
+    filed" on the staff project page and list while the case is open, whatever the switch says
+    (`projects.pacc_case_status`, migration 027). The switch controls only the public portal; the case page says so.
 - **Touches:** `pages/pacc/PaccCasesPage.jsx`, `PaccCasePage.jsx`; `GET /pacc/cases`, `GET/PATCH /pacc/cases/:caseId`,
   `POST /pacc/cases/:caseId/notes`, `POST /pacc/cases/:caseId/documents`; `pacc_cases`, `pacc_case_notes`,
   `pacc_case_documents`, `projects.pacc_public_status`.

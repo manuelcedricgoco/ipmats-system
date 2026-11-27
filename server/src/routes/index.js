@@ -4,6 +4,7 @@ import admin from './admin.js';
 import audit from './audit.js';
 import agencies from './agencies.js';
 import contractors from './contractors.js';
+import deletionRequests from './deletionRequests.js';
 import documents from './documents.js';
 import finance from './finance.js';
 import images from './images.js';
@@ -30,6 +31,7 @@ api.use('/', reports);
 // Gap fixes: supporting documents, activity logs, flag-rule settings
 api.use('/', documents);
 api.use('/', system);
+api.use('/', deletionRequests); // 027: /projects/:id/deletion-requests, /deletion-requests
 api.use('/pacc', pacc); // PACC portal: pacc role only
 api.use('/projects', projects);
 api.use('/contractors', contractors);
