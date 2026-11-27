@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { before, describe, it } from 'node:test';
 import request from 'supertest';
 import { requireRole, ROLES, STAFF } from '../middleware/role.js';
+import { assembleInbox } from '../controllers/paccController.js';
 import { reportClose } from '../routes/schemas.js';
 
 const ID = '9f343767-8d98-5863-903c-3bc97288d015';
@@ -39,5 +40,15 @@ describe('PACC API guards', () => {
   it('reportClose accepts only valid outcomes', () => {
     assert.equal(reportClose.safeParse({ outcome: 'valid' }).success, true);
     assert.equal(reportClose.safeParse({ outcome: 'spam' }).success, false);
+  });
+});
+
+describe('inbox assembly', () => {
+  it('shows the real reviewed flag, not only red', () => {
+    const rows = [{ id: 'p1', e: { open_reports: 10, last_report_on: '2026-11-01', open_case: null }, reasons: ['citizen_reports'] }];
+    const info = new Map([['p1', { project_code: 'X1', name: 'Road' }]]);
+    const [row] = assembleInbox(rows, info, new Map([['p1', 'yellow']]));
+    assert.equal(row.public_flag, 'yellow');
+    assert.deepEqual(row.reasons, ['citizen_reports']);
   });
 });

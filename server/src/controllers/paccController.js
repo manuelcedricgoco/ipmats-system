@@ -53,11 +53,22 @@ export async function inbox(req, res) {
   }
   const ids = rows.map((x) => x.id);
   const info = new Map();
+  const flags = new Map();
   for (let i = 0; i < ids.length; i += 100) {
-    const part = unwrap(await db.from('v_project_summary').select('id, project_code, name, municipality_name, contractor_name').in('id', ids.slice(i, i + 100)));
+    const chunk = ids.slice(i, i + 100);
+    const [part, flagRows] = await Promise.all([
+      db.from('v_project_summary').select('id, project_code, name, municipality_name, contractor_name').in('id', chunk).then(unwrap),
+      db.from('projects').select('id, public_flag').in('id', chunk).then(unwrap),
+    ]);
     for (const p of part) info.set(p.id, p);
+    for (const p of flagRows) flags.set(p.id, p.public_flag);
   }
-  const data = rows
+  res.json({ data: assembleInbox(rows, info, flags) });
+}
+
+/** Pure step: join the candidate rows with project details and the reviewed flag, then sort. */
+export function assembleInbox(rows, info, flags) {
+  return rows
     .filter((x) => info.has(x.id))
     .map(({ id, e, reasons }) => ({
       project_id: id,
@@ -65,14 +76,13 @@ export async function inbox(req, res) {
       name: info.get(id).name,
       municipality_name: info.get(id).municipality_name ?? null,
       contractor_name: info.get(id).contractor_name ?? null,
-      public_flag: e.red ? 'red' : null,
+      public_flag: flags.get(id) ?? null,
       open_reports: e.open_reports,
       last_report_on: e.last_report_on,
       open_case: e.open_case,
       reasons,
     }))
     .sort((a, b) => b.reasons.length - a.reasons.length || b.open_reports - a.open_reports);
-  res.json({ data });
 }
 
 export async function projectView(req, res) {
