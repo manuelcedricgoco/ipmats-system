@@ -1,5 +1,5 @@
 import { adminClient } from '../config/supabase.js';
-import { assertContractorOwnsProject } from '../services/contractorAccess.js';
+import { assertContractorDoesNotComplete, assertContractorOwnsProject } from '../services/contractorAccess.js';
 import { HttpError, forbidden, unauthorized, unwrap } from '../utils/httpError.js';
 
 export const ROLES = Object.freeze({
@@ -70,3 +70,18 @@ export function makeRequireOwnProject(load = loadProjectCompany) {
   };
 }
 export const requireOwnProject = makeRequireOwnProject();
+
+/**
+ * Contractors do not complete a project (DPWH Personnel confirm completion): a progress report
+ * from a contractor cannot carry an actual completion date, and its photo upload cannot be marked
+ * final as-built (403 "Only DPWH Personnel can confirm a project's completion."). Placed after
+ * validate, so it sees the parsed body. Other roles pass.
+ */
+export function refuseContractorCompletion(req, _res, next) {
+  try {
+    assertContractorDoesNotComplete(req.body, req.user);
+    return next();
+  } catch (err) {
+    return next(err);
+  }
+}

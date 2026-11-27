@@ -21,7 +21,9 @@ const NOT_PENDING_MESSAGE = 'This deletion request has already been decided or c
 
 const SELECT =
   '*, requester:profiles!project_deletion_requests_requested_by_fkey(full_name), ' +
-  'decider:profiles!project_deletion_requests_decided_by_fkey(full_name), project:projects(pacc_case_status)';
+  'decider:profiles!project_deletion_requests_decided_by_fkey(full_name), ' +
+  // 029: the staff-visible PACC case status lives in project_pacc_status (staff and PACC only)
+  'project:projects(pacc_status:project_pacc_status(case_status))';
 
 /** When an approval given at `now` stops being valid. */
 export function approvalExpiry(now = new Date()) {
@@ -41,13 +43,19 @@ function isExpired(request, now) {
   return request.status === 'approved' && Boolean(request.approval_expires_at) && new Date(request.approval_expires_at).getTime() <= now.getTime();
 }
 
+/** The embedded project_pacc_status row (one-to-one: an object, or a one-item list), as the status or null. */
+function paccCaseStatus(project) {
+  const s = project?.pacc_status;
+  return (Array.isArray(s) ? s[0] : s)?.case_status ?? null;
+}
+
 /** Flattens the embedded names and the project's PACC case status; adds `expired`. */
 export function presentRequest({ requester, decider, project, ...row }, now = new Date()) {
   return {
     ...row,
     requested_by_name: requester?.full_name ?? null,
     decided_by_name: decider?.full_name ?? null,
-    pacc_case_status: project?.pacc_case_status ?? null,
+    pacc_case_status: paccCaseStatus(project),
     expired: isExpired(row, now),
   };
 }

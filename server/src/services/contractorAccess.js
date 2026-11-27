@@ -3,7 +3,7 @@
  * company's projects (RLS: private.contractor_company()) and report progress and upload 360°
  * photos on them. These helpers are the API side of those rules.
  */
-import { forbidden } from '../utils/httpError.js';
+import { HttpError, forbidden } from '../utils/httpError.js';
 
 export const CONTRACTOR_PROJECT_MESSAGE = "You can only update your company's projects.";
 export const CONTRACTOR_COMPANY_MESSAGE = 'Choose the contractor company for this account.';
@@ -19,6 +19,20 @@ export function assertContractorOwnsProject(project, user) {
   if (!project || !company || project.contractor_id !== company || project.contractor?.is_active !== true) {
     throw forbidden(CONTRACTOR_PROJECT_MESSAGE);
   }
+}
+
+export const COMPLETION_BY_PERSONNEL_MESSAGE = "Only DPWH Personnel can confirm a project's completion.";
+
+/**
+ * Contractors report work but do not complete a project: DPWH Personnel confirm completion. A
+ * project counts as completed with every phase at 100%, an actual completion date and a final
+ * (as-built) 360° photo, so a contractor may send neither the date (progress report) nor the
+ * final mark (photo upload). Throws 403 with the field; other roles are not checked here.
+ */
+export function assertContractorDoesNotComplete(body, user) {
+  if (user?.role !== 'contractor') return;
+  const field = body?.actual_completion_date ? 'actual_completion_date' : body?.is_final === true ? 'is_final' : null;
+  if (field) throw new HttpError(403, COMPLETION_BY_PERSONNEL_MESSAGE, [{ field, message: COMPLETION_BY_PERSONNEL_MESSAGE }]);
 }
 
 /**

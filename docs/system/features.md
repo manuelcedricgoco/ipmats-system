@@ -242,7 +242,7 @@ Sidebar items appear only for the roles that can use them. "All staff" = Admin, 
   - API: `GET/POST /projects`, `GET/PATCH/DELETE /projects/:id`, `GET /reference`,
     `GET /projects/:id/deletion-request`, `POST /projects/:id/deletion-requests`,
     `POST /deletion-requests/:requestId/cancel`.
-  - Data: `projects` (incl. `pacc_case_status`), `v_project_summary`, `project_deletion_requests`,
+  - Data: `projects`, `project_pacc_status` (029; was `projects.pacc_case_status`), `v_project_summary`, `project_deletion_requests`,
     `municipalities`, `barangays`, `agencies`, `contractors`.
   - The place search uses the public OpenStreetMap Nominatim service.
 
@@ -549,7 +549,7 @@ abolished in 2022, so this is a modelled role.
     database trigger). Nothing else about the case is public.
   - **DPWH staff always see the status:** Admin, Personnel and Auditor see "Under PACC investigation" or "Case
     filed" on the staff project page and list while the case is open, whatever the switch says
-    (`projects.pacc_case_status`, migration 027). The switch controls only the public portal; the case page says so.
+    (`v_project_summary.pacc_case_status`, migration 027; stored in `project_pacc_status` since 029). The switch controls only the public portal; the case page says so.
 - **Touches:** `pages/pacc/PaccCasesPage.jsx`, `PaccCasePage.jsx`; `GET /pacc/cases`, `GET/PATCH /pacc/cases/:caseId`,
   `POST /pacc/cases/:caseId/notes`, `POST /pacc/cases/:caseId/documents`; `pacc_cases`, `pacc_case_notes`,
   `pacc_case_documents`, `projects.pacc_public_status`.

@@ -7,8 +7,10 @@ import express from 'express';
 import request from 'supertest';
 import { requireAuth } from '../middleware/auth.js';
 import {
+  COMPLETION_BY_PERSONNEL_MESSAGE,
   CONTRACTOR_COMPANY_MESSAGE,
   CONTRACTOR_PROJECT_MESSAGE,
+  assertContractorDoesNotComplete,
   assertContractorOwnsProject,
   licenceMatches,
   withoutPaccFields,
@@ -233,6 +235,42 @@ describe('requireOwnProject', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Completion stays with DPWH Personnel
+// ---------------------------------------------------------------------------
+describe('contractors do not complete a project', () => {
+  const refused = (body, field) =>
+    assert.throws(() => assertContractorDoesNotComplete(body, contractor()), (e) => e.status === 403 && e.message === COMPLETION_BY_PERSONNEL_MESSAGE && e.details[0].field === field);
+  it('the message is exact', () => {
+    assert.equal(COMPLETION_BY_PERSONNEL_MESSAGE, "Only DPWH Personnel can confirm a project's completion.");
+  });
+  it('a contractor report with an actual completion date, or a final as-built upload, is refused', () => {
+    refused({ report_date: '2026-11-27', actual_completion_date: '2026-11-26', phases: [] }, 'actual_completion_date');
+    refused({ inspection_date: '2026-11-27', is_final: true }, 'is_final');
+  });
+  it('an ordinary contractor report or upload passes', () => {
+    for (const body of [{ report_date: '2026-11-27', phases: [] }, { actual_completion_date: null }, { inspection_date: '2026-11-27', is_final: false }]) {
+      assert.doesNotThrow(() => assertContractorDoesNotComplete(body, contractor()));
+    }
+  });
+  it('DPWH Personnel still record completion', () => {
+    assert.doesNotThrow(() => assertContractorDoesNotComplete({ actual_completion_date: '2026-11-26', is_final: true }, { role: 'dpwh_personnel' }));
+  });
+  it('both write routes check it after validation, right before the controller', () => {
+    for (const [router, path] of [[() => routers.progress, '/projects/:id/progress'], [() => routers.images, '/projects/:id/images']]) {
+      const handlers = router().stack.find((l) => l.route?.path === path && l.route.methods.post).route.stack.map((x) => x.handle);
+      assert.equal(handlers.at(-2), role.refuseContractorCompletion, path);
+    }
+  });
+  it('the middleware passes the error on', () => {
+    let err;
+    role.refuseContractorCompletion({ user: contractor(), body: { is_final: true } }, {}, (e) => { err = e; });
+    assert.equal(err.status, 403);
+    role.refuseContractorCompletion({ user: { role: 'dpwh_personnel' }, body: { is_final: true } }, {}, (e) => { err = e; });
+    assert.equal(err, undefined);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // No PACC data for contractors
 // ---------------------------------------------------------------------------
 describe('withoutPaccFields', () => {
@@ -420,7 +458,33 @@ describe('migration 029', () => {
   });
   it('changes nothing for anon or staff', () => {
     assert.doesNotMatch(code, /\bto\s+anon\b/i);
-    assert.doesNotMatch(code, /private\.is_staff/);
-    assert.doesNotMatch(code, /activity_logs|pacc_/);
+    assert.doesNotMatch(code, /function private\.is_staff/);
+    assert.doesNotMatch(code, /activity_logs/);
+  });
+  it('moves the PACC case status out of projects, into a table only staff and PACC read', () => {
+    assert.match(code, /create table if not exists public\.project_pacc_status \(\s+project_id\s+uuid primary key references public\.projects \(id\) on delete cascade,\s+case_status text not null check \(case_status in \('under_investigation', 'case_filed'\)\)/);
+    assert.match(code, /revoke all on public\.project_pacc_status from anon, authenticated;/);
+    assert.match(code, /grant select on public\.project_pacc_status to authenticated;/);
+    assert.doesNotMatch(code, /grant[^;]*project_pacc_status[^;]*\banon\b/i);
+    assert.match(code, /alter table public\.project_pacc_status enable row level security/);
+    assert.match(code, /on public\.project_pacc_status\s+for select to authenticated using \(\(select private\.is_staff\(\)\) or \(select private\.is_pacc\(\)\)\)/);
+    assert.doesNotMatch(code, /on public\.project_pacc_status[^;]*contractor/);
+  });
+  it('drops projects.pacc_case_status; the trigger writes the new table and no longer that column', () => {
+    assert.match(code, /alter table public\.projects drop column if exists pacc_case_status;/);
+    assert.ok(code.indexOf('drop view if exists public.v_project_summary;') < code.indexOf('drop column if exists pacc_case_status'), 'the view is dropped first');
+    const fn = code.match(/create or replace function private\.sync_pacc_public_status\(\)[\s\S]*?\$\$;/)[0];
+    assert.doesNotMatch(fn, /pacc_case_status/);
+    assert.match(fn, /set pacc_public_status = v_public\s+where p\.id = v_project\s+and p\.pacc_public_status is distinct from v_public;/);
+    assert.match(fn, /delete from public\.project_pacc_status/);
+    assert.match(fn, /insert into public\.project_pacc_status[\s\S]*on conflict \(project_id\) do update[\s\S]*is distinct from excluded\.case_status/);
+    assert.match(code, /insert into public\.project_pacc_status \(project_id, case_status\)\s+select c\.project_id, c\.status\s+from public\.pacc_cases c/); // backfill
+  });
+  it('v_project_summary takes pacc_case_status (still last) from the new table, with the live grants', () => {
+    const view = code.match(/create view public\.v_project_summary with \(security_invoker = true\) as[\s\S]*?;/)[0];
+    assert.match(view, /end as financial_progress,\s+ps\.case_status as pacc_case_status\s+from public\.projects p/);
+    assert.match(view, /left join public\.project_pacc_status ps on ps\.project_id = p\.id;$/);
+    assert.doesNotMatch(view, /p\.pacc_case_status/);
+    assert.match(code, /revoke all on public\.v_project_summary from public, anon;\s+grant select on public\.v_project_summary to authenticated;\s+grant all on public\.v_project_summary to service_role;/);
   });
 });
