@@ -234,6 +234,23 @@ describe('PACC entry when a project with an open case is deleted', () => {
   });
 });
 
+describe('open requests when the Admin deletes the project directly', () => {
+  it('a pending request is cancelled with the Admin as decider and a note', () => {
+    assert.deepEqual(projects.adminDeleteCancelPatch({ status: 'pending', decision_note: null }, 'admin-1', NOW), {
+      status: 'cancelled', decided_by: 'admin-1', decided_at: NOW.toISOString(), decision_note: 'The System Administrator deleted the project.',
+    });
+  });
+  it('an approved request keeps who approved it, when, and their note', () => {
+    const patch = projects.adminDeleteCancelPatch({ status: 'approved', decision_note: 'Duplicate, approved.' }, 'admin-2', NOW);
+    assert.deepEqual(patch, { status: 'cancelled' });
+  });
+  it('an approved request without a note gets the note only', () => {
+    assert.deepEqual(projects.adminDeleteCancelPatch({ status: 'approved', decision_note: null }, 'admin-2', NOW), {
+      status: 'cancelled', decision_note: 'The System Administrator deleted the project.',
+    });
+  });
+});
+
 describe('migration 027', () => {
   const sql = readFileSync(new URL('../../../database/migrations/027_project_authority.sql', import.meta.url), 'utf8');
   const code = sql.replace(/--.*$/gm, ''); // statements only, no comments
@@ -252,6 +269,16 @@ describe('migration 027', () => {
   it('lets staff read requests through RLS', () => {
     assert.match(code, /alter table public\.project_deletion_requests enable row level security/);
     assert.match(code, /on public\.project_deletion_requests\s+for select to authenticated using \(\(select private\.is_staff\(\)\)\)/);
+  });
+  it('a PACC status change alone does not move projects.updated_at (anon can read it), and this is set up before the backfill', () => {
+    assert.match(code, /create or replace function private\.projects_set_updated_at\(\)/);
+    assert.match(code, /to_jsonb\(new\) - array\['updated_at', 'public_flag', 'pacc_case_status', 'pacc_public_status'\]\)\s+= \(to_jsonb\(old\) - array\['updated_at', 'public_flag', 'pacc_case_status', 'pacc_public_status'\]\)/);
+    assert.match(code, /new\.updated_at := old\.updated_at;/);
+    assert.match(code, /drop trigger if exists projects_updated_at on public\.projects;\s+create trigger projects_updated_at before update on public\.projects\s+for each row execute function private\.projects_set_updated_at\(\);/);
+    const trigger = code.indexOf('create trigger projects_updated_at');
+    const backfill = code.indexOf('set pacc_case_status = c.status');
+    const syncFn = code.indexOf('create or replace function private.sync_pacc_public_status()');
+    assert.ok(trigger > 0 && trigger < backfill && trigger < syncFn, 'the projects trigger is replaced before anything writes the PACC columns');
   });
   it('adds projects.pacc_case_status, kept by the PACC trigger and appended last to v_project_summary', () => {
     assert.match(code, /add column if not exists pacc_case_status text\s+check \(pacc_case_status in \('under_investigation', 'case_filed'\)\)/);

@@ -129,6 +129,20 @@ export function paccDeletionEntry(project, user, openCase, now = new Date()) {
   };
 }
 
+const ADMIN_DELETED_NOTE = 'The System Administrator deleted the project.';
+
+/**
+ * How an open deletion request is closed when the Admin deletes the project directly. A pending
+ * request gets the Admin as decider and a note; an approved one keeps its decision (who approved,
+ * when, and their note) and gets the note only if it has none.
+ */
+export function adminDeleteCancelPatch(request, adminId, now = new Date()) {
+  if (request.status === 'pending') {
+    return { status: 'cancelled', decided_by: adminId, decided_at: now.toISOString(), decision_note: ADMIN_DELETED_NOTE };
+  }
+  return { status: 'cancelled', ...(!request.decision_note && { decision_note: ADMIN_DELETED_NOTE }) };
+}
+
 async function getProjectOrThrow(id, columns = '*') {
   const data = unwrap(await adminClient.from('projects').select(columns).eq('id', id).maybeSingle());
   if (!data) throw notFound('Project not found');
@@ -235,6 +249,7 @@ export async function deleteProject(req, res) {
     await adminClient.from('pacc_cases').select('id, status').eq('project_id', project.id).in('status', OPEN_CASE_STATUSES).limit(1).maybeSingle(),
   );
 
+  let openRequests = [];
   if (approval) {
     // Single use: the status guard lets only one of two simultaneous deletes through.
     const used = unwrap(
@@ -248,26 +263,40 @@ export async function deleteProject(req, res) {
     );
     if (!used) throw forbidden(DELETE_NEEDS_APPROVAL_MESSAGE);
   } else {
-    // The Admin deleted directly: an open request on the project has nothing left to delete.
-    unwrap(
-      await adminClient
-        .from('project_deletion_requests')
-        .update({ status: 'cancelled', decided_by: req.user.id, decided_at: now.toISOString(), decision_note: 'The System Administrator deleted the project.' })
-        .eq('project_id', project.id)
-        .in('status', ['pending', 'approved']),
+    // The Admin deletes directly: open requests on the project are closed once the delete succeeds.
+    openRequests = unwrap(
+      await adminClient.from('project_deletion_requests').select('id, status, decision_note').eq('project_id', project.id).in('status', ['pending', 'approved']),
     );
   }
 
-  // PACC keeps its case (project_id becomes NULL); tell PACC who deleted the project, before it goes.
-  if (openCase) unwrap(await adminClient.from('pacc_activity').insert(paccDeletionEntry(project, req.user, openCase, now)));
+  try {
+    // PACC keeps its case (project_id becomes NULL); tell PACC who deleted the project, before it goes.
+    if (openCase) unwrap(await adminClient.from('pacc_activity').insert(paccDeletionEntry(project, req.user, openCase, now)));
+    unwrap(await adminClient.from('projects').delete().eq('id', project.id));
+  } catch (err) {
+    // Nothing was deleted: give the approval back so it can be used again.
+    if (approval) {
+      await adminClient.from('project_deletion_requests').update({ status: 'approved', used_at: null }).eq('id', approval.id).eq('status', 'used');
+    }
+    throw err;
+  }
 
-  unwrap(await adminClient.from('projects').delete().eq('id', project.id));
+  // project_id is now NULL on these rows, so they are updated by id.
+  for (const r of openRequests) {
+    const patch = adminDeleteCancelPatch(r, req.user.id, now);
+    const { error } = await adminClient.from('project_deletion_requests').update(patch).eq('id', r.id).eq('status', r.status);
+    if (error) console.error('[deletion-requests] could not close request', r.id, error.message);
+  }
+
   await logActivity(req, {
     action: 'project.delete',
     entityType: 'project',
     entityId: project.id,
     summary: `Deleted project ${project.project_code} — ${project.name}`,
-    details: approval ? { deletion_request_id: approval.id } : {},
+    details: {
+      ...(approval && { deletion_request_id: approval.id }),
+      ...(openRequests.length > 0 && { cancelled_deletion_request_ids: openRequests.map((r) => r.id) }),
+    },
   });
   res.status(204).end();
 }

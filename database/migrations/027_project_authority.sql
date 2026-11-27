@@ -26,6 +26,10 @@
 --                              It is appended to v_project_summary (CREATE OR REPLACE VIEW only
 --                              allows appending; security_invoker and grants are unchanged).
 --
+--   projects.updated_at        No longer moves when only a PACC status column changes (new
+--                              projects trigger function private.projects_set_updated_at()), so a
+--                              hidden case does not show in the public last-update time.
+--
 -- Access:
 --   * project_deletion_requests is readable by staff (private.is_staff()) through RLS. anon gets
 --     no grant at all. Writes go through the API (service role), as everywhere else.
@@ -93,6 +97,35 @@ alter table public.projects
 
 comment on column public.projects.pacc_case_status is
   'Status of the project''s non-closed PACC case, whether or not it is shown to the public, otherwise NULL. Shown to staff only (no anon grant); the public portal uses pacc_public_status. Kept by the trigger on pacc_cases; never written directly.';
+
+-- projects.updated_at is readable by anon (016 column grant, v_public_projects). Setting a PACC
+-- status column must not move it, or the public could tell that a hidden case was opened, changed
+-- or closed (and the backfill below would overwrite real last-edit times). The projects trigger
+-- (001: projects_updated_at, before update, public.set_updated_at()) is replaced by one that keeps
+-- updated_at when nothing but the PACC status columns changed. public_flag (021) is a stored
+-- generated column: it is not computed yet in a BEFORE trigger, and it only follows other columns,
+-- so it is left out of the comparison too. Other tables keep public.set_updated_at().
+create or replace function private.projects_set_updated_at()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if (to_jsonb(new) - array['updated_at', 'public_flag', 'pacc_case_status', 'pacc_public_status'])
+     = (to_jsonb(old) - array['updated_at', 'public_flag', 'pacc_case_status', 'pacc_public_status'])
+  then
+    new.updated_at := old.updated_at;
+  else
+    new.updated_at := now();
+  end if;
+  return new;
+end;
+$$;
+revoke all on function private.projects_set_updated_at() from public;
+
+drop trigger if exists projects_updated_at on public.projects;
+create trigger projects_updated_at before update on public.projects
+  for each row execute function private.projects_set_updated_at();
 
 -- 024's function, now setting both columns. Security definer: the trigger must update projects
 -- whoever writes the case. The trigger itself (024: after insert or delete or update of

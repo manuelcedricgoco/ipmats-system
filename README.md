@@ -84,7 +84,7 @@ PACC is the body that receives citizen reports about projects and decides what t
 - Rate-limit counters are held in memory, are keyed by a daily-rotating HMAC of the IP (an IPv6 address by its /64 prefix), reset on every restart or deploy, and count per Manila day.
 - Keep `DEBUG_PROXY` off in production: it logs client IPs.
 - Tracking codes are stored as an HMAC keyed from `SUPABASE_SERVICE_ROLE_KEY`. Rotating that key invalidates every existing tracking code.
-- Showing or hiding a case's status on the public portal changes `projects.updated_at`, so the project may move in lists sorted by last update. Nothing else changes.
+- Opening, changing, closing, showing or hiding a PACC case does not change `projects.updated_at` (migration 027): the projects trigger ignores updates that touch only the PACC status columns, so the public last-update time does not reveal a hidden case.
 - PACC's own activity log entry for opening a project with new reports ("… now under review") has an exact time, which narrows down when those reports arrived. Only PACC can read that log.
 
 ## Setup

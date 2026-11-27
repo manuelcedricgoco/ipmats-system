@@ -177,7 +177,7 @@ The infrastructure projects: the centre of the system.
 | created_by | uuid | yes | — | Who registered it |
 | updated_by | uuid | yes | — | Who changed it last |
 | created_at | timestamptz | no | now() | When it was registered |
-| updated_at | timestamptz | no | now() | Last change (trigger) |
+| updated_at | timestamptz | no | now() | Last change (trigger; a change to only the PACC status columns does not count, 027) |
 | overall_progress | numeric | no | 0 | Physical progress 0–100 % (weighted phase accomplishment) |
 | completion_status | completion_status | no | `'not_completed'` | Completed only when every completion requirement is met |
 | planned_progress | numeric | no | 0 | Where the schedule says the project should be today, 0–100 % |
@@ -605,7 +605,8 @@ These are `text` columns limited by a `CHECK` rule, not enum types.
 | `projects_assign_code` | before a project insert | Assigns the next Project ID for the year (Asia/Manila time) |
 | `projects_lock_code` | before a project update | Refuses any change to the Project ID |
 | `prevent_modification` | before update or delete on `flag_history`, `flag_reviews`, `activity_logs`, `pacc_case_notes`, `pacc_activity` | Makes them append-only (deletes allowed only through a cascade (project or case)) |
-| `set_updated_at` | before update on tables with `updated_at` | Sets `updated_at = now()` |
+| `set_updated_at` | before update on tables with `updated_at`, except `projects` | Sets `updated_at = now()` |
+| `private.projects_set_updated_at()` | before update on `projects` (trigger `projects_updated_at`, 027) | Sets `updated_at = now()`, unless only `pacc_case_status` / `pacc_public_status` changed (the generated `public_flag` is not compared); then `updated_at` is kept. anon can read `updated_at`, so a hidden PACC case must not move it |
 | `private.app_role()` | used by RLS | The caller's role, only if the account is active **and approved** |
 | `private.is_staff()` | used by RLS | True when `app_role()` is admin, DPWH personnel or auditor |
 | `private.is_pacc()` | used by RLS | True when `app_role()` is `pacc` (024). PACC is **not** staff |
@@ -709,4 +710,4 @@ Rules the project follows:
 | 024 | pacc_portal | `private.is_pacc()` / `can_investigate()`; tables `citizen_reports`, `citizen_report_files`, `pacc_cases` (one open case per project), `pacc_case_notes`, `pacc_case_documents`, `pacc_activity`, readable only by PACC (cases and reports keep the project code and name and survive a project delete); PACC read policies on project records; `projects.pacc_public_status` with an anon column grant, kept by a trigger and appended to `v_public_projects`; buckets `citizen-reports` and `pacc-case-documents` |
 | 025 | pacc_case_closes_reports | Trigger `pacc_cases_close_reports` (`private.close_pacc_case_reports()`): closing a case (resolved or dismissed) closes its attached open reports in the same transaction, outcome `valid` or `invalid` |
 | 026 | pacc_case_contractor_name | Adds `pacc_cases.contractor_name` (snapshot of the contractor's name, backfilled for existing cases), so deleting a contractor no longer erases a case's respondent |
-| 027 | project_authority | Table `project_deletion_requests` (one open request per project, staff read, API writes); `projects.pacc_case_status` (no anon grant, backfilled), kept by `private.sync_pacc_public_status()`, which now sets both PACC status columns; `pacc_case_status` appended to `v_project_summary` |
+| 027 | project_authority | Table `project_deletion_requests` (one open request per project, staff read, API writes); `projects.pacc_case_status` (no anon grant, backfilled), kept by `private.sync_pacc_public_status()`, which now sets both PACC status columns; `pacc_case_status` appended to `v_project_summary`; projects trigger `projects_updated_at` now uses `private.projects_set_updated_at()`, so a PACC status change alone does not move `projects.updated_at` |
