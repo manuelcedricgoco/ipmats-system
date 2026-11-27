@@ -217,6 +217,26 @@ export function caseDocumentFormat(buffer) {
   return null;
 }
 
+/** The contractor's name for the case's snapshot (null when no contractor is named). */
+export async function contractorNameFor(db, contractorId) {
+  if (!contractorId) return null;
+  const row = unwrap(await db.from('contractors').select('name').eq('id', contractorId).maybeSingle());
+  if (!row) throw badRequest('Contractor not found.');
+  return row.name;
+}
+
+/**
+ * A case row with its contractor's name: the current name from the contractor list, else the name kept on the
+ * case (migration 026) when an Admin has since deleted the contractor (contractor_removed: true).
+ */
+export function withContractor({ contractor, ...c }) {
+  return {
+    ...c,
+    contractor_name: contractor?.name ?? c.contractor_name ?? null,
+    contractor_removed: !contractor && !c.contractor_id && Boolean(c.contractor_name),
+  };
+}
+
 async function loadCase(caseId, columns = '*') {
   const cs = unwrap(await adminClient.from('pacc_cases').select(columns).eq('id', caseId).maybeSingle());
   if (!cs) throw notFound('Case not found.');
@@ -227,11 +247,11 @@ export async function listCases(req, res) {
   const rows = await allRows(() =>
     req.db
       .from('pacc_cases')
-      .select('id, project_id, project_code, project_name, status, show_public, created_at, closed_at, contractor:contractors(name)')
+      .select('id, project_id, project_code, project_name, status, show_public, created_at, closed_at, contractor_id, contractor_name, contractor:contractors(name)')
       .order('created_at', { ascending: false })
       .order('id'),
   );
-  res.json({ data: rows.map(({ contractor, ...c }) => ({ ...c, contractor_name: contractor?.name ?? null })) });
+  res.json({ data: rows.map(withContractor) });
 }
 
 export async function getCase(req, res) {
@@ -268,11 +288,10 @@ export async function getCase(req, res) {
       .then(unwrap),
   ]);
   const urls = await signedUrls(CASE_BUCKET, documents.map((d) => d.storage_path));
-  const { contractor, opener, ...rest } = cs;
+  const { opener, ...rest } = cs;
   res.json({
     data: {
-      ...rest,
-      contractor_name: contractor?.name ?? null,
+      ...withContractor(rest),
       opened_by_name: opener?.full_name ?? null,
       notes: notes.map(({ author, ...n }) => ({ ...n, author_name: author?.full_name ?? null })),
       documents: documents.map(({ uploader, ...d }) => ({ ...d, uploaded_by_name: uploader?.full_name ?? null, url: urls[d.storage_path] ?? null })),
@@ -297,6 +316,7 @@ export async function createCase(req, res) {
   const reportIds = [...new Set(req.body.report_ids ?? [])];
   const project = unwrap(await req.db.from('projects').select('id, project_code, name').eq('id', id).maybeSingle());
   if (!project) throw notFound('Project not found');
+  const contractor_name = await contractorNameFor(req.db, contractor_id);
 
   if (reportIds.length) {
     const found = await inChunks(reportIds, (chunk) => attachable(req.db.from('citizen_reports').select('id').in('id', chunk), id));
@@ -306,7 +326,7 @@ export async function createCase(req, res) {
   const cs = unwrap(
     await adminClient
       .from('pacc_cases')
-      .insert({ project_id: id, project_code: project.project_code, project_name: project.name, contractor_id, other_respondents, charges, status: 'under_investigation', opened_by: req.user.id })
+      .insert({ project_id: id, project_code: project.project_code, project_name: project.name, contractor_id, contractor_name, other_respondents, charges, status: 'under_investigation', opened_by: req.user.id })
       .select('*')
       .single(),
     { conflictMessage: OPEN_CASE_EXISTS, foreignKeyMessage: 'Contractor not found.' },
@@ -370,6 +390,9 @@ export async function updateCase(req, res) {
     if (isClosedCaseStatus(patch.status)) patch.closed_at = new Date().toISOString();
   }
   if (missingRespondent(cs, patch)) throw badRequest('Name at least one respondent.');
+  if (patch.contractor_id === cs.contractor_id) delete patch.contractor_id; // same contractor sent back: not a change
+  // A new contractor: keep its name on the case (cleared when the contractor is removed from the case).
+  if (patch.contractor_id !== undefined) patch.contractor_name = await contractorNameFor(adminClient, patch.contractor_id);
   if (!Object.keys(patch).length) return res.json({ data: cs });
 
   // Guarded by the status we read: of two concurrent changes, only the first applies.
@@ -388,7 +411,7 @@ export async function updateCase(req, res) {
     summary: closing
       ? `Closed the PACC case on ${cs.project_code} as ${patch.status}; attached open citizen reports are closed as ${outcomeForClosedCase(patch.status)}.`
       : `Updated the PACC case on ${cs.project_code}: ${describeCaseChanges(patch)}.`,
-    details: { changed: Object.keys(patch).filter((k) => k !== 'closed_at'), from_status: cs.status, to_status: patch.status ?? cs.status, ...(patch.show_public !== undefined && { show_public: patch.show_public }) },
+    details: { changed: Object.keys(patch).filter((k) => k !== 'closed_at' && k !== 'contractor_name'), from_status: cs.status, to_status: patch.status ?? cs.status, ...(patch.show_public !== undefined && { show_public: patch.show_public }) },
   });
   res.json({ data: rows[0] });
 }

@@ -486,7 +486,9 @@ abolished in 2022, so this is a modelled role.
 - **In the UI:** "Cases" (`/pacc/cases`) and a case page (`/pacc/cases/:caseId`).
 - **What it does:**
   - A case belongs to one project; a project has at most one case that is not closed. It records the
-    **respondents** (a contractor from the contractor list and/or officials named as free text), the **charges**,
+    **respondents** (a contractor from the contractor list and/or officials named as free text; the case keeps the
+    contractor's name, so it still shows, marked "removed from contractor list", if an Admin later deletes the
+    contractor; migration 026), the **charges**,
     the **status**, **notes** (append-only) and **documents** (PDF, JPEG, PNG or WebP, in the private
     `pacc-case-documents` bucket).
   - **Status:** Under investigation → Case filed → Resolved or Dismissed; Under investigation → Dismissed. Closing

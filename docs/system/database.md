@@ -2,7 +2,7 @@
 
 The database is PostgreSQL 17, hosted by Supabase (project **IPMATS**). This page was written from the live
 database on 22 November 2026, not only from the migration files, and updated on 25 November 2026 for migrations
-019 and 020. The PACC parts (migrations 023, 024 and 025, applied 27 November 2026) are written from the migration files.
+019 and 020. The PACC parts (migrations 023, 024 and 025, applied 27 November 2026, and 026) are written from the migration files.
 Where the two differ, the live schema wins.
 
 - What each table is used for in the app: [features.md](features.md)
@@ -419,7 +419,8 @@ delete: `project_id` becomes empty and the project code and name stay.
 | project_id | uuid | yes | — | Project under investigation; empty once the project is deleted |
 | project_code | text | no | — | Project ID when the case was opened (snapshot taken by the API) |
 | project_name | text | no | — | Project title when the case was opened (snapshot) |
-| contractor_id | uuid | yes | — | Contractor named as respondent |
+| contractor_id | uuid | yes | — | Contractor named as respondent; empty once the contractor is deleted |
+| contractor_name | text | yes | — | Contractor's name, up to 300 characters (snapshot set by the API when the case is opened or its contractor changed; kept when the contractor is deleted; 026) |
 | other_respondents | text | yes | — | Officials or others named as respondents, up to 1000 characters |
 | charges | text | no | — | Charges / allegations, 10–4000 characters |
 | status | text | no | `'under_investigation'` | `under_investigation`, `case_filed`, `resolved` or `dismissed` |
@@ -515,7 +516,7 @@ Both views use `security_invoker`, so the reader's own permissions (RLS) apply.
 | citizen_reports.case_id | pacc_cases | set null | The case a report is attached to |
 | citizen_report_files.report_id | citizen_reports | cascade | Proof belongs to one report |
 | pacc_cases.project_id | projects | set null | The case stays (with the project code and name) when the project is deleted |
-| pacc_cases.contractor_id | contractors | set null | Contractor named as respondent |
+| pacc_cases.contractor_id | contractors | set null | Contractor named as respondent (the case keeps `contractor_name`) |
 | pacc_case_notes.case_id, pacc_case_documents.case_id | pacc_cases | cascade | Notes and documents belong to one case |
 | pacc_activity.project_id | projects | set null | The log entry stays when the project is deleted |
 | pacc_case_notes.author_id | profiles | restrict | A PACC member with notes cannot be deleted |
@@ -636,12 +637,13 @@ write files. It hands out signed links that expire (1 hour by default, `SIGNED_U
 
 ## Migrations
 
-The migration files are in `database/migrations/`. They are numbered and run in number order, `001` to `025`.
+The migration files are in `database/migrations/`. They are numbered and run in number order, `001` to `026`.
 The live database's migration history lists 001–025 as applied, in that order (019 and 020 on 25 November
 2026; 021 and 022 on 27 November 2026, each before the matching API was deployed; 023, 024 and 025 on 27 November
 2026 for the PACC portal). On a fresh database, 023 must be applied on its own before 024, because a new enum value
 must be committed before it can be used, and 025 must be applied after 024 and before the API that closes cases is
-deployed.
+deployed. 026 is new: apply it after 025 and before deploying the API that writes `pacc_cases.contractor_name`
+(without it, opening or editing a case fails).
 
 Rules the project follows:
 - An applied migration is never edited or deleted. A mistake is undone by a new migration (013 → 014, 006 → 016).
@@ -675,3 +677,4 @@ Rules the project follows:
 | 023 | pacc_role | Adds `pacc` to `user_role` (only that, so it is committed before 024 uses it) |
 | 024 | pacc_portal | `private.is_pacc()` / `can_investigate()`; tables `citizen_reports`, `citizen_report_files`, `pacc_cases` (one open case per project), `pacc_case_notes`, `pacc_case_documents`, `pacc_activity`, readable only by PACC (cases and reports keep the project code and name and survive a project delete); PACC read policies on project records; `projects.pacc_public_status` with an anon column grant, kept by a trigger and appended to `v_public_projects`; buckets `citizen-reports` and `pacc-case-documents` |
 | 025 | pacc_case_closes_reports | Trigger `pacc_cases_close_reports` (`private.close_pacc_case_reports()`): closing a case (resolved or dismissed) closes its attached open reports in the same transaction, outcome `valid` or `invalid` |
+| 026 | pacc_case_contractor_name | Adds `pacc_cases.contractor_name` (snapshot of the contractor's name, backfilled for existing cases), so deleting a contractor no longer erases a case's respondent |

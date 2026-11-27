@@ -2,6 +2,7 @@ import { ArrowLeft, CheckCircle2, Download, FileText, Gavel, Image as ImageIcon,
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Pill } from '../../components/common/Badges.jsx';
+import ContractorName from '../../components/pacc/ContractorName.jsx';
 import Button from '../../components/common/Button.jsx';
 import { Card, CardBody, CardHeader, DetailList, PageHeader } from '../../components/common/Card.jsx';
 import ConfirmDialog from '../../components/common/ConfirmDialog.jsx';
@@ -113,7 +114,7 @@ export default function PaccCasePage() {
             <CardBody>
               <DetailList
                 items={[
-                  ['Contractor', cs.contractor_name || 'None named'],
+                  ['Contractor', cs.contractor_name ? <ContractorName key="k" name={cs.contractor_name} removed={cs.contractor_removed} /> : 'None named'],
                   ['Other respondents', cs.other_respondents ? <span className="whitespace-pre-line">{cs.other_respondents}</span> : 'None named'],
                   ['Charges / allegations', <span key="c" className="whitespace-pre-line break-words">{cs.charges}</span>],
                   ['Project', cs.project_id ? <Link key="p" to={`/pacc/projects/${cs.project_id}`} className="font-semibold text-brand-700 hover:underline">Open the investigation page</Link> : 'The project was deleted.'],

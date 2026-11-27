@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { before, describe, it } from 'node:test';
 import request from 'supertest';
-import { caseDocumentFormat, missingRespondent, outcomeForClosedCase } from '../controllers/paccController.js';
+import { caseDocumentFormat, contractorNameFor, missingRespondent, outcomeForClosedCase, withContractor } from '../controllers/paccController.js';
 import { caseCreate, caseDocumentUpload, caseNote, caseUpdate } from '../routes/schemas.js';
 import { unwrap } from '../utils/httpError.js';
 
@@ -123,5 +123,50 @@ describe('unwrap custom messages', () => {
     });
     assert.throws(() => unwrap({ data: null, error: { code: '23503' } }, { foreignKeyMessage: 'Contractor not found.' }), { status: 400, message: 'Contractor not found.' });
     assert.throws(() => unwrap({ data: null, error: { code: '23505' } }), { status: 409, message: 'A record with the same unique value already exists.' });
+  });
+});
+
+describe('the contractor name kept on a case', () => {
+  const stubDb = (row) => ({
+    from: (table) => {
+      assert.equal(table, 'contractors');
+      return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: row, error: null }) }) }) };
+    },
+  });
+  it('is read from the contractor row', async () => {
+    assert.equal(await contractorNameFor(stubDb({ name: 'ABC Builders' }), ID), 'ABC Builders');
+  });
+  it('is null when no contractor is named', async () => {
+    assert.equal(await contractorNameFor(stubDb(null), null), null);
+  });
+  it('refuses an unknown contractor', async () => {
+    await assert.rejects(contractorNameFor(stubDb(null), ID), (e) => e.status === 400 && e.message === 'Contractor not found.');
+  });
+  it('falls back to the snapshot once the contractor is deleted', () => {
+    assert.deepEqual(withContractor({ id: 'c1', contractor_id: ID, contractor_name: 'Old Name', contractor: { name: 'New Name' } }), {
+      id: 'c1',
+      contractor_id: ID,
+      contractor_name: 'New Name',
+      contractor_removed: false,
+    });
+    assert.deepEqual(withContractor({ id: 'c1', contractor_id: null, contractor_name: 'ABC Builders', contractor: null }), {
+      id: 'c1',
+      contractor_id: null,
+      contractor_name: 'ABC Builders',
+      contractor_removed: true,
+    });
+    assert.deepEqual(withContractor({ id: 'c1', contractor_id: null, contractor_name: null, contractor: null }), {
+      id: 'c1',
+      contractor_id: null,
+      contractor_name: null,
+      contractor_removed: false,
+    });
+  });
+  it('migration 026 adds and backfills the column', () => {
+    const sql = readFileSync(new URL('../../../database/migrations/026_pacc_case_contractor_name.sql', import.meta.url), 'utf8');
+    assert.match(sql, /add column if not exists contractor_name text check \(char_length\(contractor_name\) <= 300\)/);
+    assert.match(sql, /set contractor_name = k\.name/);
+    assert.match(sql, /and c\.contractor_name is null/);
+    assert.match(sql, /comment on column public\.pacc_cases\.contractor_name/);
   });
 });

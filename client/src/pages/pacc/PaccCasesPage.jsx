@@ -2,6 +2,7 @@ import { ChevronRight, Eye, FolderSearch } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Pill } from '../../components/common/Badges.jsx';
+import ContractorName from '../../components/pacc/ContractorName.jsx';
 import { Card, PageHeader } from '../../components/common/Card.jsx';
 import { EmptyState, ErrorState, PageLoader } from '../../components/common/Feedback.jsx';
 import { Select } from '../../components/common/Form.jsx';
@@ -72,7 +73,7 @@ export default function PaccCasesPage() {
                         </Link>
                         {!c.project_id && <span className="block text-xs text-slate-500">The project was deleted.</span>}
                       </td>
-                      <td className="px-4 py-3">{c.contractor_name || <span className="text-xs text-slate-400">None named</span>}</td>
+                      <td className="px-4 py-3">{c.contractor_name ? <ContractorName name={c.contractor_name} removed={c.contractor_removed} /> : <span className="text-xs text-slate-400">None named</span>}</td>
                       <td className="px-4 py-3">
                         <div className="flex flex-wrap items-center gap-1">
                           <Pill className={CASE_STATUS_META[c.status]?.cls}>{CASE_STATUS_META[c.status]?.label || c.status}</Pill>
