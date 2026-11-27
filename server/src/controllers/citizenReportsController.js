@@ -2,7 +2,8 @@
  * PUBLIC citizen reports (routes/public.js). Anonymous by design: this file never looks at who is
  * calling (no account, address or headers), never writes the activity log and never logs a request.
  *   POST /api/public/projects/:id/reports  report a problem with 1-3 photos -> a tracking code
- *   GET  /api/public/reports/:code         status label and date for that code
+ *   POST /api/public/reports/status        { code } -> status label and date for that code (the code is in the
+ *                                          body, never in the URL, so it is not in any request log)
  * The tracking code is stored only as a keyed hash; the code itself is shown once and never logged.
  */
 import crypto from 'node:crypto';
@@ -35,11 +36,11 @@ export function requireProof(req, _res, next) {
   }
 }
 
-/** 400 with a plain message for a malformed code; stores the normalized code on req.params. */
+/** 400 with a plain message for a missing or malformed code; replaces the body with the normalized code. */
 export function validateTrackingCode(req, _res, next) {
-  const result = s.trackingCodeParam.safeParse({ code: req.params.code });
+  const result = s.trackingCodeParam.safeParse({ code: req.body?.code });
   if (!result.success) return next(badRequest('Enter the 10-character tracking code.'));
-  req.params.code = result.data.code;
+  req.body = { code: result.data.code };
   return next();
 }
 
@@ -93,11 +94,11 @@ export async function submitReport(req, res) {
 }
 
 export async function reportStatus(req, res) {
-  const hash = hashTrackingCode(req.params.code, env.supabaseServiceKey);
+  res.set('Cache-Control', 'no-store'); // also on the 404 and 503 below
+  const hash = hashTrackingCode(req.body.code, env.supabaseServiceKey);
   const { data, error } = await adminClient.from('citizen_reports').select('status, submitted_on').eq('tracking_hash', hash).maybeSingle();
-  // A plain 503 (not a 500) so the error handler never logs this request's URL, which holds the code.
+  // A plain 503 (not a 500): the error handler logs nothing about this request.
   if (error) throw new HttpError(503, 'We could not check this report right now. Please try again later.');
   if (!data) throw notFound('Report not found.');
-  res.set('Cache-Control', 'no-store');
   res.json({ data: { status: reporterStatusLabel(data.status), submitted_on: data.submitted_on } });
 }

@@ -140,7 +140,9 @@ Anyone can also report a problem on a project to PACC, anonymously and with phot
   At most 20 checks per hour per connection, failed ones included (HTTP 429 "Too many checks. Please try again
   later.").
 - **Touches:** `pages/public/CheckReportPage.jsx`, `lib/pacc.js` (`formatTrackingCodeInput`);
-  `GET /public/reports/:code`; `citizen_reports` (looked up by the code's hash).
+  `POST /public/reports/status` with the JSON body `{ "code": "…" }` (the code is never in the URL, because hosting
+  providers log request paths next to the IP; the answer is never cached); `citizen_reports` (looked up by the
+  code's hash).
 
 ### Sign in, Register and Awaiting approval
 - **In the UI:** "Sign in" (top right), the Register page (`/register`), the Awaiting approval page

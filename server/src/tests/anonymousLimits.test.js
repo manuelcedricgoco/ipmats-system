@@ -82,3 +82,24 @@ test('failed tracking lookups still count against the limit', async () => {
   for (let i = 0; i < 20; i += 1) await request(app).get('/g').set('X-Forwarded-For', ip).expect(404);
   await request(app).get('/g').set('X-Forwarded-For', ip).expect(429);
 });
+
+test('IPv6 addresses in the same /64 share a key; different /64s do not', () => {
+  const now = new Date();
+  const key = (ip) => anonKey({ ip }, now);
+  assert.equal(key('2001:db8:1:2::1'), key('2001:db8:1:2:ffff:abcd:1234:5678'));
+  assert.equal(key('2001:0db8:0001:0002:0000:0000:0000:0001'), key('2001:db8:1:2::9'));
+  assert.notEqual(key('2001:db8:1:2::1'), key('2001:db8:1:3::1'));
+  assert.notEqual(key('2001:db8:1:2::1'), key('2001:db8:2:2::1'));
+});
+
+test('IPv4 is keyed by the full address, also when IPv4-mapped', async () => {
+  const { limiterAddress } = await import('../middleware/anonymousLimits.js');
+  const now = new Date();
+  assert.equal(limiterAddress('203.0.113.9'), '203.0.113.9');
+  assert.equal(limiterAddress('::ffff:203.0.113.9'), '203.0.113.9');
+  assert.equal(anonKey({ ip: '::ffff:203.0.113.9' }, now), anonKey({ ip: '203.0.113.9' }, now));
+  assert.notEqual(anonKey({ ip: '203.0.113.9' }, now), anonKey({ ip: '203.0.113.10' }, now));
+  assert.equal(limiterAddress('2001:db8:1:2::1'), '2001:db8:1:2::/64');
+  assert.equal(limiterAddress('::1'), '0:0:0:0::/64');
+  assert.equal(limiterAddress(undefined), 'unknown');
+});

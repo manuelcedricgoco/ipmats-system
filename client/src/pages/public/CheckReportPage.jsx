@@ -18,7 +18,7 @@ const STATUS_HELP = {
 /**
  * PUBLIC PORTAL — "Check a report" (/report-status). The visitor types the tracking code they got after
  * reporting a problem and sees only the status and the date it was sent. The request carries no sign-in token
- * (`anonymous: true`) and the code is not kept anywhere in the browser.
+ * (`anonymous: true`), the code is sent in the request body (never in the URL) and it is not kept anywhere in the browser.
  */
 export default function CheckReportPage() {
   const [code, setCode] = useState('');
@@ -33,7 +33,8 @@ export default function CheckReportPage() {
     setChecking(true);
     setErr(null);
     try {
-      const res = await api.get(`/public/reports/${encodeURIComponent(code)}`, { anonymous: true });
+      // The code goes in the body, never in the URL: request paths are kept in hosting logs.
+      const res = await api.post('/public/reports/status', { code }, { anonymous: true });
       setResult(res.data);
     } catch (e2) {
       setErr(e2);

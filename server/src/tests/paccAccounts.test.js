@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { before, describe, it } from 'node:test';
 import request from 'supertest';
 import { canReadContractors } from '../controllers/referenceController.js';
-import { assertNotPaccAccount } from '../controllers/usersController.js';
+import { assertNotPaccAccount, logOwnAccountUpdate } from '../controllers/usersController.js';
 import { suspendedMessage } from '../middleware/auth.js';
 import { paccMemberCreate, userApprove, userCreate, userUpdate } from '../routes/schemas.js';
 
@@ -72,5 +72,24 @@ describe('PACC members', () => {
     assert.equal(paccMemberCreate.safeParse({ ...ok, position: 'Investigator' }).success, true);
     assert.equal(paccMemberCreate.safeParse({ ...ok, password: '1234567' }).success, false);
     assert.equal(paccMemberCreate.safeParse({ ...ok, full_name: 'A' }).success, false);
+  });
+});
+
+describe('a member editing their own account', () => {
+  const loggers = () => {
+    const calls = { staff: [], pacc: [] };
+    return { calls, logActivity: async (_req, e) => calls.staff.push(e), logPacc: async (_req, e) => calls.pacc.push(e) };
+  };
+  it('a PACC member is logged only in the PACC activity trail', async () => {
+    const l = loggers();
+    await logOwnAccountUpdate({ user: { id: 'u1', role: 'pacc' } }, l);
+    assert.equal(l.calls.staff.length, 0);
+    assert.deepEqual(l.calls.pacc, [{ action: 'member.update_self', entityType: 'member', entityId: 'u1', summary: 'Updated own account details' }]);
+  });
+  it('staff are logged in the staff activity log as before', async () => {
+    const l = loggers();
+    await logOwnAccountUpdate({ user: { id: 'u2', role: 'auditor' } }, l);
+    assert.equal(l.calls.pacc.length, 0);
+    assert.deepEqual(l.calls.staff, [{ action: 'account.update', entityType: 'user', entityId: 'u2', summary: 'Updated own name / position' }]);
   });
 });

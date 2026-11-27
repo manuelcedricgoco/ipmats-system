@@ -79,7 +79,7 @@ PACC is the body that receives citizen reports about projects and decides what t
 ### Known limits of the anonymous reports
 
 - IPMATS stores no reporter IP, user agent, account or exact time, but hosting providers (Render, Vercel, Supabase) keep their own request logs with IPs, and Supabase Storage keeps an exact `created_at` for every file. IPMATS cannot control these, and nothing in IPMATS links them to a report.
-- Rate-limit counters are held in memory, are keyed by a daily-rotating HMAC of the IP, reset on every restart or deploy, and count per Manila day.
+- Rate-limit counters are held in memory, are keyed by a daily-rotating HMAC of the IP (an IPv6 address by its /64 prefix), reset on every restart or deploy, and count per Manila day.
 - Keep `DEBUG_PROXY` off in production: it logs client IPs.
 - Tracking codes are stored as an HMAC keyed from `SUPABASE_SERVICE_ROLE_KEY`. Rotating that key invalidates every existing tracking code.
 

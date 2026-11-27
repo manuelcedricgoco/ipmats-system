@@ -20,6 +20,8 @@ before(async () => {
   app = createApp();
 });
 
+// The tracking code goes in the JSON body, never in the URL (request paths end up in hosting logs next to the IP).
+const checkStatus = (code) => request(app).post('/api/public/reports/status').set('X-Forwarded-For', ip()).send(code === undefined ? {} : { code });
 const post = () => request(app).post(`/api/public/projects/${PROJECT}/reports`).set('X-Forwarded-For', ip());
 
 describe('public citizen reports', () => {
@@ -48,24 +50,59 @@ describe('public citizen reports', () => {
   it('sign-in never runs on the report routes', async () => {
     const res = await post().set('Authorization', 'Bearer garbage').field('category', 'x').field('description', DESC).attach('proof', PNG, { filename: 'a.png', contentType: 'image/png' });
     assert.equal(res.status, 400);
-    const lookup = await request(app).get('/api/public/reports/abc').set('X-Forwarded-For', ip()).set('Authorization', 'Bearer garbage');
+    const lookup = await checkStatus('abc').set('Authorization', 'Bearer garbage');
     assert.equal(lookup.status, 400);
   });
   it('a photo with valid magic bytes but a corrupt body is a 400, not a crash', async () => {
     // Unit level: requireWriteAccess (503 without a service key) sits before the strip step in the route.
     await assert.rejects(cleanProof(PNG), (e) => e.status === 400 && e.message === 'The file is not a JPEG, PNG or WebP image.');
   });
-  it('the tracking lookup rejects malformed codes', async () => {
-    const res = await request(app).get('/api/public/reports/abc').set('X-Forwarded-For', ip());
-    assert.equal(res.status, 400);
-    assert.equal(res.body.error.message, 'Enter the 10-character tracking code.');
+  it('the tracking lookup rejects malformed or missing codes', async () => {
+    for (const code of ['abc', undefined, 12345]) {
+      const res = await checkStatus(code);
+      assert.equal(res.status, 400);
+      assert.equal(res.body.error.message, 'Enter the 10-character tracking code.');
+      assert.equal(res.headers['cache-control'], 'no-store');
+    }
   });
   it('a well-formed code needs the service key (503 when read-only)', async () => {
-    const res = await request(app).get('/api/public/reports/abcde23456').set('X-Forwarded-For', ip());
+    const res = await checkStatus('abcde-23456');
     assert.equal(res.status, 503);
+    assert.equal(res.headers['cache-control'], 'no-store');
+  });
+  it('the old lookup with the code in the URL is gone', async () => {
+    const res = await request(app).get('/api/public/reports/abcde23456').set('X-Forwarded-For', ip());
+    assert.equal(res.status, 404);
   });
   it('public report routes never write the activity log', () => {
     const src = readFileSync(new URL('../controllers/citizenReportsController.js', import.meta.url), 'utf8');
     for (const banned of ['logActivity', 'req.user', 'req.ip', 'req.headers', 'req.get(', 'console.']) assert.ok(!src.includes(banned), banned);
+  });
+});
+
+describe('the error log', () => {
+  it('a 500 logs the route pattern, never the concrete path', async () => {
+    const express = (await import('express')).default;
+    const { errorHandler } = await import('../middleware/errorHandler.js');
+    const inner = express.Router();
+    inner.get('/items/:secret', () => {
+      throw new Error('boom');
+    });
+    const mini = express();
+    mini.use('/api/x', inner);
+    mini.use(errorHandler);
+    const logged = [];
+    const original = console.error;
+    console.error = (...a) => logged.push(a.map(String).join(' '));
+    try {
+      const res = await request(mini).get('/api/x/items/K7Q4M2XDPA?q=1');
+      assert.equal(res.status, 500);
+    } finally {
+      console.error = original;
+    }
+    assert.equal(logged.length, 1);
+    assert.match(logged[0], /^\[error\] GET (\/api\/x)?\/items\/:secret /);
+    assert.ok(!logged[0].includes('K7Q4M2XDPA'));
+    assert.ok(!logged[0].includes('q=1'));
   });
 });

@@ -1,5 +1,6 @@
 import { adminClient } from '../config/supabase.js';
 import { logActivity } from '../services/activityLog.js';
+import { logPacc } from '../services/paccActivity.js';
 import { HttpError, badRequest, conflict, forbidden, notFound, unwrap } from '../utils/httpError.js';
 import { avatarUrl, removeAvatarFile, setAvatar, uploadAvatar } from '../services/avatars.js';
 import { pagination } from '../utils/pagination.js';
@@ -30,9 +31,17 @@ export async function deleteMyAvatar(req, res) {
   res.json({ data: { avatar_url: null } });
 }
 
+/** A PACC member's own edit goes to the PACC trail only: PACC actions never reach the staff activity_logs. */
+export function logOwnAccountUpdate(req, loggers = { logActivity, logPacc }) {
+  if (req.user.role === 'pacc') {
+    return loggers.logPacc(req, { action: 'member.update_self', entityType: 'member', entityId: req.user.id, summary: 'Updated own account details' });
+  }
+  return loggers.logActivity(req, { action: 'account.update', entityType: 'user', entityId: req.user.id, summary: 'Updated own name / position' });
+}
+
 export async function updateMe(req, res) {
   const row = unwrap(await adminClient.from('profiles').update({ full_name: req.body.full_name, position: req.body.position }).eq('id', req.user.id).select('*').single());
-  await logActivity(req, { action: 'account.update', entityType: 'user', entityId: req.user.id, summary: 'Updated own name / position' });
+  await logOwnAccountUpdate(req);
   res.json({ data: row });
 }
 

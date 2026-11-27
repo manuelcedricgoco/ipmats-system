@@ -98,14 +98,15 @@ Other limits enforced by the API:
   | 30 per 10 minutes | report downloads (`/reports/*`) | signed-in account |
   | 3 per day | anonymous citizen reports (`POST /public/projects/:id/reports`); failed attempts don't count | connection: an anonymous key, not the account† |
   | 1 per project per day | the same citizen reports, per project; failed attempts don't count | connection and project† |
-  | 20 per hour | report status checks (`GET /public/reports/:code`); failed checks count too | connection† |
+  | 20 per hour | report status checks (`POST /public/reports/status`, code in the body); failed checks count too | connection† |
 
   The IP address is only correct when `TRUST_PROXY` matches the number of proxies in front of the API (see the
   root README, "Upgrading to this version").
 
   † The citizen-report limits have their own messages: "Too many reports from this connection today. Please try
   again tomorrow." and "Too many checks. Please try again later." They are counted per **anonymous key**: an HMAC
-  of the IP address under a random secret that exists only in the server's memory and changes every day (Asia/Manila).
+  of the IP address (an IPv6 address by its /64 prefix, since one home or phone usually gets a whole /64) under a
+  random secret that exists only in the server's memory and changes every day (Asia/Manila).
   The key ignores sign-in, so a signed-in visitor is counted like anyone else. The IP and the key are never stored or
   logged; the counters reset at every restart or deploy (`middleware/anonymousLimits.js`).
 
@@ -183,7 +184,7 @@ These only decide what is shown. Anyone can change the code running in their own
   as uploading a profile photo.
 - `requireWriteAccess` refuses writes when the server has no service-role key (503).
 - Every `/api/pacc` route uses `requireRole('pacc')`. The Admin is **not** added to these guards.
-- The two anonymous citizen-report routes (`POST /public/projects/:id/reports`, `GET /public/reports/:code`) are
+- The two anonymous citizen-report routes (`POST /public/projects/:id/reports`, `POST /public/reports/status`) are
   mounted before sign-in is checked, so they never read a session, and they write nothing to any log.
 - Rate limiters (`middleware/rateLimits.js`) refuse too many requests (429); see the table under
   "Other limits enforced by the API" above.
