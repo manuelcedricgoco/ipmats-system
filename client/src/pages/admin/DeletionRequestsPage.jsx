@@ -85,6 +85,7 @@ export default function DeletionRequestsPage() {
                     busy={rows.isBusy(r.id)}
                     onApprove={() => setDeciding({ request: r, decision: 'approve' })}
                     onReject={() => setDeciding({ request: r, decision: 'decline' })}
+                    rejectLabel="Decline"
                     className="shrink-0"
                   />
                 )}
@@ -110,10 +111,14 @@ function StatusPill({ request }) {
 function Decision({ request: r }) {
   if (!r.decided_at && !r.decision_note) return null;
   const by = r.decided_by_name || 'the System Administrator';
-  const verb = { approved: 'Approved', declined: 'Declined', used: 'Approved', expired: 'Approved', cancelled: 'Closed' }[r.status] || 'Decided';
+  // A request closed because the Admin deleted the project keeps its approval (if any) and gets a note; a pending one
+  // closed that way has only the note. A request the requester cancelled has neither.
+  const approvedThenClosed = r.status === 'cancelled' && Boolean(r.approval_expires_at);
+  const verb = { approved: 'Approved', declined: 'Declined', used: 'Approved', expired: 'Approved' }[r.status];
   return (
     <div className="rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-600">
-      {r.decided_at && <p>{verb} by {by} · {dateTime(r.decided_at)}</p>}
+      {r.decided_at && verb && <p>{verb} by {by} · {dateTime(r.decided_at)}</p>}
+      {r.decided_at && approvedThenClosed && <p>Approved by {by} on {date(r.decided_at)}; closed when the project was deleted.</p>}
       {r.status === 'approved' && !r.expired && r.approval_expires_at && <p>Valid until {dateTime(r.approval_expires_at)}, for {r.requested_by_name || 'the requester'} only, once.</p>}
       {r.status === 'used' && r.used_at && <p>Used on {date(r.used_at)}: the project was deleted.</p>}
       {r.decision_note && <p className="mt-1 whitespace-pre-line break-words text-slate-700">Note: {r.decision_note}</p>}

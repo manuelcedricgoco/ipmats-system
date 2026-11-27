@@ -41,7 +41,13 @@ export default function DeleteProjectControls({ project, request, requestLoaded 
   const canAsk = ['none', 'expired', 'declined'].includes(state);
 
   const remove = async () => {
-    await api.del(`/projects/${project.id}`);
+    try {
+      await api.del(`/projects/${project.id}`);
+    } catch (err) {
+      // e.g. the approval expired meanwhile (403): reload the request so the buttons match; the dialog shows the error.
+      if (!isAdmin) onChanged();
+      throw err;
+    }
     toast.success(`Project ${project.project_code} deleted.`);
     navigate('/app/projects', { replace: true });
   };

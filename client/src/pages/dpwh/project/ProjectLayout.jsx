@@ -30,7 +30,8 @@ export default function ProjectLayout() {
   const canDelete = hasRole('admin');
   const { data: p, loading, error, reload } = useApi(`/projects/${id}`, undefined, { select: (r) => r.data });
   // The project's latest deletion request: Personnel ask / cancel / use an approval; the Admin sees a pending one.
-  const deletion = useApi(`/projects/${id}/deletion-request`, undefined, { enabled: canEdit || canDelete, select: (r) => r.data });
+  // Wrapped, so `null` means "not loaded yet" and a project with no request still reads as loaded.
+  const deletion = useApi(`/projects/${id}/deletion-request`, undefined, { enabled: canEdit || canDelete, select: (r) => ({ request: r.data }) });
   const tabsRef = useRef(null);
   const { pathname } = useLocation();
   useEffect(() => {
@@ -55,7 +56,7 @@ export default function ProjectLayout() {
           actions={
             <>
               {canEdit && <Button icon={Pencil} to={`/app/projects/${id}/edit`}>Edit</Button>}
-              <DeleteProjectControls project={p} request={deletion.data} requestLoaded={!deletion.loading} onChanged={deletion.reload} />
+              <DeleteProjectControls project={p} request={deletion.data?.request} requestLoaded={!(deletion.loading && !deletion.data)} onChanged={deletion.reload} />
             </>
           }
         />
@@ -68,7 +69,7 @@ export default function ProjectLayout() {
         {!canEdit && !canDelete && <Pill className="bg-slate-800 text-white">Read-only</Pill>}
         <ProgressBar value={p.overall_progress} size="sm" className="w-full max-w-[12rem]" />
       </div>
-      <DeletionRequestNotice request={deletion.data} />
+      <DeletionRequestNotice request={deletion.data?.request} />
 
       {/* On phones the five tabs scroll sideways: the fade on the right shows there is more, and the open tab is scrolled into view. */}
       <div className="relative mb-6">

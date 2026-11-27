@@ -311,8 +311,8 @@ Sidebar items appear only for the roles that can use them. "All staff" = Admin, 
     (Personnel only), and they are sent automatically when the connection returns.
 - **Touches:**
   - Pages and components: `project/ImagesTab.jsx`, `components/common/OfflineUploads.jsx`, `lib/offlineUploads.js`.
-  - API: `GET/POST /projects/:id/images`, `PATCH /projects/:id/images/:imageId`, `PATCH …/public`,
-    `DELETE /projects/:id/images/:imageId`.
+  - API: `GET/POST /projects/:id/images`, `PATCH /projects/:id/images/:imageId`,
+    `DELETE /projects/:id/images/:imageId`. Photos are public as soon as they are uploaded (no approval route).
   - Data: `site_images`, bucket `panoramas`.
 
 ### Documents (project tab)
