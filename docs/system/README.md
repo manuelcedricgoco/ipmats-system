@@ -1,6 +1,6 @@
 # IPMATS system documentation
 
-IPMATS (shown in the app as **DPWH 360°**) is the Infrastructure Project Monitoring and Transparency System for
+IPMATS (shown in the app as **InfraWatch PH**) is the Infrastructure Project Monitoring and Transparency System for
 DPWH projects in Occidental Mindoro. Staff keep project records, progress, payments and 360° site photos up to
 date. The system flags delays and discrepancies automatically, and auditors review the flags. The public can
 browse every project without an account.

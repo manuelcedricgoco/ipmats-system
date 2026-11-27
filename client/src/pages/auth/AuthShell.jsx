@@ -6,7 +6,7 @@ export default function AuthShell({ title, subtitle, children, wide = false }) {
   return (
     <div className="grid grid-cols-1 min-h-screen lg:grid-cols-2">
       <div className="relative hidden overflow-hidden bg-brand-950 lg:flex lg:flex-col">
-        {/* DPWH seal over an aerial view, shown at its natural proportions (sharp) and fading into navy */}
+        {/* InfraWatch PH logo over an aerial view, shown at its natural proportions (sharp) and fading into navy */}
         <div className="relative overflow-hidden">
           <img
             src="/auth-bg.webp"

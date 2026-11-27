@@ -1,5 +1,5 @@
 /**
- * Thin fetch wrapper for the DPWH 360° API. Attaches the current Supabase
+ * Thin fetch wrapper for the InfraWatch PH API. Attaches the current Supabase
  * session token and normalises errors into ApiError.
  */
 import { isSuspensionError } from './constants.js';
