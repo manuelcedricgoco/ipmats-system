@@ -5,6 +5,7 @@ export const ROLES = Object.freeze({
   ADMIN: 'admin',
   PERSONNEL: 'dpwh_personnel',
   AUDITOR: 'auditor',
+  PACC: 'pacc',
 });
 export const STAFF = [ROLES.ADMIN, ROLES.PERSONNEL, ROLES.AUDITOR];
 

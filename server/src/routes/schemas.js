@@ -262,3 +262,6 @@ export const citizenReport = z.object({
 export const trackingCodeParam = z.object({
   code: z.string().transform((v) => normalizeTrackingCode(v)).refine((v) => v !== null, 'Enter the 10-character tracking code.'),
 });
+
+// PACC: close a citizen report (or every open report of a project) with an outcome.
+export const reportClose = z.object({ outcome: z.enum(['valid', 'invalid', 'duplicate'], { message: 'Choose an outcome: valid, invalid or duplicate.' }) });
