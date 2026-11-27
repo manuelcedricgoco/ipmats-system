@@ -348,6 +348,17 @@ function describeCaseChanges(patch) {
   return parts.join(', ');
 }
 
+/**
+ * True when a case update would leave the case without a respondent. Checked only when the patch edits the
+ * respondents: a case whose only contractor was deleted later (FK SET NULL) can still be closed or toggled.
+ */
+export function missingRespondent(current, patch) {
+  if (patch.contractor_id === undefined && patch.other_respondents === undefined) return false;
+  const contractorId = patch.contractor_id !== undefined ? patch.contractor_id : current.contractor_id;
+  const others = patch.other_respondents !== undefined ? patch.other_respondents : current.other_respondents;
+  return !contractorId && !others;
+}
+
 export async function updateCase(req, res) {
   const cs = await loadCase(req.params.caseId);
   if (isClosedCaseStatus(cs.status)) throw badRequest(CASE_CLOSED);
@@ -358,9 +369,7 @@ export async function updateCase(req, res) {
     if (!canTransition(cs.status, patch.status)) throw badRequest('That status change is not allowed.');
     if (isClosedCaseStatus(patch.status)) patch.closed_at = new Date().toISOString();
   }
-  const contractorId = patch.contractor_id !== undefined ? patch.contractor_id : cs.contractor_id;
-  const others = patch.other_respondents !== undefined ? patch.other_respondents : cs.other_respondents;
-  if (!contractorId && !others) throw badRequest('Name at least one respondent.');
+  if (missingRespondent(cs, patch)) throw badRequest('Name at least one respondent.');
   if (!Object.keys(patch).length) return res.json({ data: cs });
 
   // Guarded by the status we read: of two concurrent changes, only the first applies.

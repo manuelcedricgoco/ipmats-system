@@ -6,7 +6,7 @@ import { Alert } from '../../components/common/Feedback.jsx';
 import { Field, Input, PasswordInput } from '../../components/common/Form.jsx';
 import SplashScreen from '../../components/common/SplashScreen.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
-import { SUSPENDED_MESSAGE, isSuspensionError } from '../../lib/constants.js';
+import { isSuspensionError, suspensionNotice } from '../../lib/constants.js';
 import { homePathForRole } from '../../lib/pacc.js';
 import AuthShell from './AuthShell.jsx';
 
@@ -51,8 +51,8 @@ export default function LoginPage() {
       await signIn(email.trim(), password);
     } catch (err) {
       setEntering(false);
-      // Supabase Auth refuses a suspended (banned) account; the API answers 403 "has been suspended".
-      setError(isSuspensionError(err.message) ? SUSPENDED_MESSAGE : err.message);
+      // Supabase Auth refuses a suspended (banned) account; the API answers 403 (see isSuspensionError).
+      setError(isSuspensionError(err.message) ? suspensionNotice(err.message) : err.message);
       setLoading(false);
     }
   };
@@ -62,7 +62,7 @@ export default function LoginPage() {
   return (
     <AuthShell title="Sign in" subtitle="For registered DPWH personnel, auditors and system administrators.">
       <form onSubmit={submit} className="space-y-4">
-        {message && <Alert tone="error" title={message === SUSPENDED_MESSAGE ? 'Account suspended' : undefined}>{message}</Alert>}
+        {message && <Alert tone="error" title={isSuspensionError(message) ? 'Account suspended' : undefined}>{message}</Alert>}
         <Field label="Email" required>{(a) => <Input {...a} type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus />}</Field>
         <Field label="Password" required>{(a) => <PasswordInput {...a} autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />}</Field>
         <Button type="submit" icon={LogIn} loading={loading} className="w-full">Sign in</Button>

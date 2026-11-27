@@ -9,6 +9,12 @@ import { anonClient, userClient } from '../config/supabase.js';
 import { forbidden, unauthorized } from '../utils/httpError.js';
 
 export const SUSPENDED_MESSAGE = 'This account has been suspended by the System Administrator. Contact the System Administrator to lift the suspension.';
+/** PACC manages its own accounts (the System Administrator cannot lift a PACC suspension). */
+export const PACC_SUSPENDED_MESSAGE = 'Your account is suspended. Ask another PACC member to lift the suspension.';
+
+export function suspendedMessage(role) {
+  return role === 'pacc' ? PACC_SUSPENDED_MESSAGE : SUSPENDED_MESSAGE;
+}
 
 function bearer(req) {
   const h = req.headers.authorization || '';
@@ -34,10 +40,10 @@ export async function authenticate(req, _res, next) {
       .single();
     if (pErr || !profile) throw unauthorized('No profile found for this account.');
     if (!profile.is_active) {
-      // The client recognises "has been suspended" and shows it on the sign-in page after signing out.
+      // The client recognises "has been suspended" / "account is suspended" and shows it on the sign-in page after signing out.
       throw forbidden(
         profile.suspended_at
-          ? SUSPENDED_MESSAGE
+          ? suspendedMessage(profile.role)
           : 'This account has been deactivated. Contact the System Administrator.',
       );
     }

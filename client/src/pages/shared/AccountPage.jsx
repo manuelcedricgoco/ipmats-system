@@ -131,7 +131,7 @@ function DetailsCard({ profile, onSaved }) {
           <Field label="Position / designation">
             {(a) => <Input {...a} value={form.position} onChange={set('position')} maxLength={120} />}
           </Field>
-          <Field label="Email" hint="Contact an administrator to change your email.">
+          <Field label="Email" hint={profile.role === 'pacc' ? 'Ask another PACC member to change your email.' : 'Contact an administrator to change your email.'}>
             {(a) => <Input {...a} value={profile.email} disabled />}
           </Field>
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-slate-600 sm:col-span-2">

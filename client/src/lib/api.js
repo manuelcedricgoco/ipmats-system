@@ -56,7 +56,7 @@ async function request(method, path, { body, query, signal, raw } = {}) {
   if (!res.ok) {
     const message = data?.error?.message || `Request failed (${res.status})`;
     // Suspended while signed in: AuthContext signs out and the sign-in page explains why.
-    if (res.status === 403 && isSuspensionError(message)) window.dispatchEvent(new CustomEvent(ACCOUNT_SUSPENDED_EVENT));
+    if (res.status === 403 && isSuspensionError(message)) window.dispatchEvent(new CustomEvent(ACCOUNT_SUSPENDED_EVENT, { detail: { message } }));
     throw new ApiError(res.status, message, data?.error?.details);
   }
   return data;

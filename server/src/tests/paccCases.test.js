@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { before, describe, it } from 'node:test';
 import request from 'supertest';
-import { caseDocumentFormat, outcomeForClosedCase } from '../controllers/paccController.js';
+import { caseDocumentFormat, missingRespondent, outcomeForClosedCase } from '../controllers/paccController.js';
 import { caseCreate, caseDocumentUpload, caseNote, caseUpdate } from '../routes/schemas.js';
 import { unwrap } from '../utils/httpError.js';
 
@@ -66,6 +66,25 @@ describe('PACC case routes', () => {
     assert.equal((await request(app).get(`/api/pacc/cases/${ID}`)).status, 401);
     assert.equal((await request(app).post(`/api/pacc/cases/${ID}/notes`).send({ body: 'note' })).status, 401);
     assert.equal((await request(app).post(`/api/pacc/cases/${ID}/documents`)).status, 401);
+  });
+});
+
+describe('the respondent check on a case update', () => {
+  const noRespondent = { contractor_id: null, other_respondents: null }; // e.g. its contractor was deleted (FK SET NULL)
+  it('is skipped when the patch does not touch the respondents', () => {
+    assert.equal(missingRespondent(noRespondent, { status: 'dismissed' }), false);
+    assert.equal(missingRespondent(noRespondent, { show_public: true }), false);
+    assert.equal(missingRespondent(noRespondent, { charges: CHARGES }), false);
+  });
+  it('refuses a patch that leaves the case without a respondent', () => {
+    assert.equal(missingRespondent({ contractor_id: ID, other_respondents: null }, { contractor_id: null }), true);
+    assert.equal(missingRespondent({ contractor_id: null, other_respondents: 'Mayor X' }, { other_respondents: null }), true);
+    assert.equal(missingRespondent(noRespondent, { contractor_id: null, other_respondents: null }), true);
+  });
+  it('accepts a patch that keeps or names a respondent', () => {
+    assert.equal(missingRespondent({ contractor_id: ID, other_respondents: null }, { other_respondents: null }), false);
+    assert.equal(missingRespondent(noRespondent, { contractor_id: ID }), false);
+    assert.equal(missingRespondent(noRespondent, { other_respondents: 'Mayor X' }), false);
   });
 });
 

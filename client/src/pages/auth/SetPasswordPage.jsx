@@ -39,7 +39,7 @@ export default function SetPasswordPage() {
     return (
       <AuthShell title="Set your password">
         <Alert tone="warning" title="This link can no longer be used">
-          This link has expired or was already used. Ask a PACC member to send a new one.
+          This link has expired or was already used. Ask for a new one.
         </Alert>
         <Button to="/login" variant="secondary" icon={LogIn} className="mt-6 w-full">Go to sign in</Button>
       </AuthShell>

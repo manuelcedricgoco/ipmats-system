@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import { before, describe, it } from 'node:test';
 import request from 'supertest';
+import { canReadContractors } from '../controllers/referenceController.js';
 import { assertNotPaccAccount } from '../controllers/usersController.js';
+import { suspendedMessage } from '../middleware/auth.js';
 import { paccMemberCreate, userApprove, userCreate, userUpdate } from '../routes/schemas.js';
 
 const ID = '9f343767-8d98-5863-903c-3bc97288d015';
@@ -28,6 +30,30 @@ describe('the administrator cannot act on PACC accounts', () => {
     assert.throws(() => assertNotPaccAccount({ role: 'pacc' }), (e) => e.status === 403 && e.message === 'PACC accounts are managed by PACC.');
     assert.doesNotThrow(() => assertNotPaccAccount({ role: 'auditor' }));
     assert.doesNotThrow(() => assertNotPaccAccount({ role: null }));
+  });
+});
+
+describe('PACC-facing account messages', () => {
+  it('a suspended PACC account is told to ask another PACC member', () => {
+    assert.equal(suspendedMessage('pacc'), 'Your account is suspended. Ask another PACC member to lift the suspension.');
+    assert.equal(
+      suspendedMessage('auditor'),
+      'This account has been suspended by the System Administrator. Contact the System Administrator to lift the suspension.',
+    );
+    assert.equal(suspendedMessage(null), suspendedMessage('admin'));
+  });
+});
+
+describe('the contractor list in /reference', () => {
+  const approved = (role) => ({ role, profile: { approval_status: 'approved' } });
+  it('is given to approved staff and approved PACC accounts', () => {
+    for (const role of ['admin', 'dpwh_personnel', 'auditor', 'pacc']) assert.equal(canReadContractors(approved(role)), true, role);
+  });
+  it('is not given to the public, pending accounts or accounts without a role', () => {
+    assert.equal(canReadContractors(null), false);
+    assert.equal(canReadContractors(undefined), false);
+    assert.equal(canReadContractors({ role: 'pacc', profile: { approval_status: 'pending' } }), false);
+    assert.equal(canReadContractors({ role: null, profile: { approval_status: 'approved' } }), false);
   });
 });
 
