@@ -43,7 +43,7 @@ function BackgroundClick({ onClick }) {
 /**
  * WEEK 3 — OpenStreetMap of Occidental Mindoro with coloured project markers (Jonalyn Pagilagan).
  * Staff: coloured by flag (`flagOf(project)`). `markerOf(project)` → { color, label } overrides that
- * (the public portal colours by project status and never shows flags).
+ * (the public portal colours by the auditor-reviewed flag only, gray while under review: lib/publicFlag.js).
  * Optional: `onBackgroundClick` (click on the map, not a marker), `inset` and `recenterKey` (see FlyTo).
  */
 export default function ProjectMap({

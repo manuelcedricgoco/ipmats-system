@@ -35,7 +35,7 @@ which are the real enforcement point for every write.
 | 360° photos: show to / hide from public | E | — | E | V (approved photos only) |
 | 360° photos: delete | D | — | — | — |
 | Project documents | V C D | V C D² | V | — |
-| Automatic flags and flag history | V | V | V | — |
+| Automatic flags and flag history | V | V | V | — (only the flag an auditor confirmed or overrode; "Under review" before that) |
 | Flag review (confirm / override) | C | — | C | — |
 | Re-check all flags now | C | — | — | — |
 | Audit findings | V C E | V | V C E | — |

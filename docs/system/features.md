@@ -16,8 +16,9 @@ The app has two parts:
 ## Public portal
 
 The portal exists for transparency: anyone can see where DPWH projects in Occidental Mindoro are, who builds them,
-what they cost and how far along they are, without signing in. It shows only public fields. Flags, audit findings,
-finances, phases, progress reports and logs are never sent to it (enforced by the database, see
+what they cost and how far along they are, without signing in. It shows only public fields. A project's flag is
+shown only after an auditor has confirmed or overridden it ("Under review" before that). The automatic flag and its
+reasons, audit findings, finances, phases, progress reports and logs are never sent to it (enforced by the database, see
 [roles-and-permissions](roles-and-permissions.md#3-row-level-security-the-real-enforcement-point-for-reads)).
 
 Accounts waiting for approval, or declined, see the same portal with a status banner at the top.
@@ -51,8 +52,10 @@ Accounts waiting for approval, or declined, see the same portal with a status ba
 - **Why:** shows where the money is being spent, on a map of the province.
 - **Who:** everyone.
 - **What it does:**
-  - **Map:** an OpenStreetMap map with one pin per project, coloured by project status (not by flag), and a
-    colour legend.
+  - **Map:** an OpenStreetMap map with one pin per project, coloured by the **auditor-reviewed flag** (Green,
+    Yellow, Red), or gray "Under review" while no auditor has reviewed the current flag, and a colour legend. The
+    flag comes from `projects.public_flag` (migration 021); the unreviewed automatic flag never reaches the portal.
+    The project cards and the drawer show the same flag next to the status.
   - **Project drawer:** clicking a pin opens a drawer over the map (a bottom sheet on phones). The map stays
     usable, the selected pin is highlighted, and the map centres on it. The drawer shows:
     - Project ID and type, and the title.
