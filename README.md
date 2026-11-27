@@ -108,11 +108,11 @@ Used only by the scripts in `server/scripts/`: `API_URL` (default `http://localh
 
 ### Database migrations
 
-There is no migration runner in this repository. Apply the files in `database/migrations/` **in numeric order** in the Supabase SQL Editor (or with the Supabase CLI / MCP). The IPMATS project already has `001`–`018` applied; `019` and `020` are new and must be applied before the matching API is deployed (see below). Never edit or renumber a migration that has been applied; write a new one that changes or reverses it.
+There is no migration runner in this repository. Apply the files in `database/migrations/` **in numeric order** in the Supabase SQL Editor (or with the Supabase CLI / MCP). The IPMATS project already has `001`–`020` applied; `021` is new and must be applied before the matching API is deployed (see below). Never edit or renumber a migration that has been applied; write a new one that changes or reverses it.
 
 #### Upgrading to this version
 
-1. Apply migrations `019` and `020` in the Supabase SQL Editor **before** deploying the API (before merging, if Render auto-deploys on push). The new API reads and writes `phash` and `reviewed_flag`, so it fails against a database without them.
+1. Apply migrations `019` and `020` in the Supabase SQL Editor **before** deploying the API (before merging, if Render auto-deploys on push). The new API reads and writes `phash` and `reviewed_flag`, so it fails against a database without them. The same holds for `021`: the public portal API reads `public_flag`.
 2. Deploy the API, then the web client.
 3. From `server/`, run `node --env-file=.env scripts/backfill-phash.mjs` to hash the existing photos.
 4. From `server/`, run `npm run flags:recheck` to re-evaluate every project.
@@ -174,7 +174,7 @@ ipmats-system/
 │   ├── src/tests/          server tests
 │   └── scripts/            demo-data scripts (placeholder panoramas, sample project, cleanup)
 ├── database/
-│   ├── migrations/         schema, Row Level Security and data migrations 001–020
+│   ├── migrations/         schema, Row Level Security and data migrations 001–021
 │   └── seed/               fictional demo data
 └── docker-compose.yml      API + web containers
 ```
@@ -199,7 +199,7 @@ ipmats-system/
 | `v_project_summary` | Staff view: project with names, progress, finance totals and flags |
 | `v_public_projects` | Public view: only the columns the portal shows, no flags or finances |
 
-Migrations are numbered in the order they were applied: `001`–`006` Weeks 1–2 and the first public portal, `007`–`011` Week 3 and later improvements, `012` office status, `013` and `014` a data-provenance experiment and its reversal, `015` office restructure, `016` reopens the public portal to the anonymous role (reverses `006`), `017` removes the Public role and adds admin approval, `018` fixes the sign-in ban set by `017`, `019` keeps an auditor's flag decision from being lowered automatically, `020` adds the perceptual photo hash.
+Migrations are numbered in the order they were applied: `001`–`006` Weeks 1–2 and the first public portal, `007`–`011` Week 3 and later improvements, `012` office status, `013` and `014` a data-provenance experiment and its reversal, `015` office restructure, `016` reopens the public portal to the anonymous role (reverses `006`), `017` removes the Public role and adds admin approval, `018` fixes the sign-in ban set by `017`, `019` keeps an auditor's flag decision from being lowered automatically, `020` adds the perceptual photo hash, `021` shows the auditor-reviewed flag on the public portal.
 
 ## Known limitations and unfinished work
 

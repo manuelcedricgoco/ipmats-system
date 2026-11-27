@@ -1,7 +1,7 @@
 import { ArrowRight, CameraOff, LocateFixed, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { StatusBadge } from '../common/Badges.jsx';
+import { FlagBadge, StatusBadge } from '../common/Badges.jsx';
 import Button from '../common/Button.jsx';
 import { ErrorState, Skeleton } from '../common/Feedback.jsx';
 import PanoramaViewer from '../viewer360/PanoramaViewer.jsx';
@@ -142,7 +142,10 @@ export default function ProjectDrawer({ projectId, onClose, onRecenter }) {
             {/* 3. Status and physical progress (weighted accomplishment of the construction phases) */}
             <div className="px-4 py-3">
               <div className="flex items-center justify-between gap-3">
-                <StatusBadge status={p.status} />
+                <span className="flex flex-wrap items-center gap-1.5">
+                  <StatusBadge status={p.status} />
+                  <FlagBadge flag={p.public_flag} long size="sm" emptyLabel="Flag under review" />
+                </span>
                 <p className="text-xs text-slate-600">
                   Physical progress <span className="font-semibold tabular-nums text-slate-900">{progress.toFixed(1)}%</span>
                 </p>
