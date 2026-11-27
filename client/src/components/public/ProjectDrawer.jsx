@@ -1,15 +1,17 @@
-import { ArrowRight, CameraOff, LocateFixed, X } from 'lucide-react';
+import { ArrowRight, CameraOff, LocateFixed, Megaphone, ShieldAlert, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { FlagBadge, StatusBadge } from '../common/Badges.jsx';
+import { FlagBadge, Pill, StatusBadge } from '../common/Badges.jsx';
 import Button from '../common/Button.jsx';
 import { ErrorState, Skeleton } from '../common/Feedback.jsx';
 import PanoramaViewer from '../viewer360/PanoramaViewer.jsx';
+import ReportProblemModal from './ReportProblemModal.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useApi } from '../../hooks/useApi.js';
 import { useReference } from '../../hooks/useReference.js';
 import { PROJECT_TYPES } from '../../lib/constants.js';
 import { date, pesoWhole, sentenceCase } from '../../lib/format.js';
+import { PUBLIC_CASE_STATUS_LABELS } from '../../lib/pacc.js';
 
 /** The open project lives in the URL (?project=<id>), so a drawer can be linked to and survives a reload. */
 export function useOpenProject() {
@@ -44,21 +46,31 @@ function Detail({ label, children }) {
  * PUBLIC PORTAL — project drawer. It sits OVER THE MAP (inside the map box): a panel on the right
  * on wider screens, a bottom sheet on phones, so the map stays visible and usable beside it.
  * Header → 360° viewer (or a slim "no photo" row) → status and physical progress → contract
- * cost → location / office / contractor → actions. It scrolls on its own; the page does not.
- * The API sends only public fields (no flags, findings, finances or activity).
+ * cost → location / office / contractor → actions → "Magsumbong / Report a problem". It scrolls on its own;
+ * the page does not. The API sends only public fields (no automatic flag, findings, finances or activity).
+ * A PACC case status is shown only when PACC chose to make it public (`pacc_public_status`); it appears here
+ * only, never on cards or map pins, and no report counts are shown anywhere public.
  */
 export default function ProjectDrawer({ projectId, onClose, onRecenter }) {
   const { data, loading, error, reload } = useApi(projectId ? `/public/projects/${projectId}` : null, undefined, { select: (r) => r.data });
   const { ref } = useReference();
   const { isStaff, isPending } = useAuth();
   const [imageIndex, setImageIndex] = useState(0);
+  const [reporting, setReporting] = useState(false);
+  const reportingRef = useRef(false);
+  reportingRef.current = reporting;
   const closeBtn = useRef(null);
+  const closeReport = useCallback(() => setReporting(false), []);
 
-  useEffect(() => setImageIndex(0), [projectId]);
+  useEffect(() => {
+    setImageIndex(0);
+    setReporting(false);
+  }, [projectId]);
   useEffect(() => {
     if (!projectId) return undefined;
     closeBtn.current?.focus({ preventScroll: true });
-    const onKey = (e) => e.key === 'Escape' && onClose();
+    // Escape while the report dialog is open closes only the dialog.
+    const onKey = (e) => e.key === 'Escape' && !reportingRef.current && onClose();
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [projectId, onClose]);
@@ -145,6 +157,12 @@ export default function ProjectDrawer({ projectId, onClose, onRecenter }) {
                 <span className="flex flex-wrap items-center gap-1.5">
                   <StatusBadge status={p.status} />
                   <FlagBadge flag={p.public_flag} long size="sm" emptyLabel="Flag under review" />
+                  {PUBLIC_CASE_STATUS_LABELS[p.pacc_public_status] && (
+                    <Pill className="bg-brand-50 text-brand-800 ring-1 ring-inset ring-brand-200">
+                      <ShieldAlert className="mr-1 h-3 w-3" aria-hidden />
+                      {PUBLIC_CASE_STATUS_LABELS[p.pacc_public_status]}
+                    </Pill>
+                  )}
                 </span>
                 <p className="text-xs text-slate-600">
                   Physical progress <span className="font-semibold tabular-nums text-slate-900">{progress.toFixed(1)}%</span>
@@ -194,9 +212,18 @@ export default function ProjectDrawer({ projectId, onClose, onRecenter }) {
                 />
               )}
             </div>
+
+            {/* 7. Anonymous problem report (goes to PACC only) */}
+            <div className="px-4 py-3">
+              <p className="mb-2 text-xs text-slate-500">See something wrong at this project? You can report it without an account.</p>
+              <Button variant="warning-outline" size="sm" icon={Megaphone} onClick={() => setReporting(true)} className="w-full">
+                Magsumbong / Report a problem
+              </Button>
+            </div>
           </div>
         )}
       </div>
+      {reporting && p && <ReportProblemModal project={p} onClose={closeReport} />}
     </aside>
   );
 }

@@ -4,7 +4,7 @@ import { api } from '../lib/api.js';
 let cache = null;
 let inflight = null;
 // Bumped by invalidateReference(): a response to a request started before that (for example while signed out)
-// must not fill the cache, because the lists differ per session (contractors are staff-only).
+// must not fill the cache, because the lists differ per session (contractors are for staff and PACC only).
 let generation = 0;
 
 /** Municipalities, barangays, agencies, contractors — fetched once and cached until invalidated. */

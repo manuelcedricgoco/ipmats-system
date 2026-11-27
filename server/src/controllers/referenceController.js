@@ -1,19 +1,24 @@
 import { adminClient } from '../config/supabase.js';
 import { logActivity } from '../services/activityLog.js';
-import { STAFF } from '../middleware/role.js';
+import { ROLES, STAFF } from '../middleware/role.js';
 import { conflict, notFound, unwrap } from '../utils/httpError.js';
+
+/** The contractor list is for approved staff (project forms) and approved PACC accounts (naming case respondents, read-only). */
+export function canReadContractors(user) {
+  return user?.profile?.approval_status === 'approved' && (STAFF.includes(user.role) || user.role === ROLES.PACC);
+}
 
 /**
  * Lookup lists. Open to everyone (the sign-up form and the public portal filters read them as the
- * anonymous role); the contractor list is only for staff forms (anon may read just id and name).
+ * anonymous role); the contractor list only for canReadContractors (anon may read just id and name).
  */
 export async function getReference(req, res) {
-  const isStaff = req.user?.profile?.approval_status === 'approved' && STAFF.includes(req.user.role);
+  const withContractors = canReadContractors(req.user);
   const [municipalities, barangays, agencies, contractors] = await Promise.all([
     req.db.from('municipalities').select('id, name, is_capital, latitude, longitude').order('name').then(unwrap),
     req.db.from('barangays').select('id, municipality_id, name, latitude, longitude').order('name').then(unwrap),
     req.db.from('agencies').select('id, code, name, office_type, address, is_active').order('name').then(unwrap),
-    isStaff ? req.db.from('contractors').select('id, name, is_active').order('name').then(unwrap) : [],
+    withContractors ? req.db.from('contractors').select('id, name, is_active').order('name').then(unwrap) : [],
   ]);
   res.set('Cache-Control', 'private, max-age=60');
   res.json({ data: { municipalities, barangays, agencies, contractors } });

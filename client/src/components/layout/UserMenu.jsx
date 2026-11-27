@@ -1,16 +1,20 @@
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react';
-import { ChevronDown, Clock3, Globe2, LayoutDashboard, LogOut, UserRound } from 'lucide-react';
+import { ChevronDown, Clock3, Globe2, LayoutDashboard, LogOut, ShieldAlert, UserRound } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext.jsx';
 import Avatar from '../common/Avatar.jsx';
 import { ROLE_LABELS } from '../../lib/constants.js';
+import { homePathForRole } from '../../lib/pacc.js';
 
 const item = 'flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm transition-colors data-[focus]:bg-slate-100';
 
 export default function UserMenu({ dark = false }) {
-  const { profile, isStaff, isPending, signOut } = useAuth();
+  const { profile, isPending, signOut } = useAuth();
   const navigate = useNavigate();
   if (!profile) return null;
+  // The signed-in area of this account (/app for staff, /pacc for PACC); none while waiting for approval.
+  const home = isPending ? null : homePathForRole(profile.role);
+  const area = home === '/pacc' ? { label: 'PACC portal', Icon: ShieldAlert } : home === '/app' ? { label: 'Staff workspace', Icon: LayoutDashboard } : null;
   const roleLabel = isPending ? (profile.approval_status === 'rejected' ? 'Access declined' : 'Awaiting approval') : ROLE_LABELS[profile.role];
 
   return (
@@ -37,16 +41,16 @@ export default function UserMenu({ dark = false }) {
           <p className="text-xs text-slate-500">{roleLabel}</p>
         </div>
         <div className="py-1">
-          {isStaff && (
+          {area && (
             <MenuItem>
-              <Link to="/app" className={`${item} text-slate-700`}>
-                <LayoutDashboard className="h-4 w-4 text-slate-400" aria-hidden /> Staff workspace
+              <Link to={home} className={`${item} text-slate-700`}>
+                <area.Icon className="h-4 w-4 text-slate-400" aria-hidden /> {area.label}
               </Link>
             </MenuItem>
           )}
-          {isStaff && (
+          {area && (
             <MenuItem>
-              <Link to="/app/account" className={`${item} text-slate-700`}>
+              <Link to={`${home}/account`} className={`${item} text-slate-700`}>
                 <UserRound className="h-4 w-4 text-slate-400" aria-hidden /> My account
               </Link>
             </MenuItem>

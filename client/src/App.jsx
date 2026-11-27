@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react';
 import { Navigate, Route, Routes, useParams } from 'react-router-dom';
 import { PageLoader } from './components/common/Feedback.jsx';
 import AppLayout from './components/layout/AppLayout.jsx';
+import PaccLayout from './components/layout/PaccLayout.jsx';
 import PublicLayout from './components/layout/PublicLayout.jsx';
 import NotFoundPage from './pages/NotFoundPage.jsx';
 import ProtectedRoute from './routes/ProtectedRoute.jsx';
@@ -11,10 +12,12 @@ import ProtectedRoute from './routes/ProtectedRoute.jsx';
 const PortalHome = lazy(() => import('./pages/public/PortalHome.jsx'));
 const PublicProjectsPage = lazy(() => import('./pages/public/PublicProjectsPage.jsx'));
 const PublicMapPage = lazy(() => import('./pages/public/PublicMapPage.jsx'));
+const CheckReportPage = lazy(() => import('./pages/public/CheckReportPage.jsx'));
 // Authentication
 const LoginPage = lazy(() => import('./pages/auth/LoginPage.jsx'));
 const RegisterPage = lazy(() => import('./pages/auth/RegisterPage.jsx'));
 const AccountPendingPage = lazy(() => import('./pages/auth/AccountPendingPage.jsx'));
+const SetPasswordPage = lazy(() => import('./pages/auth/SetPasswordPage.jsx'));
 // Staff workspace
 const DashboardPage = lazy(() => import('./pages/shared/DashboardPage.jsx'));
 const ProjectsPage = lazy(() => import('./pages/dpwh/ProjectsPage.jsx'));
@@ -40,6 +43,13 @@ const ContractorsPage = lazy(() => import('./pages/dpwh/ContractorsPage.jsx'));
 const AgenciesPage = lazy(() => import('./pages/dpwh/AgenciesPage.jsx'));
 const UsersPage = lazy(() => import('./pages/admin/UsersPage.jsx'));
 const AccountPage = lazy(() => import('./pages/shared/AccountPage.jsx'));
+// PACC portal (Presidential Anti-Corruption Commission)
+const PaccInboxPage = lazy(() => import('./pages/pacc/PaccInboxPage.jsx'));
+const PaccProjectPage = lazy(() => import('./pages/pacc/PaccProjectPage.jsx'));
+const PaccCasesPage = lazy(() => import('./pages/pacc/PaccCasesPage.jsx'));
+const PaccCasePage = lazy(() => import('./pages/pacc/PaccCasePage.jsx'));
+const PaccMembersPage = lazy(() => import('./pages/pacc/PaccMembersPage.jsx'));
+const PaccActivityPage = lazy(() => import('./pages/pacc/PaccActivityPage.jsx'));
 
 const STAFF = ['admin', 'dpwh_personnel', 'auditor'];
 const EDITORS = ['admin', 'dpwh_personnel'];
@@ -53,6 +63,7 @@ export default function App() {
           <Route index element={<PortalHome />} />
           <Route path="/projects" element={<PublicProjectsPage />} />
           <Route path="/map" element={<PublicMapPage />} />
+          <Route path="/report-status" element={<CheckReportPage />} />
         </Route>
         {/* Earlier portal addresses keep working */}
         <Route path="/portal" element={<Navigate to="/" replace />} />
@@ -66,6 +77,7 @@ export default function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/account-pending" element={<AccountPendingPage />} />
+        <Route path="/set-password" element={<SetPasswordPage />} />
 
         <Route path="/app" element={<ProtectedRoute roles={STAFF} />}>
           <Route element={<AppLayout />}>
@@ -99,6 +111,19 @@ export default function App() {
               <Route path="settings" element={<SettingsPage />} />
             </Route>
             <Route path="*" element={<NotFoundPage homeTo="/app" homeLabel="Back to the dashboard" />} />
+          </Route>
+        </Route>
+
+        <Route path="/pacc" element={<ProtectedRoute roles={['pacc']} />}>
+          <Route element={<PaccLayout />}>
+            <Route index element={<PaccInboxPage />} />
+            <Route path="projects/:id" element={<PaccProjectPage />} />
+            <Route path="cases" element={<PaccCasesPage />} />
+            <Route path="cases/:caseId" element={<PaccCasePage />} />
+            <Route path="members" element={<PaccMembersPage />} />
+            <Route path="activity" element={<PaccActivityPage />} />
+            <Route path="account" element={<AccountPage />} />
+            <Route path="*" element={<NotFoundPage homeTo="/pacc" homeLabel="Back to the inbox" />} />
           </Route>
         </Route>
 

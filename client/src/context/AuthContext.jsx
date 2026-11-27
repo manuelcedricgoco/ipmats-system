@@ -1,7 +1,8 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { invalidateReference } from '../hooks/useReference.js';
 import { ACCOUNT_SUSPENDED_EVENT, api } from '../lib/api.js';
-import { STAFF_ROLES, SUSPENDED_MESSAGE, isSuspensionError } from '../lib/constants.js';
+import { STAFF_ROLES, isSuspensionError, suspensionNotice } from '../lib/constants.js';
 import { supabase } from '../lib/supabaseClient.js';
 import { friendlyAuthError } from '../lib/imageFile.js';
 import { shouldUploadPendingPhoto, takePendingAvatar } from '../lib/pendingAvatar.js';
@@ -28,6 +29,11 @@ export function AuthProvider({ children }) {
   const [profileError, setProfileError] = useState(null);
   // Why the user was signed out without asking (shown on the sign-in page), e.g. a suspension.
   const [signOutNotice, setSignOutNotice] = useState(null);
+  // AuthProvider sits inside <BrowserRouter> (main.jsx). Kept in a ref so the auth listener below is not
+  // re-subscribed on every navigation (useNavigate returns a new function when the location changes).
+  const navigate = useNavigate();
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
 
   const loadProfile = useCallback(async (s) => {
     if (!s) {
@@ -43,7 +49,7 @@ export function AuthProvider({ children }) {
       setProfile(null);
       setProfileError(err.message);
       if (err.status === 401 || err.status === 403) {
-        if (isSuspensionError(err.message)) setSignOutNotice(SUSPENDED_MESSAGE);
+        if (isSuspensionError(err.message)) setSignOutNotice(suspensionNotice(err.message));
         await supabase.auth.signOut();
       }
     }
@@ -51,8 +57,8 @@ export function AuthProvider({ children }) {
 
   // Any API call answered "account suspended" (an Admin suspended this account mid-session) → sign out.
   useEffect(() => {
-    const onSuspended = async () => {
-      setSignOutNotice(SUSPENDED_MESSAGE);
+    const onSuspended = async (e) => {
+      setSignOutNotice(suspensionNotice(e.detail?.message));
       await supabase.auth.signOut();
       setSession(null);
       setProfile(null);
@@ -71,11 +77,14 @@ export function AuthProvider({ children }) {
     });
     const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
       setSession(s);
-      // The reference lists depend on who is signed in (contractors are staff-only), so a list cached on the
+      // The reference lists depend on who is signed in (contractors are for staff and PACC only), so a list cached on the
       // public portal while signed out must not be reused after sign-in, and vice versa.
       if (event === 'SIGNED_IN' || event === 'SIGNED_OUT') invalidateReference();
       if (event === 'SIGNED_IN' || event === 'USER_UPDATED') loadProfile(s);
       if (event === 'SIGNED_OUT') setProfile(null);
+      // Opened a set-password (recovery) link: supabase-js has signed in from the link (the profile is loaded by
+      // getSession above, which waits for that) and wherever the link landed, ask for the new password.
+      if (event === 'PASSWORD_RECOVERY') navigateRef.current('/set-password', { replace: true });
     });
     return () => {
       active = false;

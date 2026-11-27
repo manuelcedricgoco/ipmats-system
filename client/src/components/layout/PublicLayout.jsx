@@ -130,6 +130,9 @@ export default function PublicLayout() {
           <p>IPMATS · DPWH 360° Infrastructure Project Monitoring and Transparency System · Occidental Mindoro (Region IV-B MIMAROPA)</p>
           <p>Figures are reported by DPWH personnel. They are for transparency and do not replace an official audit.</p>
         </div>
+        <p className="mt-2 text-xs">
+          <Link to="/report-status" className="font-semibold text-brand-700 underline-offset-2 hover:underline">Check a report</Link>
+        </p>
       </footer>
     </div>
   );

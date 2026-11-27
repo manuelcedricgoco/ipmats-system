@@ -4,6 +4,7 @@ import Button from '../../components/common/Button.jsx';
 import { PageLoader } from '../../components/common/Feedback.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { ROLE_LABELS } from '../../lib/constants.js';
+import { homePathForRole } from '../../lib/pacc.js';
 import { dateTime } from '../../lib/format.js';
 import AuthShell from './AuthShell.jsx';
 
@@ -14,7 +15,7 @@ export default function AccountPendingPage() {
   if (loading) return <PageLoader />;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   if (isStaff) return <Navigate to="/app" replace />;
-  if (!isPending) return <Navigate to="/" replace />;
+  if (!isPending) return <Navigate to={homePathForRole(profile.role)} replace />;
 
   const declined = profile.approval_status === 'rejected';
   return (

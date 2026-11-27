@@ -6,12 +6,13 @@ import { Alert } from '../../components/common/Feedback.jsx';
 import { Field, Input, PasswordInput } from '../../components/common/Form.jsx';
 import SplashScreen from '../../components/common/SplashScreen.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
-import { STAFF_ROLES, SUSPENDED_MESSAGE, isSuspensionError } from '../../lib/constants.js';
+import { isSuspensionError, suspensionNotice } from '../../lib/constants.js';
+import { homePathForRole } from '../../lib/pacc.js';
 import AuthShell from './AuthShell.jsx';
 
 /**
  * WEEK 1 — Login page (Tracy Ann Milaflores, front-end): opens the right place for each role.
- * Staff → their dashboard · accounts waiting for approval (or declined) → the public portal, with a banner.
+ * Staff → their dashboard · PACC → the PACC portal · accounts waiting for approval (or declined) → the public portal, with a banner.
  * The entry splash starts the moment "Sign in" is clicked and lasts 5 seconds in total
  * (the sign-in itself happens while it plays; if it takes longer, the splash waits for it).
  */
@@ -32,9 +33,11 @@ export default function LoginPage() {
 
   if (isAuthenticated) {
     const from = location.state?.from?.pathname;
-    if (!isPending && STAFF_ROLES.includes(role)) return <Navigate to={from && from.startsWith('/app') ? from : '/app'} replace />;
     // Waiting for approval or declined: only the public portal (a banner explains the status).
-    return <Navigate to="/" replace />;
+    const home = isPending ? '/' : homePathForRole(role);
+    // Back to the page that asked for sign-in, if it is inside this account's own area.
+    const backToFrom = home !== '/' && from && (from === home || from.startsWith(`${home}/`));
+    return <Navigate to={backToFrom ? from : home} replace />;
   }
 
   const submit = async (e) => {
@@ -48,8 +51,8 @@ export default function LoginPage() {
       await signIn(email.trim(), password);
     } catch (err) {
       setEntering(false);
-      // Supabase Auth refuses a suspended (banned) account; the API answers 403 "has been suspended".
-      setError(isSuspensionError(err.message) ? SUSPENDED_MESSAGE : err.message);
+      // Supabase Auth refuses a suspended (banned) account; the API answers 403 (see isSuspensionError).
+      setError(isSuspensionError(err.message) ? suspensionNotice(err.message) : err.message);
       setLoading(false);
     }
   };
@@ -57,9 +60,9 @@ export default function LoginPage() {
   const message = error || signOutNotice;
 
   return (
-    <AuthShell title="Sign in" subtitle="For registered DPWH personnel, auditors and system administrators.">
+    <AuthShell title="Sign in" subtitle="For registered DPWH personnel, auditors, system administrators and PACC members.">
       <form onSubmit={submit} className="space-y-4">
-        {message && <Alert tone="error" title={message === SUSPENDED_MESSAGE ? 'Account suspended' : undefined}>{message}</Alert>}
+        {message && <Alert tone="error" title={isSuspensionError(message) ? 'Account suspended' : undefined}>{message}</Alert>}
         <Field label="Email" required>{(a) => <Input {...a} type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus />}</Field>
         <Field label="Password" required>{(a) => <PasswordInput {...a} autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />}</Field>
         <Button type="submit" icon={LogIn} loading={loading} className="w-full">Sign in</Button>
@@ -68,7 +71,7 @@ export default function LoginPage() {
         DPWH personnel or auditor without an account? <Link to="/register" className="font-semibold text-brand-700 hover:underline">Request one</Link>
       </p>
       <p className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-center text-xs text-slate-600">
-        Sign-in is for DPWH staff and auditors. Anyone can <Link to="/" className="font-semibold text-brand-700 hover:underline">browse the public portal</Link> without an account.
+        Sign-in is for DPWH staff, auditors and PACC members. Anyone can <Link to="/" className="font-semibold text-brand-700 hover:underline">browse the public portal</Link> without an account.
       </p>
     </AuthShell>
   );
