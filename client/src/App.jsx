@@ -42,6 +42,7 @@ const ReportsPage = lazy(() => import('./pages/auditor/ReportsPage.jsx'));
 const ContractorsPage = lazy(() => import('./pages/dpwh/ContractorsPage.jsx'));
 const AgenciesPage = lazy(() => import('./pages/dpwh/AgenciesPage.jsx'));
 const UsersPage = lazy(() => import('./pages/admin/UsersPage.jsx'));
+const DeletionRequestsPage = lazy(() => import('./pages/admin/DeletionRequestsPage.jsx'));
 const AccountPage = lazy(() => import('./pages/shared/AccountPage.jsx'));
 // PACC portal (Presidential Anti-Corruption Commission)
 const PaccInboxPage = lazy(() => import('./pages/pacc/PaccInboxPage.jsx'));
@@ -52,7 +53,8 @@ const PaccMembersPage = lazy(() => import('./pages/pacc/PaccMembersPage.jsx'));
 const PaccActivityPage = lazy(() => import('./pages/pacc/PaccActivityPage.jsx'));
 
 const STAFF = ['admin', 'dpwh_personnel', 'auditor'];
-const EDITORS = ['admin', 'dpwh_personnel'];
+// Only DPWH Personnel register and edit projects (027); the Admin keeps the deletes.
+const EDITORS = ['dpwh_personnel'];
 
 export default function App() {
   return (
@@ -108,6 +110,7 @@ export default function App() {
             </Route>
             <Route element={<ProtectedRoute roles={['admin']} />}>
               <Route path="users" element={<UsersPage />} />
+              <Route path="deletion-requests" element={<DeletionRequestsPage />} />
               <Route path="settings" element={<SettingsPage />} />
             </Route>
             <Route path="*" element={<NotFoundPage homeTo="/app" homeLabel="Back to the dashboard" />} />

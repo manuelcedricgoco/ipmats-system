@@ -19,7 +19,7 @@ import { date, pesoCompact } from '../../lib/format.js';
 const ROLE_DASHBOARD = {
   admin: {
     eyebrow: 'Administrator dashboard',
-    description: 'Approve staff access requests, manage user accounts, and follow project performance, flags and finances.',
+    description: 'Approve staff access and project deletion requests, manage user accounts, and follow project performance, flags and finances.',
     actions: [
       { to: '/app/users', label: 'Access requests and users', icon: Users },
       { to: '/app/audit', label: 'Flags and audit', icon: ClipboardCheck },

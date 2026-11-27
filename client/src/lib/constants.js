@@ -35,6 +35,15 @@ export const OFFICE_TYPES = {
 
 export const STAFF_ROLES = ['admin', 'dpwh_personnel', 'auditor'];
 
+/**
+ * Status of a project's non-closed PACC case, shown to DPWH staff (Admin, Personnel, Auditor) whether or not PACC
+ * shows it on the public portal (`projects.pacc_case_status`, migration 027). Only the status, never the case itself.
+ */
+export const PACC_CASE_STATUS_LABELS = {
+  under_investigation: 'Under PACC investigation',
+  case_filed: 'Case filed',
+};
+
 // Suspended accounts: Supabase Auth refuses the sign-in ("User is banned") and the API answers 403.
 export const SUSPENDED_MESSAGE = 'Your account has been suspended by the System Administrator. Contact the System Administrator to lift the suspension.';
 /** PACC manages its own accounts, so a suspended PACC account is sent to another PACC member (same text as the API). */

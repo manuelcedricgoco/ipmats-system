@@ -1,16 +1,15 @@
-import { ArrowLeft, Pencil, Trash2 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
-import { Link, NavLink, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { ArrowLeft, Pencil } from 'lucide-react';
+import { useEffect, useRef } from 'react';
+import { Link, NavLink, Outlet, useLocation, useParams } from 'react-router-dom';
 import { FlagBadge, Pill, StatusBadge } from '../../../components/common/Badges.jsx';
 import Button from '../../../components/common/Button.jsx';
 import { PageHeader } from '../../../components/common/Card.jsx';
-import { Alert, ErrorState, PageLoader } from '../../../components/common/Feedback.jsx';
-import Modal from '../../../components/common/Modal.jsx';
+import { ErrorState, PageLoader } from '../../../components/common/Feedback.jsx';
 import ProgressBar from '../../../components/common/ProgressBar.jsx';
+import DeleteProjectControls, { DeletionRequestNotice } from '../../../components/projects/DeleteProjectControls.jsx';
+import PaccCaseChip from '../../../components/projects/PaccCaseChip.jsx';
 import { useAuth } from '../../../context/AuthContext.jsx';
-import { useToast } from '../../../context/ToastContext.jsx';
 import { useApi } from '../../../hooks/useApi.js';
-import { api } from '../../../lib/api.js';
 import { PROJECT_TYPES } from '../../../lib/constants.js';
 
 const TABS = [
@@ -26,10 +25,12 @@ const TABS = [
 export default function ProjectLayout() {
   const { id } = useParams();
   const { hasRole } = useAuth();
-  const toast = useToast();
-  const navigate = useNavigate();
+  // Only DPWH Personnel create and edit project data (027); the Admin keeps the deletes.
+  const canEdit = hasRole('dpwh_personnel');
+  const canDelete = hasRole('admin');
   const { data: p, loading, error, reload } = useApi(`/projects/${id}`, undefined, { select: (r) => r.data });
-  const [confirmDelete, setConfirmDelete] = useState(false);
+  // The project's latest deletion request: Personnel ask / cancel / use an approval; the Admin sees a pending one.
+  const deletion = useApi(`/projects/${id}/deletion-request`, undefined, { enabled: canEdit || canDelete, select: (r) => r.data });
   const tabsRef = useRef(null);
   const { pathname } = useLocation();
   useEffect(() => {
@@ -38,27 +39,9 @@ export default function ProjectLayout() {
     const active = nav?.querySelector('a[aria-current="page"]');
     if (nav && active) nav.scrollLeft = active.offsetLeft - (nav.clientWidth - active.offsetWidth) / 2;
   }, [pathname, p]);
-  const [deleting, setDeleting] = useState(false);
-  const [deleteError, setDeleteError] = useState(null);
 
   if (loading && !p) return <PageLoader />;
   if (error) return <ErrorState error={error} onRetry={reload} />;
-
-  const canEdit = hasRole('dpwh_personnel', 'admin');
-  const canDelete = hasRole('admin');
-
-  const remove = async () => {
-    setDeleting(true);
-    setDeleteError(null);
-    try {
-      await api.del(`/projects/${id}`);
-      toast.success(`Project ${p.project_code} deleted.`);
-      navigate('/app/projects', { replace: true });
-    } catch (e) {
-      setDeleteError(e.message);
-      setDeleting(false);
-    }
-  };
 
   return (
     <>
@@ -72,7 +55,7 @@ export default function ProjectLayout() {
           actions={
             <>
               {canEdit && <Button icon={Pencil} to={`/app/projects/${id}/edit`}>Edit</Button>}
-              {canDelete && <Button variant="secondary" icon={Trash2} onClick={() => setConfirmDelete(true)} className="text-red-700">Delete</Button>}
+              <DeleteProjectControls project={p} request={deletion.data} requestLoaded={!deletion.loading} onChanged={deletion.reload} />
             </>
           }
         />
@@ -80,10 +63,12 @@ export default function ProjectLayout() {
       <div className="-mt-3 mb-5 flex flex-wrap items-center gap-x-4 gap-y-2">
         <FlagBadge flag={p.current_flag} />
         <StatusBadge status={p.status} />
+        <PaccCaseChip status={p.pacc_case_status} />
         <Pill>{PROJECT_TYPES[p.project_type]}</Pill>
-        {!canEdit && <Pill className="bg-slate-800 text-white">Read-only</Pill>}
+        {!canEdit && !canDelete && <Pill className="bg-slate-800 text-white">Read-only</Pill>}
         <ProgressBar value={p.overall_progress} size="sm" className="w-full max-w-[12rem]" />
       </div>
+      <DeletionRequestNotice request={deletion.data} />
 
       {/* On phones the five tabs scroll sideways: the fade on the right shows there is more, and the open tab is scrolled into view. */}
       <div className="relative mb-6">
@@ -111,23 +96,6 @@ export default function ProjectLayout() {
 
       {/* each tab gets the project and a reload function */}
       <Outlet context={{ project: p, reloadProject: reload, canEdit, canDelete }} />
-
-      <Modal
-        open={confirmDelete}
-        onClose={() => setConfirmDelete(false)}
-        title="Delete this project?"
-        description={`${p.project_code} · ${p.name}`}
-        size="sm"
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setConfirmDelete(false)}>Cancel</Button>
-            <Button variant="danger" icon={Trash2} loading={deleting} onClick={remove}>Delete project</Button>
-          </>
-        }
-      >
-        <p className="text-sm text-slate-600">The project record, its phases, progress reports and financial records are removed permanently. This cannot be undone.</p>
-        {deleteError && <Alert tone="error" className="mt-3">{deleteError}</Alert>}
-      </Modal>
     </>
   );
 }
