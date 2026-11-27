@@ -12,6 +12,14 @@ import { logActivity } from '../services/activityLog.js';
 import { evaluateAndSave, loadHashedImages } from '../services/projectEvaluation.js';
 import { getFlagRules } from '../services/settings.js';
 
+/**
+ * Whether a check run without a person (daily or start-up) gets an activity-log entry. The daily check always
+ * does (once a day). The start-up check runs on every restart, so it is logged only when it changed a flag or failed.
+ */
+export function shouldLogSystemCheck({ trigger, changed, failed }) {
+  return trigger !== 'startup' || changed > 0 || failed > 0;
+}
+
 export async function runFlagCheck({ trigger = 'daily_check', actorId = null, today = new Date() } = {}) {
   if (!adminClient) throw new Error('SUPABASE_SERVICE_ROLE_KEY is required for the flag check.');
   const started = Date.now();
@@ -36,7 +44,7 @@ export async function runFlagCheck({ trigger = 'daily_check', actorId = null, to
   }
   summary.duration_ms = Date.now() - started;
   // Activity log: the scheduled and start-up checks are logged as "System" (manual re-checks are logged by the API with the person's name).
-  if (!actorId) {
+  if (!actorId && shouldLogSystemCheck({ trigger, changed: summary.changed, failed: summary.failed })) {
     await logActivity(null, {
       action: 'flag.check',
       entityType: 'system',
