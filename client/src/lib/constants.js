@@ -40,11 +40,15 @@ export const SUSPENDED_MESSAGE = 'Your account has been suspended by the System 
 export const PACC_SUSPENDED_MESSAGE = 'Your account is suspended. Ask another PACC member to lift the suspension.';
 /** True for Supabase's "banned" sign-in error and the API's "has been suspended" / "account is suspended" 403. */
 export const isSuspensionError = (message = '') => /banned|has been suspended|account is suspended/i.test(String(message));
-/**
- * What the sign-in page says after a suspension. The API's 403 tells PACC accounts apart; Supabase's sign-in
- * "banned" error does not name the role, so it gets the general text.
- */
-export const suspensionNotice = (message = '') => (/PACC member/i.test(String(message)) ? PACC_SUSPENDED_MESSAGE : SUSPENDED_MESSAGE);
+/** Supabase's sign-in "banned" error does not name the role, so the sign-in page says what both kinds of account can do. */
+export const BANNED_SIGN_IN_MESSAGE = 'Your account is suspended. Contact the System Administrator, or, for a PACC account, ask another PACC member to lift the suspension.';
+/** What the sign-in page says after a suspension. The API's 403 tells PACC accounts apart; the sign-in ban does not. */
+export const suspensionNotice = (message = '') => {
+  const text = String(message);
+  if (/PACC member/i.test(text)) return PACC_SUSPENDED_MESSAGE;
+  if (/banned/i.test(text)) return BANNED_SIGN_IN_MESSAGE;
+  return SUSPENDED_MESSAGE;
+};
 
 // Week 2 — financial record types
 export const RECORD_TYPES = {
