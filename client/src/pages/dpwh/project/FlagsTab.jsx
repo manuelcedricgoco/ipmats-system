@@ -185,7 +185,7 @@ export default function FlagsTab() {
         <CardHeader title="Flag history" description="Automatic checks and auditor decisions, newest first" />
         <div className="relative max-h-80 overflow-auto">
           <table className="table-sticky-first min-w-full divide-y divide-slate-200 text-sm">
-            <thead className="sticky top-0 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+            <thead className="sticky top-0 z-10 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
               <tr><th scope="col" className="px-4 py-2.5">When</th><th scope="col" className="px-4 py-2.5">Source</th><th scope="col" className="px-4 py-2.5">Event</th><th scope="col" className="px-4 py-2.5">Flag</th><th scope="col" className="px-4 py-2.5">Status</th></tr>
             </thead>
             <tbody className="divide-y divide-slate-100">

@@ -85,6 +85,18 @@ export function resolveFlagState({ autoFlag, previousAutoFlag, currentFlag, revi
   return { current_flag: maxFlag(autoFlag, reviewedFlag), flag_review_status: 'pending' };
 }
 
+/**
+ * Checks the system runs by itself: the daily schedule, and the check at every API start-up (which happens on
+ * each deploy, and on every file save under `npm run dev`). They add a history row only when something changed;
+ * otherwise each restart would add an identical row for every project.
+ */
+export const SYSTEM_TRIGGERS = Object.freeze(['daily_check', 'startup']);
+
+/** Whether an evaluation adds a flag_history row: always when a person caused it, otherwise only on a change. */
+export function shouldRecordHistory({ trigger, flagChanged, statusChanged }) {
+  return !SYSTEM_TRIGGERS.includes(trigger) || flagChanged || statusChanged;
+}
+
 export async function evaluateAndSave(admin, projectId, { trigger = 'manual', actorId = null, rules, today = new Date(), phashCandidates } = {}) {
   const input = await loadEvaluationInput(admin, projectId, phashCandidates);
   const activeRules = rules || (await getFlagRules(admin));
@@ -115,8 +127,7 @@ export async function evaluateAndSave(admin, projectId, { trigger = 'manual', ac
   );
   unwrap(await admin.from('projects').update(update).eq('id', projectId));
 
-  // History: every user-triggered evaluation; the daily check only when something changed
-  if (trigger !== 'daily_check' || flagChanged || statusChanged) {
+  if (shouldRecordHistory({ trigger, flagChanged, statusChanged })) {
     unwrap(
       await admin.from('flag_history').insert({
         project_id: projectId,
