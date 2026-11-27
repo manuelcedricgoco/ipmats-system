@@ -1,4 +1,4 @@
-import { Ban, Landmark, Plus, RotateCcw, Trash2 } from 'lucide-react';
+import { Landmark, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Pill } from '../../components/common/Badges.jsx';
 import Button from '../../components/common/Button.jsx';
@@ -28,17 +28,13 @@ export default function AgenciesPage() {
   const projects = useApi('/projects', { pageSize: 100 }, { select: (r) => r.data });
   const [editing, setEditing] = useState(null);
   const [deleting, setDeleting] = useState(null);
-  const [suspending, setSuspending] = useState(null); // office whose active status is being toggled
   const rows = useRowBusy();
   const isActive = (a) => a.is_active !== false;
   const rowActions = (a) => (
     <RowActions
       name={a.name}
       busy={rows.isBusy(a.id)}
-      suspended={!isActive(a)}
       onEdit={() => setEditing(a)}
-      onSuspend={() => setSuspending(a)}
-      onReactivate={() => setSuspending(a)}
       onDelete={() => setDeleting(a)}
     />
   );
@@ -158,39 +154,6 @@ export default function AgenciesPage() {
               <dd className="font-mono text-xs text-brand-700">{deleting.code}</dd>
             </dl>
             <p><strong>This cannot be undone.</strong> An office that is used by projects or has user accounts cannot be deleted; move them to another office first.</p>
-          </>
-        )}
-      </ConfirmDialog>
-      <ConfirmDialog
-        open={Boolean(suspending)}
-        onClose={() => setSuspending(null)}
-        title={suspending && isActive(suspending) ? 'Suspend office?' : 'Reactivate office?'}
-        confirmLabel={suspending && isActive(suspending) ? 'Suspend office' : 'Reactivate office'}
-        confirmVariant={suspending && isActive(suspending) ? 'warning' : 'primary'}
-        confirmIcon={suspending && isActive(suspending) ? Ban : RotateCcw}
-        onConfirm={async () => {
-          const a = suspending;
-          const active = isActive(a);
-          await rows.run(a.id, () => api.patch(`/agencies/${a.id}`, { is_active: !active }));
-          toast.success(active ? `Office "${a.name}" suspended.` : `Office "${a.name}" reactivated.`);
-          setSuspending(null);
-          invalidateReference();
-          ref.reload();
-        }}
-      >
-        {suspending && (
-          <>
-            <dl className="rounded-md bg-slate-50 px-3 py-2">
-              <dt className="sr-only">Office</dt>
-              <dd className="break-words font-semibold text-slate-900">{suspending.name}</dd>
-              <dt className="sr-only">Code</dt>
-              <dd className="font-mono text-xs text-brand-700">{suspending.code}</dd>
-            </dl>
-            {isActive(suspending) ? (
-              <p>The office is marked <strong>inactive</strong> and can no longer be chosen as the implementing office of new projects. Existing projects and user accounts keep it.</p>
-            ) : (
-              <p>The office becomes active again and can be chosen for new projects.</p>
-            )}
           </>
         )}
       </ConfirmDialog>

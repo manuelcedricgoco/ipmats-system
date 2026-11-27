@@ -102,7 +102,7 @@ export default function DashboardPage() {
       </nav>
 
       <div className="stagger grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard label="Registered projects" value={s.total_projects} hint={`${s.by_status.ongoing || 0} ongoing · ${s.by_status.completed || 0} completed`} icon={FolderKanban} />
+        <StatCard label="Registered projects" value={s.total_projects} hint={`${s.by_status.ongoing || 0} on-going · ${s.by_status.completed || 0} completed`} icon={FolderKanban} />
         <StatCard label="Average completion" value={`${s.average_progress.toFixed(1)}%`} hint={s.projects_without_phases ? `${s.projects_without_phases} project(s) without phases` : 'Across all projects'} icon={TrendingUp} tone="green" />
         <StatCard label="Disbursed" value={pesoCompact(s.total_disbursed)} hint={`of ${pesoCompact(s.total_revised_contract)} contract amount`} icon={Banknote} tone="yellow" />
         <StatCard label="Remaining balance" value={pesoCompact(s.total_remaining_balance)} hint={`ABC ${pesoCompact(s.total_approved_budget)}`} icon={Wallet} tone="slate" />

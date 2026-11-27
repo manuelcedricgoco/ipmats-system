@@ -97,10 +97,11 @@ export function shouldRecordHistory({ trigger, flagChanged, statusChanged }) {
   return !SYSTEM_TRIGGERS.includes(trigger) || flagChanged || statusChanged;
 }
 
-export async function evaluateAndSave(admin, projectId, { trigger = 'manual', actorId = null, rules, today = new Date(), phashCandidates } = {}) {
+export async function evaluateAndSave(admin, projectId, { trigger = 'manual', actorId = null, rules, today = new Date(), phashCandidates, statusOverride } = {}) {
   const input = await loadEvaluationInput(admin, projectId, phashCandidates);
   const activeRules = rules || (await getFlagRules(admin));
   const result = evaluateProject({ ...input, rules: activeRules, today });
+  if (['not_started', 'ongoing'].includes(statusOverride)) result.status = statusOverride;
   const { project } = input;
 
   const flagChanged = result.flag !== project.auto_flag;
@@ -149,9 +150,9 @@ export async function evaluateAndSave(admin, projectId, { trigger = 'manual', ac
  * Re-run detection after a change. A failure here must not undo the change the
  * user just saved, so it is logged and reported instead of thrown.
  */
-export async function reevaluate(projectId, trigger, actorId) {
+export async function reevaluate(projectId, trigger, actorId, options = {}) {
   try {
-    const r = await evaluateAndSave(adminClient, projectId, { trigger, actorId });
+    const r = await evaluateAndSave(adminClient, projectId, { trigger, actorId, ...options });
     return { flag: r.flag, status: r.status, flagChanged: r.flagChanged, reasons: r.reasons };
   } catch (err) {
     console.error(`[flags] evaluation failed for ${projectId}:`, err.message);

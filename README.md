@@ -19,7 +19,7 @@ IPMATS tracks DPWH infrastructure projects in Occidental Mindoro (Region IV-B MI
 
 | Page | What it shows |
 |---|---|
-| Dashboard (`/`) | Search box (project name or municipality), four live counters — Total projects, Ongoing, Completed, Delayed or stalled (delayed + suspended) — a full-width project map, and project cards with status and municipality filters |
+| Dashboard (`/`) | Search box (project name or municipality), four live counters — Total projects, On-going, Completed, Delayed — a full-width project map, and project cards with status and municipality filters |
 | Projects (`/projects`) | Every project as a card, with search, status and municipality filters and paging |
 | Project Map (`/map`) | Full-height map with a pin for every project that has coordinates, coloured by status |
 | Project drawer | Opens from a pin or a card, sliding in from the right while the page stays usable: 360° viewer (or a placeholder when no photo has been published), location, implementing office, contractor, contract cost, status, progress and dates |

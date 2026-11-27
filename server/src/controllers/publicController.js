@@ -24,7 +24,7 @@ import { pagination } from '../utils/pagination.js';
 export const STAT_GROUPS = Object.freeze({
   ongoing: ['ongoing'],
   completed: ['completed'],
-  delayed_or_stalled: ['delayed', 'suspended'],
+  delayed_or_stalled: ['delayed'],
 });
 
 const CARD_COLUMNS =
@@ -33,7 +33,7 @@ const CARD_COLUMNS =
 // public_flag (migration 021): the flag only once an auditor has reviewed it, otherwise null ("Under review").
 const PIN_COLUMNS = 'id, project_code, name, project_type, status, latitude, longitude, municipality_name, barangay_name, overall_progress, contract_amount, public_flag';
 const SORTS = ['updated_at', 'name', 'project_code', 'overall_progress', 'contract_amount', 'target_completion_date'];
-const STATUSES = ['not_started', 'ongoing', 'delayed', 'completed', 'suspended', 'terminated'];
+const STATUSES = ['not_started', 'ongoing', 'delayed', 'completed'];
 
 function db() {
   if (!anonClient) throw new HttpError(503, 'The server is not connected to the database.');

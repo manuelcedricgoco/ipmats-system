@@ -12,14 +12,17 @@ const nullable = (schema) => z.preprocess((v) => (v === '' || v === 'null' ? nul
 export const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD');
 const money = z.coerce.number().finite().min(0).max(1e13);
 const text = (max) => z.string().trim().max(max);
+const createStatusField = z.preprocess(
+  (v) => (v === undefined || v === '' ? undefined : ['not_started', 'ongoing'].includes(v) ? v : 'auto'),
+  z.enum(['auto', 'not_started', 'ongoing']).optional(),
+);
 
 export const uuidParam = z.string().uuid();
 export const ROLES = ['admin', 'dpwh_personnel', 'auditor'];
 export const PROJECT_TYPES = ['road', 'bridge', 'flood_control', 'building', 'water_supply', 'other'];
-// Week 3: status is set automatically (Not started / Ongoing / Delayed / Completed).
-// Personnel may only set Suspended or Terminated; any other value means "automatic".
-export const MANUAL_STATUSES = ['suspended', 'terminated'];
-const statusField = z.preprocess((v) => (v === undefined || v === '' ? undefined : MANUAL_STATUSES.includes(v) ? v : 'auto'), z.enum(['auto', 'suspended', 'terminated']).optional());
+// Updates recalculate status automatically; registration accepts an initial Not started or Ongoing value.
+export const MANUAL_STATUSES = [];
+const statusField = z.preprocess((v) => (v === undefined || v === '' ? undefined : 'auto'), z.enum(['auto']).optional());
 
 // The Project ID (project_code) is NOT accepted from clients: the database assigns it on insert
 // (migration 008, e.g. 26OM0332) and blocks any change afterwards. zod drops unknown keys,
@@ -50,7 +53,7 @@ const projectFields = {
 const contractWithinBudget = (p) => p.contract_amount == null || p.approved_budget == null || p.contract_amount <= p.approved_budget;
 
 export const projectCreate = z
-  .object(projectFields)
+  .object({ ...projectFields, status: createStatusField })
   .refine(contractWithinBudget, { message: 'Contract amount cannot exceed the approved budget (ABC)', path: ['contract_amount'] });
 
 export const projectUpdate = z

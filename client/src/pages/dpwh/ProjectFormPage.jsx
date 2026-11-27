@@ -10,7 +10,7 @@ import { useToast } from '../../context/ToastContext.jsx';
 import { useApi } from '../../hooks/useApi.js';
 import { useReference } from '../../hooks/useReference.js';
 import { api } from '../../lib/api.js';
-import { MANUAL_STATUSES, PROJECT_TYPES, STATUS_META } from '../../lib/constants.js';
+import { MANUAL_STATUSES, PROJECT_TYPES, REGISTRATION_STATUSES, STATUS_META } from '../../lib/constants.js';
 import { date, peso } from '../../lib/format.js';
 import { OUTSIDE_PROVINCE_MESSAGE, PROVINCE_BOUNDS, isWithinOccidentalMindoro } from '../../lib/geo.js';
 
@@ -49,7 +49,7 @@ export default function ProjectFormPage() {
 
   useEffect(() => {
     const p = existing.data;
-    // Week 3: only Suspended / Terminated are set by hand; every other status is automatic
+    // Project status is always calculated from progress and schedule.
     if (p) setForm({ ...Object.fromEntries(Object.keys(EMPTY).map((k) => [k, p[k] ?? ''])), status: MANUAL_STATUSES.includes(p.status) ? p.status : 'auto' });
   }, [existing.data]);
 
@@ -263,12 +263,12 @@ export default function ProjectFormPage() {
               <Field
                 label="Status"
                 required
-                hint={editing && existing.data ? `Now: ${STATUS_META[existing.data.status]?.label}. Not started, Ongoing, Delayed and Completed are set automatically.` : 'Not started, Ongoing, Delayed and Completed are set automatically.'}
+                hint={editing && existing.data ? `Now: ${STATUS_META[existing.data.status]?.label || 'Automatic'}. Future status updates are calculated from progress and schedule.` : 'Choose Automatic, Not started, or On-going as the initial project status.'}
               >
                 {(a) => (
                   <Select {...a} value={form.status} onChange={set('status')}>
                     <option value="auto">Automatic</option>
-                    {MANUAL_STATUSES.map((s) => <option key={s} value={s}>{STATUS_META[s].label}</option>)}
+                    {(editing ? MANUAL_STATUSES : REGISTRATION_STATUSES).map((s) => <option key={s} value={s}>{STATUS_META[s].label}</option>)}
                   </Select>
                 )}
               </Field>
