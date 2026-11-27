@@ -253,9 +253,9 @@ Money events of a project.
 | validation | jsonb | no | `'{}'` | Results of the GPS, time and reuse checks |
 | uploaded_by | uuid | yes | — | Who uploaded it |
 | created_at | timestamptz | no | now() | When it was uploaded |
-| is_public | boolean | no | false | True = approved for the public portal |
-| public_reviewed_by | uuid | yes | — | Auditor or Admin who approved or hid it |
-| public_reviewed_at | timestamptz | yes | — | When |
+| is_public | boolean | no | true | Shown on the public portal. Always true since 022 (photos are public on upload) |
+| public_reviewed_by | uuid | yes | — | Auditor or Admin who approved or hid it under the old approval step (before 022) |
+| public_reviewed_at | timestamptz | yes | — | When (before 022) |
 
 ### project_documents
 Supporting documents of a project. The files are in the private `project-documents` bucket.
@@ -478,7 +478,7 @@ goes through the API, which uses the service-role key (it bypasses RLS) after ch
 | projects | projects: staff read | authenticated | Every row and column, staff only |
 | contractors | contractors: public read | anon | Every row, **only `id` and `name`** |
 | contractors | contractors: staff read | authenticated | Every row and column, staff only |
-| site_images | images: public read | anon | Only rows with `is_public = true`, 7 columns (no GPS, hash, uploader) |
+| site_images | images: public read | anon | Rows with `is_public = true` (every photo since 022), 7 columns (no GPS, hash, uploader) |
 | site_images | images: staff read | authenticated | Every row, staff only |
 | profiles | profiles: own or staff | authenticated | Your own profile; staff read all profiles |
 | project_phases, progress_updates, financial_records, project_documents, flag_history, flag_reviews, audit_findings, system_settings | "…: staff read" | authenticated | Every row, staff only |
@@ -508,10 +508,10 @@ write files. It hands out signed links that expire (1 hour by default, `SIGNED_U
 
 ## Migrations
 
-The migration files are in `database/migrations/`. They are numbered and run in number order, `001` to `021`.
-The live database's migration history lists 001–020 as applied, in that order (019 and 020 were applied on
-25 November 2026, before the matching API was deployed). 021 must be applied before the API that reads
-`public_flag` is deployed.
+The migration files are in `database/migrations/`. They are numbered and run in number order, `001` to `022`.
+The live database's migration history lists 001–021 as applied, in that order (019 and 020 on 25 November
+2026, 021 on 27 November 2026, each before the matching API was deployed). 022 makes every photo public; the
+API no longer has a show/hide route, so it works with or without 022 applied.
 
 Rules the project follows:
 - An applied migration is never edited or deleted. A mistake is undone by a new migration (013 → 014, 006 → 016).
@@ -541,3 +541,4 @@ Rules the project follows:
 | 019 | sticky_flag_reviews | Adds `projects.reviewed_flag`: the auditor's decision, which the shown flag never drops below automatically |
 | 020 | image_perceptual_hash | Adds `site_images.phash` for near-duplicate photo detection |
 | 021 | public_reviewed_flag | Adds the generated `projects.public_flag` (flag only after auditor review), grants anon that one column, and appends it to `v_public_projects` |
+| 022 | photos_public_on_upload | `site_images.is_public` defaults to true and every hidden photo is made public: photos are public on upload, with no approval step |

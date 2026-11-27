@@ -70,13 +70,13 @@ Accounts waiting for approval, or declined, see the same portal with a status ba
   - Pages and components: `pages/public/PublicMapPage.jsx`, `components/public/PublicProjectMap.jsx`,
     `ProjectDrawer.jsx`, `components/map/ProjectMap.jsx`, `components/viewer360/PanoramaViewer.jsx`.
   - API: `GET /public/map`, `GET /public/projects/:id`.
-  - Data: `v_public_projects`, `site_images` (only rows approved for the public); files in the `panoramas` bucket
+  - Data: `v_public_projects`, `site_images` (every photo; public as soon as it is uploaded); files in the `panoramas` bucket
     through expiring signed links.
 
 ### 360° viewer
 - **In the UI:** the photo panel in the project drawer (and in the staff pages).
 - **Why:** Objective 2 — lets people see the actual site condition, not just a pin.
-- **Who:** everyone, for photos approved for the public. Staff see all photos.
+- **Who:** everyone. Every uploaded photo is public (no approval step).
 - **What it does:** shows an equirectangular (2:1) panorama in an interactive viewer (drag to look around, zoom,
   full screen). When a project has several public photos, buttons with the inspection dates switch between them.
 - **Touches:** `components/viewer360/PanoramaViewer.jsx` (Pannellum).
@@ -197,7 +197,6 @@ Sidebar items appear only for the roles that can use them. "All staff" = Admin, 
 - **Who:**
   - All staff view.
   - Personnel and Admin upload, caption and mark a photo as final.
-  - Auditor and Admin choose which photos the public sees.
   - Admin deletes.
 - **What it does:**
   - **Upload:** JPEG, PNG or WebP, up to 30 MB, with an inspection date. The server:
@@ -216,8 +215,8 @@ Sidebar items appear only for the roles that can use them. "All staff" = Admin, 
     - stores a smaller copy if the file is large.
   - **Limits:** each person can make at most 20 file-carrying requests per 10 minutes (360° photo and document
     uploads, profile photos, flag reviews, and creating or editing audit findings).
-  - **Public approval:** new photos start hidden from the public until an Auditor or Admin clicks
-    **Show to public**.
+  - **Public at once:** a photo uploaded by DPWH personnel appears on the public portal right away. Nobody
+    approves or hides photos (migration 022); an Admin can delete a wrong upload.
   - **Final photo:** a photo marked **final** (as-built) is one of the requirements for a project to count as completed.
   - **Offline:** with no connection, a photo is kept on the device (IndexedDB). The top bar shows waiting uploads,
     and they are sent automatically when the connection returns.
