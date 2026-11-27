@@ -53,3 +53,79 @@ describe('inbox assembly', () => {
     assert.deepEqual(row.reasons, ['citizen_reports']);
   });
 });
+
+/** A stand-in for req.db: every query on a table resolves to that table's rows; calls are recorded. */
+function fakeDb(tables) {
+  const calls = [];
+  const db = {
+    calls,
+    from(table) {
+      const q = { table, ops: [] };
+      calls.push(q);
+      const builder = new Proxy(
+        {},
+        {
+          get(_t, prop) {
+            if (prop === 'then') return (ok, fail) => Promise.resolve({ data: tables[table] ?? [], error: null }).then(ok, fail);
+            if (prop === 'maybeSingle') return async () => ({ data: (tables[table] ?? [])[0] ?? null, error: null });
+            return (...args) => {
+              q.ops.push([prop, ...args]);
+              return builder;
+            };
+          },
+        },
+      );
+      return builder;
+    },
+  };
+  return db;
+}
+
+describe('the PACC project view', () => {
+  const reportRows = Array.from({ length: 150 }, (_, i) => ({ id: `r${i}`, status: 'closed', submitted_on: '2026-11-01' }));
+  const tables = {
+    v_project_summary: [{ id: ID, project_code: 'P-1', contract_amount: 1000, approved_budget: 1200 }],
+    citizen_reports: reportRows,
+    citizen_report_files: [],
+    project_phases: [{ id: 'ph1', sequence_no: 1, name: 'Earthworks', weight: 40, accomplishment: 50 }],
+    progress_updates: [{ id: 'pu1', report_date: '2026-11-01', overall_progress: 20, submitter: { full_name: 'Ana' } }],
+    financial_records: [
+      { id: 'f1', record_type: 'disbursement', amount: 300, phase_id: 'ph1' },
+      { id: 'f2', record_type: 'variation_order', amount: 100, phase_id: null },
+    ],
+    site_images: [{ id: 'i1', storage_path: 'p/a.jpg', phase: { name: 'Earthworks' }, uploader: { full_name: 'Ben' } }],
+    project_documents: [{ id: 'd1', doc_type: 'contract', storage_path: 'p/c.pdf', phase: null, uploader: { full_name: 'Cy' } }],
+  };
+
+  it('includes phases, recent progress, finance, photos and documents, read through the caller', async () => {
+    const { projectView } = await import('../controllers/paccController.js');
+    const db = fakeDb(tables);
+    let body;
+    await projectView({ params: { id: ID }, db }, { json: (b) => (body = b) });
+    const d = body.data;
+    assert.deepEqual(d.phases, tables.project_phases);
+    assert.equal(d.progress_updates[0].submitted_by_name, 'Ana');
+    assert.equal('submitter' in d.progress_updates[0], false);
+    assert.equal(d.financial_records[0].phase_name, 'Earthworks');
+    assert.equal(d.financial_records[1].phase_name, null);
+    assert.equal(d.finance_summary.total_disbursed, 300);
+    assert.equal(d.finance_summary.revised_contract_amount, 1100);
+    assert.deepEqual(
+      { phase_name: d.images[0].phase_name, uploaded_by_name: d.images[0].uploaded_by_name, url: d.images[0].url },
+      { phase_name: 'Earthworks', uploaded_by_name: 'Ben', url: null },
+    );
+    assert.equal(d.documents[0].type_label, 'Contract');
+    assert.equal(d.documents[0].uploaded_by_name, 'Cy');
+    assert.equal('url' in d.documents[0], true);
+    const progress = db.calls.find((c) => c.table === 'progress_updates');
+    assert.ok(progress.ops.some(([op, n]) => op === 'limit' && n === 50));
+  });
+
+  it('reads the proof photos of many reports in chunks of 100', async () => {
+    const { projectView } = await import('../controllers/paccController.js');
+    const db = fakeDb(tables);
+    await projectView({ params: { id: ID }, db }, { json: () => {} });
+    const chunks = db.calls.filter((c) => c.table === 'citizen_report_files').map((c) => c.ops.find(([op]) => op === 'in')[2].length);
+    assert.deepEqual(chunks, [100, 50]);
+  });
+});

@@ -1,7 +1,9 @@
 /**
  * PACC portal API
  *   GET  /pacc/inbox                              projects that need PACC's attention, with the reasons
- *   GET  /pacc/projects/:id                       investigation view (opening it marks new reports "under review")
+ *   GET  /pacc/projects/:id                       investigation view (opening it marks new reports "under review"); also
+ *                                                 the project's phases, recent progress, finance, 360° photos and
+ *                                                 documents, read-only
  *   POST /pacc/reports/:reportId/close            close one citizen report with an outcome
  *   POST /pacc/projects/:id/reports/close-all     close every open report of a project with one outcome
  *   GET  /pacc/cases                              every case, newest first
@@ -16,6 +18,9 @@
 import { randomUUID } from 'node:crypto';
 import { adminClient } from '../config/supabase.js';
 import { canTransition, isClosedCaseStatus, referralReasons } from '../services/citizenReports.js';
+import { summarizeFinance } from '../services/completion.js';
+import { DOCUMENT_BUCKET, TYPE_LABELS as DOCUMENT_TYPE_LABELS } from './documentsController.js';
+import { BUCKET as PANORAMA_BUCKET } from './imagesController.js';
 import { removeAvatarFile } from '../services/avatars.js';
 import { logPacc } from '../services/paccActivity.js';
 import { detectImageFormat } from '../services/imageFormat.js';
@@ -117,7 +122,7 @@ export async function projectView(req, res) {
     }
   }
 
-  const [reportRows, history, reviews, findings, cases] = await Promise.all([
+  const [reportRows, history, reviews, findings, cases, phases, progress, financial, imageRows, documentRows] = await Promise.all([
     req.db
       .from('citizen_reports')
       .select('id, category, description, status, outcome, case_id, submitted_on')
@@ -129,16 +134,46 @@ export async function projectView(req, res) {
     req.db.from('flag_reviews').select('*, auditor:profiles!flag_reviews_auditor_id_fkey(full_name)').eq('project_id', id).order('created_at', { ascending: false }).then(unwrap),
     req.db.from('audit_findings').select('*').eq('project_id', id).order('created_at', { ascending: false }).then(unwrap),
     req.db.from('pacc_cases').select('*').eq('project_id', id).order('created_at', { ascending: false }).then(unwrap),
+    // Read-only project records (the same data staff see; RLS "… pacc read" policies of migration 024).
+    req.db.from('project_phases').select('*').eq('project_id', id).order('sequence_no').then(unwrap),
+    req.db
+      .from('progress_updates')
+      .select('id, report_date, overall_progress, remarks, created_at, submitter:profiles!progress_updates_submitted_by_fkey(full_name)')
+      .eq('project_id', id)
+      .order('report_date', { ascending: false })
+      .order('created_at', { ascending: false })
+      .limit(50)
+      .then(unwrap),
+    req.db.from('financial_records').select('*').eq('project_id', id).order('record_date').order('created_at').then(unwrap),
+    req.db
+      .from('site_images')
+      .select('id, phase_id, storage_path, caption, inspection_date, captured_at, is_final, gps_source, created_at, phase:project_phases(name), uploader:profiles!site_images_uploaded_by_fkey(full_name)')
+      .eq('project_id', id)
+      .order('inspection_date', { ascending: false })
+      .order('created_at', { ascending: false })
+      .then(unwrap),
+    req.db
+      .from('project_documents')
+      .select('id, title, doc_type, description, document_date, file_name, mime_type, size_bytes, storage_path, created_at, phase:project_phases(name), uploader:profiles!project_documents_uploaded_by_fkey(full_name)')
+      .eq('project_id', id)
+      .order('created_at', { ascending: false })
+      .then(unwrap),
   ]);
 
-  const files = reportRows.length
-    ? unwrap(await req.db.from('citizen_report_files').select('id, report_id, storage_path').in('report_id', reportRows.map((r) => r.id)).order('id'))
-    : [];
-  const urls = await signedUrls('citizen-reports', files.map((f) => f.storage_path));
+  const files = await inChunks(
+    reportRows.map((r) => r.id),
+    (chunk) => req.db.from('citizen_report_files').select('id, report_id, storage_path').in('report_id', chunk).order('id'),
+  );
+  const [urls, imageUrls, documentUrls] = await Promise.all([
+    signedUrls('citizen-reports', files.map((f) => f.storage_path)),
+    signedUrls(PANORAMA_BUCKET, imageRows.map((r) => r.storage_path)),
+    signedUrls(DOCUMENT_BUCKET, documentRows.map((r) => r.storage_path)),
+  ]);
   const reports = reportRows.map((r) => ({
     ...r,
     files: files.filter((f) => f.report_id === r.id).map((f) => ({ id: f.id, url: urls[f.storage_path] ?? null })),
   }));
+  const phaseName = Object.fromEntries(phases.map((ph) => [ph.id, ph.name]));
 
   res.json({
     data: {
@@ -148,6 +183,23 @@ export async function projectView(req, res) {
       flag_reviews: reviews.map(({ auditor, ...r }) => ({ ...r, auditor_name: auditor?.full_name ?? null })),
       findings,
       cases,
+      phases,
+      progress_updates: progress.map(({ submitter, ...u }) => ({ ...u, submitted_by_name: submitter?.full_name ?? null })),
+      financial_records: financial.map((r) => ({ ...r, phase_name: r.phase_id ? phaseName[r.phase_id] ?? null : null })),
+      finance_summary: summarizeFinance(project, financial),
+      images: imageRows.map(({ phase, uploader, storage_path, ...r }) => ({
+        ...r,
+        phase_name: phase?.name ?? null,
+        uploaded_by_name: uploader?.full_name ?? null,
+        url: imageUrls[storage_path] ?? null,
+      })),
+      documents: documentRows.map(({ phase, uploader, storage_path, ...d }) => ({
+        ...d,
+        type_label: DOCUMENT_TYPE_LABELS[d.doc_type] || d.doc_type,
+        phase_name: phase?.name ?? null,
+        uploaded_by_name: uploader?.full_name ?? null,
+        url: documentUrls[storage_path] ?? null,
+      })),
     },
   });
 }

@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import FlagReasons from '../../components/audit/FlagReasons.jsx';
 import OpenCaseModal from '../../components/pacc/OpenCaseModal.jsx';
+import ProjectRecords from '../../components/pacc/ProjectRecords.jsx';
 import { FlagBadge, Pill, StatusBadge } from '../../components/common/Badges.jsx';
 import Button from '../../components/common/Button.jsx';
 import { Card, CardBody, CardHeader, DetailList, PageHeader } from '../../components/common/Card.jsx';
@@ -19,8 +20,9 @@ import { CASE_STATUS_META, REPORT_CATEGORY_LABELS, REPORT_OUTCOME_LABELS, REPORT
 const REPORT_STATUS_CLS = { received: 'bg-brand-50 text-brand-800', under_review: 'bg-amber-50 text-amber-800', closed: 'bg-slate-100 text-slate-700' };
 
 /**
- * PACC investigation page for one project: project facts, the flag and its reasons, auditor decisions and
- * findings, and the citizen reports with their proof. Opening it marks new reports "under review" (server).
+ * PACC investigation page for one project: project facts, the flag and its reasons, the citizen reports with their
+ * proof, PACC's cases, the project's phases, progress, finance, 360° photos and documents (read-only), auditor
+ * decisions and findings, and the flag history. Opening it marks new reports "under review" (server).
  */
 export default function PaccProjectPage() {
   const { id } = useParams();
@@ -42,6 +44,7 @@ export default function PaccProjectPage() {
   }
 
   const { project: p, reports, flag_history: history, flag_reviews: reviews, findings, cases } = data;
+  const { phases = [], progress_updates: progress = [], financial_records: records = [], finance_summary: finance = {}, images = [], documents = [] } = data;
   const openReports = reports.filter((r) => r.status !== 'closed');
   const openCase = cases.find((c) => !isClosedCaseStatus(c.status));
 
@@ -145,6 +148,8 @@ export default function PaccProjectPage() {
             </ul>
           </Card>
         )}
+
+        <ProjectRecords project={p} phases={phases} progress={progress} finance={finance} records={records} images={images} documents={documents} />
 
         <Card className="overflow-hidden">
           <CardHeader title="Auditor decisions" description="Every confirm or override of the flag, with the reason" />

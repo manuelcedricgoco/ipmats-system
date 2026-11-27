@@ -474,13 +474,15 @@ abolished in 2022, so this is a modelled role.
 
 ### Investigation page
 - **In the UI:** a project from the inbox (`/pacc/projects/:id`).
-- **What it does:** project facts, the flag and its reasons, auditor decisions and findings, and the citizen
-  reports with their proof photos (expiring signed links). Opening it marks new reports "Under review". PACC can
+- **What it does:** project facts, the flag and its reasons, auditor decisions and findings, the citizen
+  reports with their proof photos (expiring signed links), and, read-only, the construction phases, the 50 most
+  recent progress reports, the financial records with a summary, the 360° photos (each opens full size in a new
+  tab) and the supporting documents. Opening it marks new reports "Under review". PACC can
   close one report, or all open reports of the project, with an outcome (valid, invalid, duplicate), and open a
   case on the project, attaching open reports to it.
-- **Touches:** `pages/pacc/PaccProjectPage.jsx`, `components/pacc/OpenCaseModal.jsx`; `GET /pacc/projects/:id`,
+- **Touches:** `pages/pacc/PaccProjectPage.jsx`, `components/pacc/OpenCaseModal.jsx`, `components/pacc/ProjectRecords.jsx`; `GET /pacc/projects/:id`,
   `POST /pacc/reports/:reportId/close`, `POST /pacc/projects/:id/reports/close-all`, `POST /pacc/projects/:id/cases`;
-  bucket `citizen-reports`.
+  buckets `citizen-reports`, `panoramas` and `project-documents` (signed links).
 
 ### Cases
 - **In the UI:** "Cases" (`/pacc/cases`) and a case page (`/pacc/cases/:caseId`).
