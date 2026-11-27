@@ -1,4 +1,5 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { invalidateReference } from '../hooks/useReference.js';
 import { ACCOUNT_SUSPENDED_EVENT, api } from '../lib/api.js';
 import { STAFF_ROLES, SUSPENDED_MESSAGE, isSuspensionError } from '../lib/constants.js';
@@ -28,6 +29,11 @@ export function AuthProvider({ children }) {
   const [profileError, setProfileError] = useState(null);
   // Why the user was signed out without asking (shown on the sign-in page), e.g. a suspension.
   const [signOutNotice, setSignOutNotice] = useState(null);
+  // AuthProvider sits inside <BrowserRouter> (main.jsx). Kept in a ref so the auth listener below is not
+  // re-subscribed on every navigation (useNavigate returns a new function when the location changes).
+  const navigate = useNavigate();
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
 
   const loadProfile = useCallback(async (s) => {
     if (!s) {
@@ -76,6 +82,9 @@ export function AuthProvider({ children }) {
       if (event === 'SIGNED_IN' || event === 'SIGNED_OUT') invalidateReference();
       if (event === 'SIGNED_IN' || event === 'USER_UPDATED') loadProfile(s);
       if (event === 'SIGNED_OUT') setProfile(null);
+      // Opened a set-password (recovery) link: supabase-js has signed in from the link (the profile is loaded by
+      // getSession above, which waits for that) and wherever the link landed, ask for the new password.
+      if (event === 'PASSWORD_RECOVERY') navigateRef.current('/set-password', { replace: true });
     });
     return () => {
       active = false;

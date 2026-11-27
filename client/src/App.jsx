@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react';
 import { Navigate, Route, Routes, useParams } from 'react-router-dom';
 import { PageLoader } from './components/common/Feedback.jsx';
 import AppLayout from './components/layout/AppLayout.jsx';
+import PaccLayout from './components/layout/PaccLayout.jsx';
 import PublicLayout from './components/layout/PublicLayout.jsx';
 import NotFoundPage from './pages/NotFoundPage.jsx';
 import ProtectedRoute from './routes/ProtectedRoute.jsx';
@@ -15,6 +16,7 @@ const PublicMapPage = lazy(() => import('./pages/public/PublicMapPage.jsx'));
 const LoginPage = lazy(() => import('./pages/auth/LoginPage.jsx'));
 const RegisterPage = lazy(() => import('./pages/auth/RegisterPage.jsx'));
 const AccountPendingPage = lazy(() => import('./pages/auth/AccountPendingPage.jsx'));
+const SetPasswordPage = lazy(() => import('./pages/auth/SetPasswordPage.jsx'));
 // Staff workspace
 const DashboardPage = lazy(() => import('./pages/shared/DashboardPage.jsx'));
 const ProjectsPage = lazy(() => import('./pages/dpwh/ProjectsPage.jsx'));
@@ -40,6 +42,10 @@ const ContractorsPage = lazy(() => import('./pages/dpwh/ContractorsPage.jsx'));
 const AgenciesPage = lazy(() => import('./pages/dpwh/AgenciesPage.jsx'));
 const UsersPage = lazy(() => import('./pages/admin/UsersPage.jsx'));
 const AccountPage = lazy(() => import('./pages/shared/AccountPage.jsx'));
+// PACC portal (Presidential Anti-Corruption Commission)
+const PaccInboxPage = lazy(() => import('./pages/pacc/PaccInboxPage.jsx'));
+const PaccProjectPage = lazy(() => import('./pages/pacc/PaccProjectPage.jsx'));
+const PaccPlaceholderPage = lazy(() => import('./pages/pacc/PaccPlaceholderPage.jsx'));
 
 const STAFF = ['admin', 'dpwh_personnel', 'auditor'];
 const EDITORS = ['admin', 'dpwh_personnel'];
@@ -66,6 +72,7 @@ export default function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/account-pending" element={<AccountPendingPage />} />
+        <Route path="/set-password" element={<SetPasswordPage />} />
 
         <Route path="/app" element={<ProtectedRoute roles={STAFF} />}>
           <Route element={<AppLayout />}>
@@ -99,6 +106,19 @@ export default function App() {
               <Route path="settings" element={<SettingsPage />} />
             </Route>
             <Route path="*" element={<NotFoundPage homeTo="/app" homeLabel="Back to the dashboard" />} />
+          </Route>
+        </Route>
+
+        <Route path="/pacc" element={<ProtectedRoute roles={['pacc']} />}>
+          <Route element={<PaccLayout />}>
+            <Route index element={<PaccInboxPage />} />
+            <Route path="projects/:id" element={<PaccProjectPage />} />
+            {/* Cases, Members and Activity log: placeholders until their pages are built */}
+            <Route path="cases" element={<PaccPlaceholderPage title="Cases" />} />
+            <Route path="members" element={<PaccPlaceholderPage title="Members" />} />
+            <Route path="activity" element={<PaccPlaceholderPage title="Activity log" />} />
+            <Route path="account" element={<AccountPage />} />
+            <Route path="*" element={<NotFoundPage homeTo="/pacc" homeLabel="Back to the inbox" />} />
           </Route>
         </Route>
 

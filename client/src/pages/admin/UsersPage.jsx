@@ -16,7 +16,7 @@ import { useDebounce } from '../../hooks/useDebounce.js';
 import { useReference } from '../../hooks/useReference.js';
 import { useRowBusy } from '../../hooks/useRowBusy.js';
 import { api } from '../../lib/api.js';
-import { ROLE_LABELS } from '../../lib/constants.js';
+import { ROLE_LABELS, STAFF_ROLES } from '../../lib/constants.js';
 import { date, dateTime } from '../../lib/format.js';
 
 /** WEEK 1 — User accounts and role-based access (admin). Approves sign-ups from the Register page. */
@@ -108,7 +108,7 @@ export default function UsersPage() {
         </div>
         <Select aria-label="Role" className="sm:w-56" value={role} onChange={(e) => { setRole(e.target.value); setPage(1); }}>
           <option value="">All roles</option>
-          {Object.entries(ROLE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          {STAFF_ROLES.map((k) => <option key={k} value={k}>{ROLE_LABELS[k]}</option>)}
         </Select>
         <button
           type="button"
@@ -247,7 +247,7 @@ function UserModal({ value, self, onClose, onSaved }) {
         <Field label="Role" required hint={isSelf ? 'You cannot change your own role.' : editing && value.approval_status !== 'approved' ? 'Approve the access request to grant a role.' : undefined}>
           {(a) => (
             <Select {...a} value={form.role} onChange={set('role')} disabled={isSelf || (editing && value.approval_status !== 'approved')}>
-              {Object.entries(ROLE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              {STAFF_ROLES.map((k) => <option key={k} value={k}>{ROLE_LABELS[k]}</option>)}
             </Select>
           )}
         </Field>

@@ -23,6 +23,7 @@ export const ROLE_LABELS = {
   admin: 'System Administrator',
   dpwh_personnel: 'DPWH Personnel',
   auditor: 'Auditor',
+  pacc: 'PACC Investigator',
 };
 
 export const OFFICE_TYPES = {

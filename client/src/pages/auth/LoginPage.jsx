@@ -6,12 +6,13 @@ import { Alert } from '../../components/common/Feedback.jsx';
 import { Field, Input, PasswordInput } from '../../components/common/Form.jsx';
 import SplashScreen from '../../components/common/SplashScreen.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
-import { STAFF_ROLES, SUSPENDED_MESSAGE, isSuspensionError } from '../../lib/constants.js';
+import { SUSPENDED_MESSAGE, isSuspensionError } from '../../lib/constants.js';
+import { homePathForRole } from '../../lib/pacc.js';
 import AuthShell from './AuthShell.jsx';
 
 /**
  * WEEK 1 — Login page (Tracy Ann Milaflores, front-end): opens the right place for each role.
- * Staff → their dashboard · accounts waiting for approval (or declined) → the public portal, with a banner.
+ * Staff → their dashboard · PACC → the PACC portal · accounts waiting for approval (or declined) → the public portal, with a banner.
  * The entry splash starts the moment "Sign in" is clicked and lasts 5 seconds in total
  * (the sign-in itself happens while it plays; if it takes longer, the splash waits for it).
  */
@@ -32,9 +33,11 @@ export default function LoginPage() {
 
   if (isAuthenticated) {
     const from = location.state?.from?.pathname;
-    if (!isPending && STAFF_ROLES.includes(role)) return <Navigate to={from && from.startsWith('/app') ? from : '/app'} replace />;
     // Waiting for approval or declined: only the public portal (a banner explains the status).
-    return <Navigate to="/" replace />;
+    const home = isPending ? '/' : homePathForRole(role);
+    // Back to the page that asked for sign-in, if it is inside this account's own area.
+    const backToFrom = home !== '/' && from && (from === home || from.startsWith(`${home}/`));
+    return <Navigate to={backToFrom ? from : home} replace />;
   }
 
   const submit = async (e) => {
