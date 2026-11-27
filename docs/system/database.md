@@ -2,7 +2,7 @@
 
 The database is PostgreSQL 17, hosted by Supabase (project **IPMATS**). This page was written from the live
 database on 22 November 2026, not only from the migration files, and updated on 25 November 2026 for migrations
-019 and 020. The PACC parts (migrations 023–026) and the project deletion requests (027), all applied 27 November 2026, are written from the migration files, as are the contractor accounts (028, 029; new, not yet applied).
+019 and 020. The PACC parts (migrations 023–026) and the project deletion requests (027), all applied 27 November 2026, are written from the migration files, as are the contractor accounts (028, applied 27 November 2026; 029, not yet applied: it is applied at merge time of PR #15, right before that PR's API is deployed).
 Where the two differ, the live schema wins.
 
 - What each table is used for in the app: [features.md](features.md)
@@ -698,15 +698,16 @@ write files. It hands out signed links that expire (1 hour by default, `SIGNED_U
 ## Migrations
 
 The migration files are in `database/migrations/`. They are numbered and run in number order, `001` to `029`.
-The live database's migration history lists 001–027 as applied, in that order (019 and 020 on 25 November
+The live database's migration history lists 001–028 as applied, in that order (019 and 020 on 25 November
 2026; 021 and 022 on 27 November 2026, each before the matching API was deployed; 023, 024, 025 and 026 on 27 November
-2026 for the PACC portal; 027 on 27 November 2026 for project deletion requests and the staff-visible PACC case status). On a fresh database, 023 must be applied on its own before 024, because a new enum value
+2026 for the PACC portal; 027 on 27 November 2026 for project deletion requests and the staff-visible PACC case status; 028, the `contractor` role value, on its own on 27 November 2026). On a fresh database, 023 must be applied on its own before 024, because a new enum value
 must be committed before it can be used, and 025 must be applied after 024 and before the API that closes cases is
 deployed. Apply 026 after 025 and before deploying the API that writes `pacc_cases.contractor_name`
 (without it, opening or editing a case fails). Apply 027 after 026 and before deploying
 the API that reads `project_deletion_requests` and `v_project_summary.pacc_case_status` (without it, the project list fails).
-028 and 029 (contractor accounts) are new and not yet applied. **Deploy order: 028 → 029 → the API from PR #15 → the
-client.** Apply 028 on its own first (a new enum value must be committed before it is used). The PR #15 API must never
+Only 029 (contractor accounts) is not yet applied: it is applied at merge time of PR #15, right before the API from
+that PR is deployed. **Deploy order: 029 → the API from PR #15 → the client** (028 is already applied). On a fresh
+database, apply 028 on its own first (a new enum value must be committed before it is used), then 029. The PR #15 API must never
 run before 029: it selects `profiles.contractor_id` on every signed-in request, so every one fails without it. 029
 moves the staff-visible PACC case status from `projects.pacc_case_status` to the new table `project_pacc_status`, so
 the older API (PRs #13/#14) fails between applying 029 and deploying #15 on `GET /projects/:id/deletion-request`

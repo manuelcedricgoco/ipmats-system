@@ -331,7 +331,7 @@ function ApproveModal({ user, run, onClose, onSaved }) {
       footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button type="submit" form="approve-form" icon={Check} loading={saving}>Approve and grant access</Button></>}
     >
       <form id="approve-form" onSubmit={submit} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        {err && <Alert tone="error" className="sm:col-span-2">{err.message}</Alert>}
+        {err && (!err.details || err.details.some((d) => !SHOWN_FIELDS.includes(d.field))) && <Alert tone="error" className="sm:col-span-2">{err.message}</Alert>}
         <Field label="Role to grant" required hint={user?.requested_role ? `Requested: ${ROLE_LABELS[user.requested_role]}` : undefined}>
           {(a) => (
             <Select {...a} value={form.role} onChange={set('role')}>

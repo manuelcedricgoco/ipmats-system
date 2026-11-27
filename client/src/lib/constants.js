@@ -43,7 +43,8 @@ export const WORKSPACE_ROLES = [...STAFF_ROLES, CONTRACTOR_ROLE];
 
 /**
  * Status of a project's non-closed PACC case, shown to DPWH staff (Admin, Personnel, Auditor) whether or not PACC
- * shows it on the public portal (`projects.pacc_case_status`, migration 027). Only the status, never the case itself.
+ * shows it on the public portal (`v_project_summary.pacc_case_status`, read from `project_pacc_status` since migration 029,
+ * which only staff and PACC can read). Only the status, never the case itself.
  */
 export const PACC_CASE_STATUS_LABELS = {
   under_investigation: 'Under PACC investigation',
