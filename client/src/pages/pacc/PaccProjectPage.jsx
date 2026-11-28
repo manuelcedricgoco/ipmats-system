@@ -22,7 +22,7 @@ const REPORT_STATUS_CLS = { received: 'bg-brand-50 text-brand-800', under_review
 
 /**
  * PACC investigation page for one project: project facts, the flag and its reasons, the citizen reports with their
- * proof, PACC's cases, the project's phases, progress, finance, 360° photos and documents (read-only), auditor
+ * proof, PACC's cases, the project's phases, progress, finance (with the liquidation and receipts, 031), 360° photos and documents (read-only), auditor
  * decisions and findings, and the flag history. Opening it marks new reports "under review" (server).
  */
 export default function PaccProjectPage() {
@@ -159,7 +159,7 @@ export default function PaccProjectPage() {
           </Card>
         )}
 
-        <ProjectRecords project={p} phases={phases} progress={progress} finance={finance} records={records} images={images} documents={documents} />
+        <ProjectRecords project={p} phases={phases} progress={progress} finance={finance} records={records} images={images} documents={documents} liquidation={data.liquidation} />
 
         <Card className="overflow-hidden">
           <CardHeader title="Auditor decisions" description="Every confirm or override of the flag, with the reason" />

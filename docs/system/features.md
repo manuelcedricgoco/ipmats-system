@@ -22,8 +22,10 @@ The app has four parts:
 The portal exists for transparency: anyone can see where DPWH projects in Occidental Mindoro are, who builds them,
 what they cost and how far along they are, without signing in. It shows only public fields. A project's flag is
 shown only after an auditor has confirmed or overridden it ("Under review" before that). The automatic flag and its
-reasons, audit findings, finances, phases, progress reports and logs are never sent to it (enforced by the database, see
+reasons, audit findings, finance records, phases, progress reports and logs are never sent to it (enforced by the database, see
 [roles-and-permissions](roles-and-permissions.md#3-row-level-security-the-real-enforcement-point-for-reads)).
+The one finance exception (031) is the project's **liquidation**: the summary and the receipts the Auditor accepted,
+computed by the API (see the drawer below).
 
 Accounts waiting for approval, or declined, see the same portal with a status banner at the top.
 
@@ -73,6 +75,13 @@ Anyone can also report a problem on a project to PACC, anonymously and with phot
     - Status and physical progress, with start and target dates (a Completed project reads "Completed – awaiting
       verification" or "Completed – verified", see [Completion verification](#completion-verification)).
     - Contract cost.
+    - **Liquidation** (031, `components/public/PublicLiquidation.jsx`): the % liquidated with a bar, the money
+      released (disbursed + expenses), the amount backed by accepted receipts, the amount not yet liquidated, an
+      "Over-liquidated by ₱X" note when accepted receipts exceed the records, and the **accepted receipts** (amount,
+      record type, receipt date, description, a PDF or image icon from the file type, and an "Open" link to the file
+      in a new tab, valid for 10 minutes). Submitted and returned receipts are never sent, nor the file name, the
+      uploader, the reviewer or the review note. "No accepted receipts yet." when there are none. If the call fails,
+      the rest of the drawer still shows, with a "Try again" link.
     - Location, office and contractor.
     - **PACC case status**, only when PACC switched "show status to public" on for the project's open case:
       "Under PACC investigation" or "Case filed", next to the status and flag. Nothing else about the case is
@@ -85,9 +94,10 @@ Anyone can also report a problem on a project to PACC, anonymously and with phot
 - **Touches:**
   - Pages and components: `pages/public/PublicMapPage.jsx`, `components/public/PublicProjectMap.jsx`,
     `ProjectDrawer.jsx`, `components/map/ProjectMap.jsx`, `components/viewer360/PanoramaViewer.jsx`.
-  - API: `GET /public/map`, `GET /public/projects/:id`.
+  - API: `GET /public/map`, `GET /public/projects/:id`, `GET /public/projects/:id/liquidation` (031).
   - Data: `v_public_projects` (including `pacc_public_status`, migration 024), `site_images` (every photo; public
-    as soon as it is uploaded); files in the `panoramas` bucket through expiring signed links.
+    as soon as it is uploaded); files in the `panoramas` bucket through expiring signed links; accepted
+    `finance_receipts` (read by the API with the service role) in the `finance-receipts` bucket.
 
 ### 360° viewer
 - **In the UI:** the photo panel in the project drawer (and in the staff pages).
@@ -314,21 +324,50 @@ Sidebar items appear only for the roles that can use them. "All staff" = Admin, 
 ### Financial Monitoring
 - **In the UI:** "Financial Monitoring" (`/app/finance`) and the project tab "Finance".
 - **Why:** Objective 4 — follow budgets, payments and fund use, and spot payments running ahead of the work.
-- **Who:** all staff view. Personnel add records (027: not the Admin). Admin deletes a wrong record.
+- **Who:** all staff view. Personnel add records (027: not the Admin). Admin deletes a wrong record. Receipts
+  (031): DPWH Personnel and the project's contractor upload, the Auditor accepts or returns.
 - **What it does:**
   - **Totals:** approved budget, contract amount (with variation orders), disbursed, remaining balance, and an
     overall utilization bar.
   - **Project table:** one row per project, with filters by municipality, office and status, and sorting
-    (including "paid ahead of work").
+    (including "paid ahead of work" and "Liquidated %"). The **Liquidated** column (031) shows the % of
+    disbursements + expenses backed by accepted receipts and the amount (unliquidated on hover); the total row
+    shows the portfolio's %.
   - **Project Finance tab:** summary cards, a utilization breakdown, physical vs financial progress, the list of
     records, and the form to add a variation order, obligation, disbursement or expense.
     - A record can be tied to a construction phase; the tab shows the totals per phase.
     - The API refuses records that break the rules, for example disbursements above the contract amount, or
       variation orders above 10 % of the original contract.
+  - **Finance liquidation (031)**, where the contract amount went, shown by receipts:
+    - **Liquidation card:** revised contract amount, disbursed, other expenses, the amount to liquidate
+      (disbursed + expenses), liquidated (accepted receipts only, capped per record), unliquidated (never below 0),
+      the % liquidated with a bar, an "Over-liquidated by ₱X" note, and the counts of accepted, awaiting-review
+      (Submitted) and returned receipts.
+    - **Per record:** each disbursement and expense shows its status (Unliquidated, Partly liquidated or
+      Liquidated, with the % and amount and any over-liquidation) and a **Receipts (n)** toggle ("· n awaiting
+      review" when some wait). Obligations and variation orders show "Not needed" (their papers go in Documents).
+    - **Receipts list:** status chip (Submitted, Accepted, Returned with the Auditor's reason), amount, receipt
+      date, description, "Uploaded by <name>" ("(Contractor)" for a contractor), and an "Open" link that opens the
+      file in a new tab (signed, one hour).
+    - **Upload receipt** (shown when the API's `permissions.can_upload_receipts` is true: DPWH Personnel, and the
+      project's contractor): file (PDF, JPEG, PNG or WebP, at most 15 MB), amount (more than 0), receipt date (not
+      in the future) and an optional description (at most 500 characters), with the reminder "Before uploading,
+      cover personal information such as names of private persons, TIN and home addresses. Accepted receipts are
+      shown to the public." The dialog checks the fields first; the API checks again (including the file's bytes)
+      and its message is shown as it comes. A new receipt is Submitted.
+    - **Accept / Return** (the Auditor only, `permissions.can_review_receipts`) on Submitted receipts. Accepting
+      asks for confirmation (an accepted receipt counts as liquidated, is public and can no longer change). Return
+      asks for a reason of 5–500 characters. A returned receipt stays as history; the uploader uploads a new one.
+    - **Delete** a receipt (the API's `can_delete`): its uploader while not accepted, the Admin any not accepted.
+      Accepted receipts are never deleted on their own; deleting the financial record removes them.
+    - Finance is not locked by completion verification.
 - **Touches:**
-  - Pages: `pages/dpwh/FinancePage.jsx`, `project/FinanceTab.jsx`.
-  - API: `GET /finance/overview`, `GET/POST /projects/:id/finance`, `DELETE /projects/:id/finance/:recordId`.
-  - Data: `financial_records`, `v_project_summary`.
+  - Pages: `pages/dpwh/FinancePage.jsx`, `project/FinanceTab.jsx`; components `components/finance/Liquidation.jsx`,
+    `components/finance/UploadReceiptModal.jsx`; helpers `lib/liquidation.js`.
+  - API: `GET /finance/overview`, `GET/POST /projects/:id/finance`, `DELETE /projects/:id/finance/:recordId`;
+    `POST /projects/:id/finance/:recordId/receipts`, `POST /finance/receipts/:receiptId/accept`,
+    `POST /finance/receipts/:receiptId/return`, `DELETE /finance/receipts/:receiptId` (031).
+  - Data: `financial_records`, `v_project_summary`, `finance_receipts`, bucket `finance-receipts`.
 
 ### 360° images (project tab)
 - **In the UI:** project tab "360° images".
@@ -582,8 +621,8 @@ Sidebar items appear only for the roles that can use them. "All staff" = Admin, 
 
 ## Contractor workspace
 
-Contractor accounts (migrations 028, 029) let a contractor company's representative report progress and upload 360°
-photos for **their own company's projects only**. They work in `/app`, with their own sidebar. Everything else in
+Contractor accounts (migrations 028, 029) let a contractor company's representative report progress, upload 360°
+photos and (031) upload finance receipts for **their own company's projects only**. They work in `/app`, with their own sidebar. Everything else in
 `/app` sends them back to their dashboard (`lib/contractor.js` `canOpenWorkspacePath`, used by `ProtectedRoute`).
 That is a convenience only: RLS (`private.contractor_company()`) and the API (`PROJECT_VIEWERS`,
 `PROJECT_REPORTERS` + `requireOwnProject`) are what keep other companies' projects and the staff pages closed.
@@ -621,7 +660,9 @@ That is a convenience only: RLS (`private.contractor_company()`) and the API (`P
     answers 403 "Only DPWH Personnel can confirm a project's completion." to a contractor that sends one).
   - **360° images:** view and "Upload 360° image" (with the same checks and offline queue as Personnel, and a
     caption). No "Final as-built" checkbox, no "Mark as final", no delete.
-  - **Finance:** view only (what DPWH obligated and disbursed).
+  - **Finance:** view the records and the liquidation, and (031) **upload receipts** for the project's
+    disbursements and expenses (with the privacy reminder), and delete its own receipts while they are not
+    accepted. No adding or deleting records, no Accept / Return.
   - **Flag & audit:** the flag, its reasons, the completion verification, the auditor decisions, findings and
     history, view only (no review, findings, verification or audit-report PDF).
   - **Verified projects:** no progress report or photo upload (the lock message is shown instead).
@@ -629,7 +670,8 @@ That is a convenience only: RLS (`private.contractor_company()`) and the API (`P
 - **Labels for staff:** progress reports and photos submitted by a contractor show "by <name> (Contractor)"
   (`submitted_by_role`, `uploaded_by_role`).
 - **Touches:** `pages/dpwh/ProjectsPage.jsx`, `project/ProjectLayout.jsx` and its tabs; the project read routes,
-  `POST /projects/:id/progress` and `POST /projects/:id/images`.
+  `POST /projects/:id/progress`, `POST /projects/:id/images`, `POST /projects/:id/finance/:recordId/receipts` and
+  `DELETE /finance/receipts/:receiptId`.
 
 ### My account (contractor)
 - Same as the staff [My account](#my-account), and it shows the company the account represents (changed by the
@@ -666,7 +708,9 @@ abolished in 2022, so this is a modelled role.
 - **What it does:** project facts, the flag and its reasons, auditor decisions and findings, the citizen
   reports with their proof photos (expiring signed links), and, read-only, the construction phases, the 50 most
   recent progress reports (with the work done and the reference photos, which open in a new tab), the sub-activities
-  of each phase, the financial records with a summary, the 360° photos (each opens full size in a new
+  of each phase, the financial records with a summary, the liquidation and receipts (031: the liquidation summary
+  and every receipt of each disbursement and expense, in any status, with the uploader, the review note and an
+  "Open" link in a new tab; no accept, return or delete), the 360° photos (each opens full size in a new
   tab) and the supporting documents. Opening it marks new reports "Under review". The
   [Completion verification](#completion-verification) card lets PACC verify a Completed project or record
   "Not yet" (verify is disabled while a PACC case is open). PACC can
@@ -675,7 +719,7 @@ abolished in 2022, so this is a modelled role.
 - **Touches:** `pages/pacc/PaccProjectPage.jsx`, `components/pacc/OpenCaseModal.jsx`, `components/pacc/ProjectRecords.jsx`; `GET /pacc/projects/:id`,
   `POST /pacc/reports/:reportId/close`, `POST /pacc/projects/:id/reports/close-all`, `POST /pacc/projects/:id/cases`,
   `POST /pacc/projects/:id/completion-verification`;
-  buckets `citizen-reports`, `panoramas`, `project-documents` and `progress-photos` (signed links).
+  buckets `citizen-reports`, `panoramas`, `project-documents`, `progress-photos` and `finance-receipts` (signed links).
 
 ### Cases
 - **In the UI:** "Cases" (`/pacc/cases`) and a case page (`/pacc/cases/:caseId`).

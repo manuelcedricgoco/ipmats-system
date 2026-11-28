@@ -16,6 +16,7 @@ const SORTS = {
   remaining_balance: ['Remaining balance', (a, b) => b.remaining_balance - a.remaining_balance],
   total_disbursed: ['Disbursed', (a, b) => b.total_disbursed - a.total_disbursed],
   utilization_pct: ['Fund utilization', (a, b) => b.utilization_pct - a.utilization_pct],
+  liquidated_pct: ['Liquidated %', (a, b) => Number(b.liquidated_pct || 0) - Number(a.liquidated_pct || 0)],
   gap: ['Paid ahead of work', (a, b) => b.utilization_pct - b.overall_progress - (a.utilization_pct - a.overall_progress)],
 };
 
@@ -23,6 +24,7 @@ const SORTS = {
  * WEEK 2 — Financial monitoring page (Jonalyn Pagilagan, front-end).
  * Approved budget, contract amount, disbursements and remaining balance of every
  * project, with portfolio totals (GET /api/finance/overview).
+ * Finance liquidation (031): the % of disbursements + expenses backed by receipts the Auditor accepted.
  */
 export default function FinancePage() {
   const { ref } = useReference();
@@ -93,6 +95,7 @@ export default function FinancePage() {
                   <th scope="col" className="px-4 py-3 text-right">Disbursed</th>
                   <th scope="col" className="px-4 py-3 text-right">Remaining balance</th>
                   <th scope="col" className="w-44 px-4 py-3">Utilization vs work done</th>
+                  <th scope="col" className="px-4 py-3 text-right">Liquidated</th>
                   <th scope="col" className="px-4 py-3"><span className="sr-only">Open</span></th>
                 </tr>
               </thead>
@@ -121,6 +124,10 @@ export default function FinancePage() {
                           {gap > 20 && <span className="ml-1 font-semibold text-red-700">paid ahead</span>}
                         </p>
                       </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums" title={`Liquidated ${peso(r.liquidated_amount)} · unliquidated ${peso(r.unliquidated_amount)}`}>
+                        <span className="font-semibold text-slate-900">{pct(r.liquidated_pct, 0)}</span>
+                        <span className="block text-[11px] text-slate-500">{pesoCompact(r.liquidated_amount)}</span>
+                      </td>
                       <td className="px-4 py-3 text-right">
                         <Link to={`/app/projects/${r.id}/finance`} aria-label={`Open finances of ${r.name}`} className="inline-flex rounded p-1 text-slate-400 transition-all group-hover:translate-x-0.5 group-hover:text-brand-600"><ChevronRight className="h-4 w-4" /></Link>
                       </td>
@@ -136,6 +143,10 @@ export default function FinancePage() {
                   <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums">{pesoCompact(t.total_disbursed)}</td>
                   <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums">{pesoCompact(t.remaining_balance)}</td>
                   <td className="px-4 py-3 tabular-nums">{pct(t.utilization_pct)}</td>
+                  <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums" title={`Liquidated ${peso(t.liquidated_amount)} · unliquidated ${peso(t.unliquidated_amount)}`}>
+                    {pct(t.liquidated_pct)}
+                    <span className="block text-[11px] font-normal text-slate-500">{pesoCompact(t.liquidated_amount)}</span>
+                  </td>
                   <td />
                 </tr>
               </tfoot>
