@@ -104,7 +104,7 @@ export default function FinancePage() {
                       <td className="min-w-[15rem] px-4 py-3">
                         <Link to={`/app/projects/${r.id}/finance`} className="font-semibold text-slate-900 hover:text-brand-700 hover:underline">{r.name}</Link>
                         <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                          <span className="font-mono">{r.project_code}</span>· {r.municipality_name} <StatusBadge status={r.status} />
+                          <span className="font-mono">{r.project_code}</span>· {r.municipality_name} <StatusBadge status={r.status} verifiedAt={r.completion_verified_at} />
                         </div>
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-slate-600">{pesoCompact(r.approved_budget)}</td>

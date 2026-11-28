@@ -5,6 +5,7 @@
  * (PROJECT_VIEWERS / PROJECT_REPORTERS + requireOwnProject) are what enforce it.
  */
 import { CONTRACTOR_ROLE, STAFF_ROLES } from './constants.js';
+import { rowPointsBehind } from './progress.js';
 
 export const isContractor = (role) => role === CONTRACTOR_ROLE;
 
@@ -115,7 +116,7 @@ export function contractorDashboardSummary(rows, todayIso) {
   const open = rows.filter((r) => r.status !== 'completed');
   return {
     total: rows.length,
-    behind: rows.filter((r) => Number(r.overall_progress || 0) < Number(r.planned_progress || 0)).length,
+    behind: rows.filter((r) => rowPointsBehind(r) > 0).length, // a Completed project is never behind (030)
     flagged: rows.filter((r) => r.current_flag === 'yellow' || r.current_flag === 'red').length,
     noRecentPhoto: open.filter((r) => !r.latest_inspection_date || daysBetween(String(r.latest_inspection_date).slice(0, 10), todayIso) > RECENT_PHOTO_DAYS).length,
   };

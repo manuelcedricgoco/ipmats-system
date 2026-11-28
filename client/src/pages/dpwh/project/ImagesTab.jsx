@@ -15,6 +15,7 @@ import { api } from '../../../lib/api.js';
 import { byLabel } from '../../../lib/contractor.js';
 import { date, dateTime, todayIso } from '../../../lib/format.js';
 import { isNetworkError, queueUpload } from '../../../lib/offlineUploads.js';
+import { VERIFIED_LOCK_MESSAGE } from '../../../lib/progress.js';
 
 /** What the server found when it checked the photo's GPS and timestamp. */
 function Checks({ img }) {
@@ -53,7 +54,11 @@ function Checks({ img }) {
 export default function ImagesTab() {
   // canReport: upload (DPWH Personnel and the project's contractor, 029); canEdit: the final mark (Personnel);
   // canDelete: delete (System Administrator).
-  const { project, reloadProject, canEdit, canDelete, canReport, canConfirmCompletion } = useOutletContext();
+  // locked (030): the completion was verified, so no upload, final mark or delete any more.
+  const { project, reloadProject, canEdit: canEditAny, canDelete: canDeleteAny, canReport: canReportAny, canConfirmCompletion, locked } = useOutletContext();
+  const canEdit = canEditAny && !locked;
+  const canDelete = canDeleteAny && !locked;
+  const canReport = canReportAny && !locked;
   const toast = useToast();
   const images = useApi(`/projects/${project.id}/images`, undefined, { select: (r) => r.data });
   const phases = useApi(`/projects/${project.id}/phases`, undefined, { select: (r) => r.data.phases });
@@ -121,6 +126,7 @@ export default function ImagesTab() {
 
   return (
     <div className="space-y-6">
+      {locked && <Alert tone="info">{VERIFIED_LOCK_MESSAGE}</Alert>}
       <Card>
         <CardHeader
           title={compare ? 'Compare site conditions' : 'Interactive 360° viewer'}

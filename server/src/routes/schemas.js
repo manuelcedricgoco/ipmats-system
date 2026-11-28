@@ -13,6 +13,8 @@ const nullable = (schema) => z.preprocess((v) => (v === '' || v === 'null' ? nul
 export const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD');
 const money = z.coerce.number().finite().min(0).max(1e13);
 const text = (max) => z.string().trim().max(max);
+/** A percentage stored as numeric(5,2): rounded to 2 decimals before the range check, so the database never refuses or drifts. */
+const pct2 = (schema) => z.coerce.number().finite().transform((v) => Math.round((v + Number.EPSILON) * 100) / 100).pipe(schema);
 const createStatusField = z.preprocess(
   (v) => (v === undefined || v === '' ? undefined : ['not_started', 'ongoing'].includes(v) ? v : 'auto'),
   z.enum(['auto', 'not_started', 'ongoing']).optional(),
@@ -147,25 +149,46 @@ export const phasesReplace = z.object({
         id: z.string().uuid().optional(),
         sequence_no: z.coerce.number().int().min(1).max(50),
         name: text(160).min(2),
-        weight: z.coerce.number().positive().max(100),
+        weight: pct2(z.number().positive().max(100)),
         planned_start: nullable(isoDate),
         planned_end: nullable(isoDate),
         remarks: nullable(text(1000)),
+        // 030: sub-activities (name, weight; weights total 100). Left out: the phase's
+        // sub-activities stay as they are. []: the phase has none (it keeps its current %).
+        activities: z
+          .array(
+            z.object({
+              id: z.string().uuid().optional(),
+              name: text(120).min(2, 'Give each sub-activity a name (at least 2 characters).'),
+              weight: pct2(z.number().positive('A sub-activity weight is above 0%.').max(100, 'A sub-activity weight is at most 100%.')),
+            }),
+          )
+          .max(20, 'At most 20 sub-activities per phase')
+          .optional(),
       }),
     )
     .min(1, 'Add at least one phase')
     .max(20, 'At most 20 phases'),
 });
 
+const accomplishment = pct2(z.number().min(0, 'Accomplishment is 0–100%').max(100, 'Accomplishment is 0–100%'));
+/**
+ * Progress report. Sent as multipart/form-data (030): this object as a JSON string in the field
+ * "payload" (middleware/upload.js parseJsonPayload), with 1–5 reference photos in "photos".
+ * A phase with sub-activities sends `activities` (its % is computed from them); one without sends
+ * `accomplishment` (checked in services/validationRules.js).
+ */
 export const progressSubmit = z.object({
   report_date: isoDate,
+  description: text(2000).min(10, 'Describe the work done in at least 10 characters.'),
   remarks: opt(text(2000)),
   actual_completion_date: nullable(isoDate),
   phases: z
     .array(
       z.object({
         phase_id: z.string().uuid(),
-        accomplishment: z.coerce.number().min(0, 'Accomplishment is 0–100%').max(100, 'Accomplishment is 0–100%'),
+        accomplishment: accomplishment.optional(),
+        activities: z.array(z.object({ activity_id: z.string().uuid(), accomplishment })).max(20).optional(),
         actual_start: nullable(isoDate),
         actual_end: nullable(isoDate),
         remarks: nullable(text(1000)),
@@ -315,6 +338,15 @@ export const caseUpdate = z
 export const caseNote = z.object({ body: text(4000).min(1, 'Write the note.') });
 /** Case document (multipart field next to "file"). */
 export const caseDocumentUpload = z.object({ title: text(200).min(3, 'Give the document a title (at least 3 characters)') });
+
+// Completion verification (030): the Auditor or PACC verifies a Completed project, or records
+// "Not yet" with a reason.
+export const completionVerification = z
+  .object({
+    decision: z.enum(['verified', 'not_yet'], { message: 'Choose Verify completion or Not yet.' }),
+    note: opt(text(500)),
+  })
+  .refine((o) => o.decision !== 'not_yet' || (o.note && o.note.length >= 5), { message: 'Give a reason of at least 5 characters.', path: ['note'] });
 
 // Project deletion requests (027): DPWH Personnel ask, the Admin approves or declines.
 export const deletionRequestCreate = z.object({

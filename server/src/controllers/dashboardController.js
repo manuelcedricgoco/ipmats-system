@@ -4,7 +4,7 @@
  *   GET /dashboard/financial     budgets, disbursements and fund utilization (Manuel Cedric Goco)
  * Both accept the project list filters.
  */
-import { round2 } from '../services/completion.js';
+import { behindSchedule, round2 } from '../services/completion.js';
 import { unwrap } from '../utils/httpError.js';
 import { applyProjectFilters } from './projectsController.js';
 
@@ -45,7 +45,7 @@ export async function performance(req, res) {
         .sort((a, b) => b.projects - a.projects),
       // Projects furthest behind schedule (for the "needs attention" chart/list)
       most_behind: rows
-        .map((r) => ({ id: r.id, project_code: r.project_code, name: r.name, actual: Number(r.overall_progress), planned: Number(r.planned_progress), slippage: round2(Number(r.planned_progress) - Number(r.overall_progress)), current_flag: r.current_flag }))
+        .map((r) => ({ id: r.id, project_code: r.project_code, name: r.name, actual: Number(r.overall_progress), planned: Number(r.planned_progress), slippage: behindSchedule(r), current_flag: r.current_flag }))
         .filter((r) => r.slippage > 0)
         .sort((a, b) => b.slippage - a.slippage)
         .slice(0, 8),

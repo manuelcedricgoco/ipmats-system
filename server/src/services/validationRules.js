@@ -11,7 +11,7 @@
  * These rules check it against the PROJECT'S CURRENT DATA (dates, totals, history).
  */
 import { badRequest } from '../utils/httpError.js';
-import { isoDate, round2 } from './completion.js';
+import { computeActivityProgress, isoDate, round2 } from './completion.js';
 
 const today = (t) => isoDate(t || new Date());
 const peso = (n) => `₱${Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -27,7 +27,9 @@ export function assertValid(problems) {
 // ---------------------------------------------------------------------------
 // 1. Phase plan (PUT /projects/:id/phases)
 // ---------------------------------------------------------------------------
-export function checkPhasePlan({ project, phases, existing = [] }) {
+export const ACTIVITY_WEIGHTS_MESSAGE = 'Sub-activity weights in a phase must add up to 100.';
+
+export function checkPhasePlan({ project, phases, existing = [], existingActivities = [] }) {
   const problems = [];
   const add = (field, message) => problems.push({ field, message });
 
@@ -61,13 +63,56 @@ export function checkPhasePlan({ project, phases, existing = [] }) {
   for (const p of phases) {
     if (p.id && !existing.some((e) => e.id === p.id)) add('phases', 'A phase does not belong to this project.');
   }
+
+  // Sub-activities (030): weights total 100, names differ, ids belong to the phase, and one that
+  // already has reported work cannot be removed while the phase keeps other sub-activities.
+  phases.forEach((p, i) => {
+    if (!Array.isArray(p.activities) || !p.activities.length) return;
+    const f = `phases.${i}.activities`;
+    const total = round2(p.activities.reduce((sum, a) => sum + Number(a.weight || 0), 0));
+    if (Math.abs(total - 100) > 0.01 + 1e-9) add(f, ACTIVITY_WEIGHTS_MESSAGE); // ± 0.01 (e.g. 3 × 33.33)
+    const actNames = p.activities.map((a) => a.name.trim().toLowerCase());
+    if (new Set(actNames).size !== actNames.length) add(f, `"${p.name}" has two sub-activities with the same name.`);
+    const own = existingActivities.filter((a) => p.id && a.phase_id === p.id);
+    for (const a of p.activities) {
+      if (a.id && !own.some((o) => o.id === a.id)) add(f, `A sub-activity does not belong to "${p.name}".`);
+    }
+    const kept = new Set(p.activities.filter((a) => a.id).map((a) => a.id));
+    for (const old of own) {
+      if (!kept.has(old.id) && Number(old.accomplishment) > 0) {
+        add(f, `"${old.name}" already has ${Number(old.accomplishment)}% reported and cannot be removed.`);
+      }
+    }
+  });
   return problems;
+}
+
+/**
+ * The phase and sub-activity values after a progress update (pure; checked by checkProgressUpdate).
+ * A phase with sub-activities gets the weighted sub-activity %; sub-activities not listed keep
+ * their value. Returns { phaseValues: Map(phase_id → %), activityValues: Map(activity_id → %) }.
+ */
+export function applyProgressUpdate({ phases, activities = [], update }) {
+  const phaseValues = new Map(phases.map((p) => [p.id, Number(p.accomplishment)]));
+  const activityValues = new Map(activities.map((a) => [a.id, Number(a.accomplishment)]));
+  const listed = new Map(update.phases.map((u) => [u.phase_id, u]));
+  for (const p of phases) {
+    const own = activities.filter((a) => a.phase_id === p.id);
+    const u = listed.get(p.id);
+    if (own.length) {
+      for (const v of u?.activities ?? []) if (own.some((a) => a.id === v.activity_id)) activityValues.set(v.activity_id, Number(v.accomplishment));
+      phaseValues.set(p.id, computeActivityProgress(own.map((a) => ({ weight: a.weight, accomplishment: activityValues.get(a.id) }))));
+    } else if (u && u.accomplishment !== undefined) {
+      phaseValues.set(p.id, Number(u.accomplishment));
+    }
+  }
+  return { phaseValues, activityValues };
 }
 
 // ---------------------------------------------------------------------------
 // 2. Progress update (POST /projects/:id/progress)
 // ---------------------------------------------------------------------------
-export function checkProgressUpdate({ project, phases, lastReportDate = null, update, now }) {
+export function checkProgressUpdate({ project, phases, activities = [], lastReportDate = null, update, now }) {
   const problems = [];
   const add = (field, message) => problems.push({ field, message });
   const t = today(now);
@@ -84,7 +129,8 @@ export function checkProgressUpdate({ project, phases, lastReportDate = null, up
 
   const byId = new Map(phases.map((p) => [p.id, p]));
   const seen = new Set();
-  const after = new Map(phases.map((p) => [p.id, Number(p.accomplishment)]));
+  const { phaseValues: after } = applyProgressUpdate({ phases, activities, update });
+  const explained = Boolean(update.remarks && update.remarks.trim().length >= 10);
 
   update.phases.forEach((u, i) => {
     const f = `phases.${i}`;
@@ -92,10 +138,31 @@ export function checkProgressUpdate({ project, phases, lastReportDate = null, up
     if (!ph) return add(`${f}.phase_id`, 'A phase does not belong to this project.');
     if (seen.has(u.phase_id)) return add(`${f}.phase_id`, `"${ph.name}" is listed twice.`);
     seen.add(u.phase_id);
-    after.set(u.phase_id, Number(u.accomplishment));
+
+    // 030: a phase with sub-activities takes its % from them; it cannot be set directly.
+    const own = activities.filter((a) => a.phase_id === ph.id);
+    if (own.length) {
+      const seenActs = new Set();
+      (u.activities ?? []).forEach((v, j) => {
+        const act = own.find((a) => a.id === v.activity_id);
+        if (!act) return add(`${f}.activities.${j}.activity_id`, `A sub-activity does not belong to "${ph.name}".`);
+        if (seenActs.has(act.id)) return add(`${f}.activities.${j}.activity_id`, `"${act.name}" is listed twice.`);
+        seenActs.add(act.id);
+        if (Number(v.accomplishment) < Number(act.accomplishment) && !explained) {
+          add(`${f}.activities.${j}.accomplishment`, `"${act.name}" is lower than the last report (${Number(act.accomplishment)}%). Explain the correction in the remarks (at least 10 characters).`);
+        }
+      });
+      if (u.accomplishment !== undefined && Math.abs(Number(u.accomplishment) - after.get(ph.id)) > 0.01) {
+        add(`${f}.accomplishment`, `"${ph.name}" has sub-activities: its accomplishment is computed from them (${after.get(ph.id)}%).`);
+      }
+    } else {
+      if (u.activities?.length) add(`${f}.activities`, `"${ph.name}" has no sub-activities.`);
+      if (u.accomplishment === undefined) return add(`${f}.accomplishment`, `Enter the accomplishment of "${ph.name}".`);
+    }
+    const value = after.get(ph.id);
 
     // Accomplishment normally only goes up; a lower figure is a correction and needs a reason.
-    if (Number(u.accomplishment) < Number(ph.accomplishment) && (!update.remarks || update.remarks.trim().length < 10)) {
+    if (value < Number(ph.accomplishment) && !explained) {
       add(`${f}.accomplishment`, `"${ph.name}" is lower than the last report (${Number(ph.accomplishment)}%). Explain the correction in the remarks (at least 10 characters).`);
     }
     if (u.actual_start && u.actual_start > reportDate) add(`${f}.actual_start`, `"${ph.name}" cannot start after the report date.`);
@@ -103,7 +170,7 @@ export function checkProgressUpdate({ project, phases, lastReportDate = null, up
       add(`${f}.actual_start`, `"${ph.name}" cannot start before the Notice to Proceed.`);
     }
     if (u.actual_end) {
-      if (Number(u.accomplishment) < 100) add(`${f}.actual_end`, `"${ph.name}" can only have an actual end date when it is 100% complete.`);
+      if (value < 100) add(`${f}.actual_end`, `"${ph.name}" can only have an actual end date when it is 100% complete.`);
       if (u.actual_end > reportDate) add(`${f}.actual_end`, `"${ph.name}" cannot end after the report date.`);
       const start = u.actual_start ?? ph.actual_start;
       if (start && u.actual_end < start) add(`${f}.actual_end`, `"${ph.name}" cannot end before it started.`);

@@ -183,6 +183,10 @@ describe('contractorDashboardSummary', () => {
   it('counts projects, those behind schedule, flagged ones and those without a recent photo', () => {
     expect(contractorDashboardSummary(rows, today)).toEqual({ total: 4, behind: 2, flagged: 2, noRecentPhoto: 2 });
   });
+  it('a Completed project awaiting verification (99% vs a plan of 100%) is not behind (030)', () => {
+    const awaiting = { overall_progress: 99, planned_progress: 100, current_flag: 'green', latest_inspection_date: null, phase_count: 2, status: 'completed' };
+    expect(contractorDashboardSummary([awaiting], today).behind).toBe(0);
+  });
   it('handles an empty list', () => {
     expect(contractorDashboardSummary([], today)).toEqual({ total: 0, behind: 0, flagged: 0, noRecentPhoto: 0 });
   });

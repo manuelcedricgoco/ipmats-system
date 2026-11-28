@@ -155,7 +155,7 @@ export default function ProjectsPage() {
                         <span className="mt-0.5 block text-xs text-slate-500">{p.target_completion_date ? `until ${date(p.target_completion_date)}` : 'No target date'}</span>
                       </td>
                       <td className="px-4 py-3">
-                        <div className="flex flex-wrap gap-1"><FlagBadge flag={p.current_flag} size="sm" /><StatusBadge status={p.status} />{showPacc && <PaccCaseChip status={p.pacc_case_status} size="sm" />}</div>
+                        <div className="flex flex-wrap gap-1"><FlagBadge flag={p.current_flag} size="sm" /><StatusBadge status={p.status} verifiedAt={p.completion_verified_at} />{showPacc && <PaccCaseChip status={p.pacc_case_status} size="sm" />}</div>
                         {Number(p.phase_count) > 0 ? <ProgressBar value={p.overall_progress} size="sm" className="mt-2" /> : <span className="mt-1 block text-[11px] text-slate-400">No phases yet</span>}
                       </td>
                       <td className="px-4 py-3 text-right">
@@ -174,7 +174,7 @@ export default function ProjectsPage() {
                   <Link to={`/app/projects/${p.id}`} className="block space-y-1.5 px-4 py-4 transition-colors hover:bg-slate-50 active:bg-slate-100">
                     <div className="flex items-start justify-between gap-3">
                       <p className="font-semibold text-slate-900">{p.name}</p>
-                      <div className="flex shrink-0 gap-1"><FlagBadge flag={p.current_flag} size="sm" /><StatusBadge status={p.status} /></div>
+                      <div className="flex shrink-0 gap-1"><FlagBadge flag={p.current_flag} size="sm" /><StatusBadge status={p.status} verifiedAt={p.completion_verified_at} /></div>
                     </div>
                     {showPacc && p.pacc_case_status && <PaccCaseChip status={p.pacc_case_status} size="sm" />}
                     <p className="text-xs text-slate-500"><span className="font-mono">{p.project_code}</span> · {p.municipality_name} · {p.duration_days ? `${p.duration_days} days` : 'no duration'}</p>

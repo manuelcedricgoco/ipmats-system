@@ -9,12 +9,14 @@
  * satisfies the Week 2 server-side checks (dates in order, disbursements within
  * the contract amount, variation orders within 10%).
  * Projects added by users (not listed below) are left untouched.
+ * Stored overall progress (projects and report history) is at most 99% (030): no sample project's
+ * completion has been verified by the Auditor and PACC, so none shows 100%.
  * Amounts and progress are FICTIONAL sample data.
  */
 import { writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { addDays, computeOverallProgress, planFromTemplate, round2, toDate } from '../../server/src/services/completion.js';
+import { addDays, computeOverallProgress, officialProgress, planFromTemplate, round2, toDate } from '../../server/src/services/completion.js';
 
 const args = Object.fromEntries(process.argv.slice(2).map((a) => a.replace(/^--/, '').split('=')));
 const TODAY = args.today || new Date().toISOString().slice(0, 10);
@@ -110,10 +112,10 @@ for (const [code, type, ntp, days, target, actualDone, contract, pace, extra = {
   phases.forEach((p, k) => PH.push(`(${q(code)},${p.sequence_no},${q(p.name)},${p.weight},${q(p.planned_start)},${q(p.planned_end)},${q(accStart[k])},${q(accEnd[k])},${accomp[k]})`));
   reports.forEach((r, i) => {
     const remarks = done && i === reports.length - 1 ? 'All phases completed; final inspection done.' : pace < 0.85 && i === reports.length - 1 ? 'Behind schedule; contractor to submit a catch-up plan.' : null;
-    PU.push(`(${q(code)},${q(r.date)},${r.overall},'{${r.snapshot.map((x) => x.accomplishment).join(',')}}',${q(remarks)})`);
+    PU.push(`(${q(code)},${q(r.date)},${officialProgress(r.overall, null)},'{${r.snapshot.map((x) => x.accomplishment).join(',')}}',${q(remarks)})`);
   });
   const finalOverall = reports.at(-1)?.overall ?? 0;
-  PROG.push(`(${q(code)},${finalOverall})`);
+  PROG.push(`(${q(code)},${officialProgress(finalOverall, null)})`);
 
   // ---- Financial records ----
   const fin = [];

@@ -11,7 +11,7 @@ import { BUCKET } from './imagesController.js';
 
 const MARKER_COLUMNS =
   'id, project_code, name, project_type, latitude, longitude, current_flag, flag_review_status, status, overall_progress, planned_progress, ' +
-  'municipality_id, municipality_name, barangay_name, agency_name, contractor_id, contractor_name, contract_amount, target_completion_date, image_count, latest_inspection_date';
+  'municipality_id, municipality_name, barangay_name, agency_name, contractor_id, contractor_name, contract_amount, target_completion_date, image_count, latest_inspection_date, completion_verified_at';
 
 /** Latest image (path) of each project, newest first. `publicOnly`: only photos approved for the public. */
 export async function latestImages(db, projectIds, { publicOnly = false } = {}) {

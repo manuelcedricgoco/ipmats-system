@@ -51,7 +51,9 @@ Anyone can also report a problem on a project to PACC, anonymously and with phot
 - **Who:** everyone.
 - **What it does:** a grid of project cards with paging. You can search by name, Project ID, municipality,
   barangay or contractor, and filter by status or municipality. The filters are kept in the address, so a filtered
-  list can be shared. Clicking a card opens the Project map with that project selected.
+  list can be shared. Clicking a card opens the Project map with that project selected. A Completed project's
+  status reads "Completed – awaiting verification" (at most 99 %) or "Completed – verified" (100 %), from
+  `v_public_projects.completion_verified_at` (030); the public never sees the verification history.
 - **Touches:** `pages/public/PublicProjectsPage.jsx`, `components/public/ProjectCardGrid.jsx`;
   `GET /public/projects`; `v_public_projects`.
 
@@ -68,7 +70,8 @@ Anyone can also report a problem on a project to PACC, anonymously and with phot
     usable, the selected pin is highlighted, and the map centres on it. The drawer shows:
     - Project ID and type, and the title.
     - The 360° viewer, or a slim "No 360° photo published yet" line.
-    - Status and physical progress, with start and target dates.
+    - Status and physical progress, with start and target dates (a Completed project reads "Completed – awaiting
+      verification" or "Completed – verified", see [Completion verification](#completion-verification)).
     - Contract cost.
     - Location, office and contractor.
     - **PACC case status**, only when PACC switched "show status to public" on for the project's open case:
@@ -231,6 +234,16 @@ Sidebar items appear only for the roles that can use them. "All staff" = Admin, 
       never chosen by hand: it is set once every phase is at 100%, with a completion date and a final as-built
       photo. The Suspended and Terminated statuses were removed (no project used them); editing a project
       cannot set a status.
+    - **Completed – awaiting verification / Completed – verified (030):** a Completed project shows at most 99 %
+      and the status "Completed – awaiting verification" until both the Auditor and PACC verify it, then 100 % and
+      "Completed – verified" ([Completion verification](#completion-verification)). The labels are on the project
+      header and Overview, the project list, Progress and Financial Monitoring, the flag review queue, the map
+      panel, the contractor list, the contractor dashboard, the PACC investigation page and the public cards and
+      drawer (`StatusBadge` with `completion_verified_at`). The status at a past flag check stays "Completed".
+    - **Progress locked:** once verified, the header shows "Progress locked" and the Phases & progress and 360°
+      images tabs hide their editing buttons with the message "This project's completion was verified; its
+      progress and photos can no longer change." Finance records and documents can still be added. On the Edit
+      form the actual completion date is disabled, with the same message (other fields stay editable).
   - **Project page tabs:** Overview, Phases & progress, Finance, 360° images, Flag & audit, Documents (described
     below). Auditors see a "Read-only" label. The editing buttons of every tab (phases, progress, adding finance
     records, photo upload and mark final, document upload) are shown to Personnel only; the Admin keeps the
@@ -267,14 +280,36 @@ Sidebar items appear only for the roles that can use them. "All staff" = Admin, 
   - **Progress Monitoring list:** every project's completion bar, with a status filter and sorting.
   - **Set up phases:** a template for the project type is filled in, with dates spread over the contract.
     The weights must total 100 %.
-  - **Submit progress update:** enter each phase's accomplishment. The new overall percentage is shown before
-    saving. Lowering a figure needs a written reason.
-  - **Tab contents:** planned vs actual, slippage and the report history (with each report's phase snapshot).
+  - **Sub-activities (030, Personnel only):** in "Edit phase plan" each phase can get sub-activities (name and
+    weight, up to 20). Their weights must add up to 100, with a running total ("Sub-activity weights in a phase
+    must add up to 100."). A phase with sub-activities shows its % as computed: Σ(weight × accomplishment) ÷ 100,
+    to 2 decimals; it cannot be typed. New sub-activities start at 0 %, except a phase's first ones, which start
+    at the phase's current % (so the phase does not drop). A sub-activity with reported work can be removed only
+    together with all the others (the phase then keeps its current %). The phase table lists each phase's
+    sub-activities under it.
+  - **Submit progress update:** enter each phase's accomplishment, or, for a phase with sub-activities, each
+    sub-activity's % (the phase's % is shown computed, read only). The new overall percentage is shown before
+    saving, at most 99 % until the completion is verified (the computed figure is named under it). Lowering a figure (phase or sub-activity) needs a written reason. Every report also needs:
+    - a **description of the work done**, 10–2000 characters, with a counter;
+    - **1–5 reference photos** (JPEG, PNG or WebP, up to 10 MB each), with previews before sending ("Attach 1 to 5
+      reference photos."). The server checks the actual bytes. They are stored in the private `progress-photos`
+      bucket and shown to staff, PACC and the project's contractor through links that expire after an hour;
+      never to the public.
+    The form is sent as multipart (`payload` JSON + `photos`); the server's messages are shown in the form.
+  - **Tab contents:** planned vs actual, slippage and the report history. Each report shows the work done (and
+    the number of photos); opening a row shows the description, the remarks, the reference photos (each opens in
+    a new tab) and the phases at that date with their sub-activities. Reports from before 030 have no description,
+    photos or sub-activity breakdown and still show as before.
+  - **Completed and verified:** a Completed project shows "Completed – awaiting verification" under the overall
+    figure (99 % at most). Once verified the tab hides "Edit phase plan" and "Submit progress update" and shows
+    the lock message.
   - How the percentage is computed: [workflows → progress reporting](workflows.md#progress-reporting).
 - **Touches:**
-  - Pages: `pages/dpwh/ProgressPage.jsx`, `project/ProgressTab.jsx`.
+  - Pages and components: `pages/dpwh/ProgressPage.jsx`, `project/ProgressTab.jsx`,
+    `components/progress/ReferencePhotosInput.jsx`, `ReportPhotos.jsx`; helpers in `lib/progress.js`.
   - API: `GET/PUT /projects/:id/phases`, `GET/POST /projects/:id/progress`, `GET /projects`.
-  - Data: `project_phases`, `progress_updates`, `projects.overall_progress`.
+  - Data: `project_phases`, `phase_activities`, `progress_updates` (`description`, `activity_snapshot`),
+    `progress_photos`, bucket `progress-photos`, `projects.overall_progress`.
 
 ### Financial Monitoring
 - **In the UI:** "Financial Monitoring" (`/app/finance`) and the project tab "Finance".
@@ -323,6 +358,8 @@ Sidebar items appear only for the roles that can use them. "All staff" = Admin, 
   - **Public at once:** a photo uploaded by DPWH personnel or the project's contractor appears on the public portal right away. Nobody
     approves or hides photos (migration 022); an Admin can delete a wrong upload.
   - **Final photo:** a photo marked **final** (as-built) is one of the requirements for a project to count as completed.
+  - **Locked when verified (030):** once the completion is verified, upload, "Mark as final" and delete are hidden
+    and the tab shows the lock message (the API refuses them with 409).
   - **Offline:** with no connection, a photo is kept on the device (IndexedDB). The top bar shows waiting uploads
     (Personnel and contractors, the accounts that upload photos), and they are sent automatically when the connection returns. Each photo is listed and sent
     only for the account that queued it; another account signed in on the same browser never sends it.
@@ -372,8 +409,8 @@ Sidebar items appear only for the roles that can use them. "All staff" = Admin, 
   - **Audit findings:** severity, description, recommendation and due date, and an optional assignment of the
     corrective action to a DPWH personnel account. The assigned person reports progress on their dashboard; the
     auditor closes the finding.
-  - **Project "Flag & audit" tab:** the current flag and why, the decision history, the findings, and the
-    project's audit report (PDF).
+  - **Project "Flag & audit" tab:** the current flag and why, the completion verification card (below), the
+    decision history, the findings, and the project's audit report (PDF).
 - **Touches:**
   - Pages and components: `pages/auditor/AuditPage.jsx`, `project/FlagsTab.jsx`,
     `components/audit/ReviewFlagModal.jsx`, `FindingModal.jsx`, `CorrectiveActionModal.jsx`.
@@ -382,6 +419,33 @@ Sidebar items appear only for the roles that can use them. "All staff" = Admin, 
     `GET /findings/assigned`, `GET /audit/assignees`.
   - Data: `projects` (flag columns), `flag_history`, `flag_reviews`, `audit_findings`, `system_settings`, bucket
     `audit-evidence`.
+
+### Completion verification
+- **In the UI:** the "Completion verification" card on the project's "Flag & audit" tab and on the PACC
+  investigation page (030).
+- **Why:** a finished project should not read 100 % until someone independent has seen it. A Completed project
+  stays at 99 % ("Completed – awaiting verification") until both the Auditor and PACC verify it.
+- **Who:** the Auditor decides on the Flag & audit tab; PACC decides on its investigation page. DPWH Personnel, the
+  Admin and the project's contractor see the card read only. The public sees only the status label.
+- **What it does:**
+  - Shows both sides' current decision (Verified, Not yet with its reason, or No decision yet), who and when, and
+    the full history, newest first. PACC decisions always read "PACC" (no member is named). A decision made before
+    the project last became Completed is greyed out: it no longer counts.
+  - **Verify completion** asks for confirmation. **Not yet** asks for a reason (5–500 characters, with a counter).
+    Either side can decide first; a side that already verified cannot verify again (it can still record Not yet).
+  - PACC cannot verify while the project has an open PACC case: the button is disabled with "Close the PACC case
+    before verifying completion."; Not yet stays allowed.
+  - When both have verified, the project becomes 100 %, "Completed – verified", and its progress, phase plan and
+    360° photos are locked. If a PACC case is open at that moment, the decision is recorded and the server's
+    message is shown: "Recorded. The project becomes verified once its PACC case is closed." Staff and PACC see
+    that the project waits for the PACC case. The project's contractor never learns that a case is open: its card
+    says "Both sides verified; the verification is being finalised.", and the API strips every PACC-case field
+    from its `GET /projects/:id/completion-verification` answer (`stateForViewer`).
+  - Before the project is Completed the card says that verification opens once it is.
+- **Touches:** `components/progress/CompletionVerificationCard.jsx`, `lib/progress.js` (`verificationCard`),
+  `project/FlagsTab.jsx`, `pages/pacc/PaccProjectPage.jsx`; `GET/POST /projects/:id/completion-verification`,
+  `POST /pacc/projects/:id/completion-verification`, `GET /pacc/projects/:id` (`completion_verification`);
+  `completion_verifications`, `projects.completed_at`, `projects.completion_verified_at`.
 
 ### Reports
 - **In the UI:** "Reports" (`/app/reports`).
@@ -536,7 +600,8 @@ That is a convenience only: RLS (`private.contractor_company()`) and the API (`P
 ### Dashboard (contractor)
 - **In the UI:** "Dashboard" (`/app` for a contractor account).
 - **What it does:** counters (projects, behind schedule, Yellow or Red flag, no 360° photo in 30 days) and one row
-  per project: flag, status, completion against the plan ("planned X % · N pts behind"), target completion date,
+  per project: flag, status ("Completed – awaiting verification" / "Completed – verified" for a Completed project),
+  completion against the plan ("planned X % · N pts behind"; a Completed project is never behind), target completion date,
   latest photo date, and shortcuts to the Phases & progress and 360° images tabs. With no projects, it says that no
   projects of the company are shown (or that the company is marked inactive) and to contact the DPWH District
   Engineering Office if they expected some.
@@ -550,14 +615,16 @@ That is a convenience only: RLS (`private.contractor_company()`) and the API (`P
   project"). Opens the project page.
 - **Project page tabs** (`lib/contractor.js` `projectPermissions`):
   - **Overview:** read only.
-  - **Phases & progress:** view, and "Submit progress update". No phase-plan editing. When every phase reaches
+  - **Phases & progress:** view, and "Submit progress update" (per sub-activity where the phase has them, with the
+    description and 1–5 reference photos). No phase-plan or sub-activity editing. When every phase reaches
     100 % the form says that DPWH Personnel confirm the completion date; it has no completion-date field (the API
     answers 403 "Only DPWH Personnel can confirm a project's completion." to a contractor that sends one).
   - **360° images:** view and "Upload 360° image" (with the same checks and offline queue as Personnel, and a
     caption). No "Final as-built" checkbox, no "Mark as final", no delete.
   - **Finance:** view only (what DPWH obligated and disbursed).
-  - **Flag & audit:** the flag, its reasons, the auditor decisions, findings and history, view only (no review,
-    findings or audit-report PDF).
+  - **Flag & audit:** the flag, its reasons, the completion verification, the auditor decisions, findings and
+    history, view only (no review, findings, verification or audit-report PDF).
+  - **Verified projects:** no progress report or photo upload (the lock message is shown instead).
   - **Documents:** view and download only.
 - **Labels for staff:** progress reports and photos submitted by a contractor show "by <name> (Contractor)"
   (`submitted_by_role`, `uploaded_by_role`).
@@ -598,13 +665,17 @@ abolished in 2022, so this is a modelled role.
 - **In the UI:** a project from the inbox (`/pacc/projects/:id`).
 - **What it does:** project facts, the flag and its reasons, auditor decisions and findings, the citizen
   reports with their proof photos (expiring signed links), and, read-only, the construction phases, the 50 most
-  recent progress reports, the financial records with a summary, the 360° photos (each opens full size in a new
-  tab) and the supporting documents. Opening it marks new reports "Under review". PACC can
+  recent progress reports (with the work done and the reference photos, which open in a new tab), the sub-activities
+  of each phase, the financial records with a summary, the 360° photos (each opens full size in a new
+  tab) and the supporting documents. Opening it marks new reports "Under review". The
+  [Completion verification](#completion-verification) card lets PACC verify a Completed project or record
+  "Not yet" (verify is disabled while a PACC case is open). PACC can
   close one report, or all open reports of the project, with an outcome (valid, invalid, duplicate), and open a
   case on the project, attaching open reports to it.
 - **Touches:** `pages/pacc/PaccProjectPage.jsx`, `components/pacc/OpenCaseModal.jsx`, `components/pacc/ProjectRecords.jsx`; `GET /pacc/projects/:id`,
-  `POST /pacc/reports/:reportId/close`, `POST /pacc/projects/:id/reports/close-all`, `POST /pacc/projects/:id/cases`;
-  buckets `citizen-reports`, `panoramas` and `project-documents` (signed links).
+  `POST /pacc/reports/:reportId/close`, `POST /pacc/projects/:id/reports/close-all`, `POST /pacc/projects/:id/cases`,
+  `POST /pacc/projects/:id/completion-verification`;
+  buckets `citizen-reports`, `panoramas`, `project-documents` and `progress-photos` (signed links).
 
 ### Cases
 - **In the UI:** "Cases" (`/pacc/cases`) and a case page (`/pacc/cases/:caseId`).

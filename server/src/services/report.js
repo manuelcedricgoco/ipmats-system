@@ -5,6 +5,7 @@
  * Layout (letterhead, sections, tables, footer) lives in pdfLayout.js so both reports look the same.
  */
 import { COLORS, FLAG_STYLE, Report, fmt } from './pdfLayout.js';
+import { behindSchedule } from './completion.js';
 
 const DISCLAIMER =
   'Automatic flags are a monitoring aid computed from data submitted by DPWH personnel (schedule, phase accomplishment, ' +
@@ -36,7 +37,7 @@ export function buildAuditReportPdf({ project: p, phases, findings, reviews, fin
 
   const planned = Number(p.planned_progress || 0);
   const actual = Number(p.overall_progress || 0);
-  const slip = Math.round((planned - actual) * 100) / 100;
+  const slip = behindSchedule(p); // 0 for a Completed project (030: 99% awaiting verification vs a plan of 100%)
   const flag = p.current_flag;
   r.kpis([
     { label: 'Current flag', value: flag ? FLAG_STYLE[flag].label : 'NOT EVALUATED', color: flag ? FLAG_STYLE[flag].color : COLORS.muted, hint: `${fmt.label(p.flag_review_status)} · automatic ${String(p.auto_flag || '—').toUpperCase()}` },

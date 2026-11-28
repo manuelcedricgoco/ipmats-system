@@ -48,10 +48,10 @@ export default function ProjectPanel({ projectId, onClose }) {
             <div className="space-y-4 px-4 pb-5">
               <div className="flex flex-wrap items-center gap-2">
                 <FlagBadge flag={p.flag} long emptyLabel="Not evaluated" />
-                <StatusBadge status={p.status} />
+                <StatusBadge status={p.status} verifiedAt={p.completion_verified_at} />
                 <span className="text-xs text-slate-500">{PROJECT_TYPES[p.project_type]}</span>
               </div>
-              <ProgressBar value={p.overall_progress} planned={p.planned_progress} />
+              <ProgressBar value={p.overall_progress} planned={p.planned_progress} status={p.status} />
               <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
                 <div><dt className="text-xs text-slate-500">Approved budget</dt><dd className="font-semibold tabular-nums text-slate-900">{peso(p.approved_budget)}</dd></div>
                 <div><dt className="text-xs text-slate-500">Contract amount</dt><dd className="font-semibold tabular-nums text-slate-900">{peso(p.revised_contract_amount ?? p.contract_amount)}</dd></div>

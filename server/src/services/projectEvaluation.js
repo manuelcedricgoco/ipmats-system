@@ -97,6 +97,19 @@ export function shouldRecordHistory({ trigger, flagChanged, statusChanged }) {
   return !SYSTEM_TRIGGERS.includes(trigger) || flagChanged || statusChanged;
 }
 
+/**
+ * projects.completed_at / completion_verified_at (030) for the new status: completed_at is set
+ * when the project becomes Completed and cleared when it leaves; leaving Completed also clears
+ * completion_verified_at (earlier verifications no longer count). Only changed columns are returned.
+ */
+export function completionTimestamps(project, status, now = new Date()) {
+  if (status === 'completed') return project.completed_at ? {} : { completed_at: now.toISOString() };
+  const out = {};
+  if (project.completed_at) out.completed_at = null;
+  if (project.completion_verified_at) out.completion_verified_at = null;
+  return out;
+}
+
 export async function evaluateAndSave(admin, projectId, { trigger = 'manual', actorId = null, rules, today = new Date(), phashCandidates, statusOverride } = {}) {
   const input = await loadEvaluationInput(admin, projectId, phashCandidates);
   const activeRules = rules || (await getFlagRules(admin));
@@ -108,6 +121,7 @@ export async function evaluateAndSave(admin, projectId, { trigger = 'manual', ac
   const statusChanged = result.status !== project.status || result.completionStatus !== project.completion_status;
 
   const update = {
+    ...completionTimestamps(project, result.status),
     status: result.status,
     completion_status: result.completionStatus,
     overall_progress: result.metrics.overallProgress,

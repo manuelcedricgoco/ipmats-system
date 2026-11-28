@@ -36,6 +36,36 @@ export function computeOverallProgress(phases = []) {
   return round2(clamp(weighted / totalWeight));
 }
 
+/**
+ * Progress rules (migration 030). A phase with sub-activities: its accomplishment is the weighted
+ * sub-activity accomplishment, Σ(weight × accomplishment) ÷ Σ(weight) (the weights total 100), to
+ * 2 decimals. A phase without sub-activities keeps its own %.
+ */
+export function computeActivityProgress(activities = []) {
+  return computeOverallProgress(activities);
+}
+
+/** Highest overall progress a project shows until the Auditor and PACC have both verified its completion. */
+export const UNVERIFIED_PROGRESS_CAP = 99;
+export const COMPLETED_AWAITING_LABEL = 'Completed – awaiting verification';
+export const COMPLETED_VERIFIED_LABEL = 'Completed – verified';
+
+/**
+ * The overall progress that is stored and shown: min(computed, 99) until the completion is
+ * verified (projects.completion_verified_at), then the computed value (100). Used wherever
+ * projects.overall_progress or progress_updates.overall_progress is written.
+ */
+export function officialProgress(computed, verifiedAt) {
+  const value = round2(clamp(Number(computed) || 0));
+  return verifiedAt ? value : Math.min(value, UNVERIFIED_PROGRESS_CAP);
+}
+
+/** "Completed – verified" / "Completed – awaiting verification" for a Completed project; otherwise null. */
+export function completionLabel(project) {
+  if (project?.status !== 'completed') return null;
+  return project.completion_verified_at ? COMPLETED_VERIFIED_LABEL : COMPLETED_AWAITING_LABEL;
+}
+
 /** Planned % for one window [start, end] on `today` (straight line). */
 function linearPlanned(start, end, today) {
   const s = toDate(start);
@@ -62,8 +92,21 @@ export function computePlannedProgress(project, phases = [], todayInput = new Da
   return round2(clamp(linearPlanned(project.notice_to_proceed, project.target_completion_date, today) ?? 0));
 }
 
-/** Slippage = actual − planned (negative = behind schedule). */
-export const computeSlippage = (actual, planned) => round2(Number(actual) - Number(planned));
+/**
+ * Slippage = actual − planned (negative = behind schedule). A Completed project has no slippage
+ * (030: awaiting verification it stores 99% against a plan of 100%, which is not "behind").
+ */
+export const computeSlippage = (actual, planned, status = null) => (status === 'completed' ? 0 : round2(Number(actual) - Number(planned)));
+
+/**
+ * Points behind schedule from a stored project row: planned_progress − overall_progress
+ * (positive = behind), 0 for a Completed project (030). Used wherever slippage is derived from
+ * the stored values (dashboard, audit PDF).
+ */
+export function behindSchedule(row) {
+  if (row?.status === 'completed') return 0;
+  return round2(Number(row?.planned_progress || 0) - Number(row?.overall_progress || 0));
+}
 
 /** Default phases per project type, used when setting up a plan. Weights total 100. */
 const PHASE_TEMPLATES = {

@@ -110,7 +110,7 @@ function Queue({ canAudit }) {
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <FlagBadge flag={p.current_flag} />
-                      <StatusBadge status={p.status} />
+                      <StatusBadge status={p.status} verifiedAt={p.completion_verified_at} />
                       <Pill className={p.flag_review_status === 'pending' ? 'bg-amber-50 text-amber-800' : 'bg-slate-100 text-slate-700'}>{REVIEW_STATUS[p.flag_review_status]}</Pill>
                       <span className="text-xs text-slate-500">Audit: {AUDIT_STATUS[p.audit_status]}</span>
                     </div>

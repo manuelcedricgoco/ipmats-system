@@ -44,7 +44,7 @@ export default function OverviewTab() {
                 ['Contract duration', p.duration_days ? `${p.duration_days} calendar days` : null],
                 ['Target completion', date(p.target_completion_date)],
                 ['Actual completion', p.actual_completion_date ? date(p.actual_completion_date) : null],
-                ['Status', <StatusBadge key="s" status={p.status} />],
+                ['Status', <StatusBadge key="s" status={p.status} verifiedAt={p.completion_verified_at} />],
               ]}
             />
           </CardBody>

@@ -11,6 +11,7 @@ import { canUseApproval } from './deletionRequestsController.js';
 import { pagination } from '../utils/pagination.js';
 import { changedFields, logActivity } from '../services/activityLog.js';
 import { withoutPaccFields } from '../services/contractorAccess.js';
+import { assertCompletionDateEditable } from '../services/completionVerification.js';
 import { reevaluate } from '../services/projectEvaluation.js';
 import { assertValid, checkContractAmountChange, isLocationChange } from '../services/validationRules.js';
 import { OUTSIDE_PROVINCE_MESSAGE, isWithinOccidentalMindoro } from '../utils/geo.js';
@@ -25,7 +26,9 @@ const LIST_COLUMNS =
   // Week 3
   'current_flag, flag_review_status, planned_progress, image_count, latest_inspection_date, ' +
   // 027: status of a non-closed PACC case (staff only; never the case itself, and stripped for contractors)
-  'pacc_case_status';
+  'pacc_case_status, ' +
+  // 030: Completed – awaiting verification (99%) / Completed – verified (100%)
+  'completed_at, completion_verified_at';
 const FILTERABLE_STATUSES = new Set(['not_started', 'ongoing', 'delayed', 'completed']);
 
 /** Filters shared by the list endpoint. */
@@ -191,7 +194,9 @@ export async function createProject(req, res) {
 
 export async function updateProject(req, res) {
   const { id } = req.params;
-  const current = await getProjectOrThrow(id, 'id, municipality_id, barangay_id, notice_to_proceed, duration_days, status, latitude, longitude');
+  const current = await getProjectOrThrow(id, 'id, municipality_id, barangay_id, notice_to_proceed, duration_days, status, latitude, longitude, actual_completion_date, completion_verified_at');
+  // 030: a verified completion cannot be undone by changing the actual completion date.
+  assertCompletionDateEditable(current, req.body);
   if (req.body.latitude !== undefined || req.body.longitude !== undefined) {
     assertInsideProvince(req.body.latitude ?? current.latitude, req.body.longitude ?? current.longitude);
   }

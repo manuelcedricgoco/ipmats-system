@@ -29,9 +29,10 @@ export const STAT_GROUPS = Object.freeze({
 
 const CARD_COLUMNS =
   'id, project_code, name, project_type, status, municipality_id, municipality_name, barangay_name, agency_name, contractor_name, ' +
-  'contract_amount, overall_progress, notice_to_proceed, target_completion_date, actual_completion_date, image_count, latitude, longitude, updated_at, public_flag';
+  'contract_amount, overall_progress, notice_to_proceed, target_completion_date, actual_completion_date, image_count, latitude, longitude, updated_at, public_flag, completion_verified_at';
 // public_flag (migration 021): the flag only once an auditor has reviewed it, otherwise null ("Under review").
-const PIN_COLUMNS = 'id, project_code, name, project_type, status, latitude, longitude, municipality_name, barangay_name, overall_progress, contract_amount, public_flag';
+// completion_verified_at (030): a Completed project is "Completed – verified" (100%) when set, else "Completed – awaiting verification" (99%).
+const PIN_COLUMNS = 'id, project_code, name, project_type, status, latitude, longitude, municipality_name, barangay_name, overall_progress, contract_amount, public_flag, completion_verified_at';
 const SORTS = ['updated_at', 'name', 'project_code', 'overall_progress', 'contract_amount', 'target_completion_date'];
 const STATUSES = ['not_started', 'ongoing', 'delayed', 'completed'];
 

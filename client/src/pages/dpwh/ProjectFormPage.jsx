@@ -11,6 +11,7 @@ import { useApi } from '../../hooks/useApi.js';
 import { useReference } from '../../hooks/useReference.js';
 import { api } from '../../lib/api.js';
 import { MANUAL_STATUSES, PROJECT_TYPES, REGISTRATION_STATUSES, STATUS_META } from '../../lib/constants.js';
+import { VERIFIED_LOCK_MESSAGE, isLocked } from '../../lib/progress.js';
 import { date, peso } from '../../lib/format.js';
 import { OUTSIDE_PROVINCE_MESSAGE, PROVINCE_BOUNDS, isWithinOccidentalMindoro } from '../../lib/geo.js';
 
@@ -43,6 +44,7 @@ export default function ProjectFormPage() {
   const toast = useToast();
   const { ref } = useReference();
   const existing = useApi(editing ? `/projects/${id}` : null, undefined, { select: (r) => r.data });
+  const completionLocked = editing && isLocked(existing.data);
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState(null);
@@ -273,7 +275,14 @@ export default function ProjectFormPage() {
                 )}
               </Field>
               {(editing || form.actual_completion_date) && (
-                <Field label="Actual completion date" error={fe.actual_completion_date}>{(a) => <Input {...a} type="date" value={form.actual_completion_date || ''} onChange={set('actual_completion_date')} />}</Field>
+                <Field
+                  label="Actual completion date"
+                  error={fe.actual_completion_date}
+                  hint={completionLocked ? VERIFIED_LOCK_MESSAGE : undefined}
+                >
+                  {/* 030: a verified project keeps its completion date (the API answers 409 to a change). */}
+                  {(a) => <Input {...a} type="date" value={form.actual_completion_date || ''} onChange={set('actual_completion_date')} disabled={completionLocked} />}
+                </Field>
               )}
             </CardBody>
           </Card>

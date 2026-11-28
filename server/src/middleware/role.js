@@ -1,4 +1,5 @@
 import { adminClient } from '../config/supabase.js';
+import { assertNotLocked } from '../services/completionVerification.js';
 import { assertContractorDoesNotComplete, assertContractorOwnsProject } from '../services/contractorAccess.js';
 import { HttpError, forbidden, unauthorized, unwrap } from '../utils/httpError.js';
 
@@ -85,3 +86,27 @@ export function refuseContractorCompletion(req, _res, next) {
     return next(err);
   }
 }
+
+/** The project's verification time (service role; null when the project does not exist). */
+async function loadProjectLock(projectId) {
+  return unwrap(await adminClient.from('projects').select('id, completion_verified_at').eq('id', projectId).maybeSingle());
+}
+
+/**
+ * 030: once a project's completion is verified (100%), its progress reports, phase plan and 360°
+ * photos can no longer change: 409 "This project's completion was verified; its progress and
+ * photos can no longer change." Finance records and documents are not locked. Placed after
+ * requireWriteAccess and requireOwnProject, before any upload is read. A missing project passes
+ * (the controller answers 404).
+ */
+export function makeRequireUnlockedProject(load = loadProjectLock) {
+  return async (req, _res, next) => {
+    try {
+      assertNotLocked(await load(req.params.id));
+      return next();
+    } catch (err) {
+      return next(err);
+    }
+  };
+}
+export const requireUnlockedProject = makeRequireUnlockedProject();
