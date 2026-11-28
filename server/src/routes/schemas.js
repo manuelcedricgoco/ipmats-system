@@ -10,7 +10,15 @@ const empty = (v) => (v === '' || v === 'null' || v === undefined ? undefined : 
 const opt = (schema) => z.preprocess(empty, schema.optional());
 const nullable = (schema) => z.preprocess((v) => (v === '' || v === 'null' ? null : v), schema.nullable().optional());
 
-export const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD');
+/** A real calendar date as YYYY-MM-DD: 2026-02-31 or 2026-13-01 is refused (400), never passed on to the database. */
+export const isRealDate = (v) => {
+  const d = new Date(`${v}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v;
+};
+export const isoDate = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD')
+  .refine(isRealDate, 'Enter a real date (YYYY-MM-DD).');
 const money = z.coerce.number().finite().min(0).max(1e13);
 const text = (max) => z.string().trim().max(max);
 /** A percentage stored as numeric(5,2): rounded to 2 decimals before the range check, so the database never refuses or drifts. */
@@ -223,7 +231,8 @@ export const receiptUpload = z.object({
       .pipe(z.number().gt(0, 'The receipt amount must be more than 0.').max(9999999999999.99, 'The receipt amount is too large.')),
   ),
   receipt_date: isoDate,
-  description: nullable(text(500)),
+  // Only spaces (or nothing) is stored as null, not ''.
+  description: z.preprocess((v) => (typeof v === 'string' && !v.trim() ? null : v), text(500).nullable().optional()),
 });
 
 // ---------------------------------------------------------------------------

@@ -18,7 +18,8 @@
  * Pure functions (no database); the database steps are in controllers/financeController.js.
  */
 import { HttpError, badRequest, conflict, forbidden, notFound } from '../utils/httpError.js';
-import { isoDate, round2 } from './completion.js';
+import { round2 } from './completion.js';
+import { manilaDate } from './citizenReports.js';
 import { assertContractorOwnsProject } from './contractorAccess.js';
 
 export const RECEIPT_BUCKET = 'finance-receipts';
@@ -204,10 +205,10 @@ export function canDeleteReceipt(args) {
   }
 }
 
-/** Field checks against today: the receipt date cannot be in the future. Returns { field, message }[]. */
+/** Field checks against today in the Philippines (Asia/Manila): the receipt date cannot be in the future. Returns { field, message }[]. */
 export function checkReceipt(receipt, now = new Date()) {
   const problems = [];
-  if (receipt.receipt_date > isoDate(now)) problems.push({ field: 'receipt_date', message: RECEIPT_FUTURE_MESSAGE });
+  if (receipt.receipt_date > manilaDate(now)) problems.push({ field: 'receipt_date', message: RECEIPT_FUTURE_MESSAGE });
   return problems;
 }
 

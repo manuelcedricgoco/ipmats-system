@@ -540,3 +540,123 @@ describe('migration 031', () => {
     assert.doesNotMatch(code, /alter table public\.(financial_records|projects)\b/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Review fixes: paging past PostgREST's max_rows, Manila dates, real dates, blank descriptions, file cleanup
+// ---------------------------------------------------------------------------
+
+/** A client whose queries honour eq / in / range like PostgREST with max_rows = 1000 (a query without range gets 1000 rows). */
+function pagedDb(tables) {
+  const calls = [];
+  return {
+    calls,
+    from(table) {
+      const q = { table, filters: [], range: null };
+      calls.push(q);
+      const builder = {
+        select: () => builder,
+        order: () => builder,
+        eq: (c, v) => { q.filters.push((r) => r[c] === v); return builder; },
+        in: (c, vs) => { q.filters.push((r) => vs.includes(r[c])); return builder; },
+        range: (from, to) => { q.range = [from, to]; return builder; },
+        maybeSingle: async () => ({ data: (tables[table] ?? []).filter((r) => q.filters.every((f) => f(r)))[0] ?? null, error: null }),
+        then: (ok, fail) => {
+          const rows = (tables[table] ?? []).filter((r) => q.filters.every((f) => f(r)));
+          const [from, to] = q.range ?? [0, 999];
+          return Promise.resolve({ data: rows.slice(from, Math.min(to, from + 999) + 1), error: null }).then(ok, fail);
+        },
+      };
+      return builder;
+    },
+  };
+}
+
+describe('lists longer than max_rows are read page by page', () => {
+  const many = (n, over) => Array.from({ length: n }, (_, i) => ({ id: `r${String(i).padStart(5, '0')}`, financial_record_id: 'd1', project_id: ID, storage_path: `p/${i}.pdf`, amount: 1, receipt_date: '2026-11-02', created_at: '2026-11-02T00:00:00Z', ...over }));
+  it('readAllPages keeps reading until a short page', async () => {
+    const { readAllPages } = await import('../utils/pagination.js');
+    const db = pagedDb({ t: Array.from({ length: 2345 }, (_, i) => ({ id: i })) });
+    const rows = await readAllPages(() => db.from('t').select('id'));
+    assert.equal(rows.length, 2345);
+    assert.deepEqual(db.calls.map((c) => c.range), [[0, 999], [1000, 1999], [2000, 2999]]);
+  });
+  it('the finance tab sees every receipt of a project', async () => {
+    const rows = await finance.loadReceipts(pagedDb({ finance_receipts: many(1500, { status: 'accepted' }) }), ID);
+    assert.equal(rows.length, 1500);
+  });
+  it('the overview totals count every accepted receipt', async () => {
+    const tables = {
+      v_project_summary: [{ id: ID, revised_contract_amount: 5000, total_disbursed: 5000, total_expenses: 0 }],
+      finance_receipts: [...many(2500, { status: 'accepted' }), ...many(10, { status: 'submitted' })],
+      financial_records: [{ id: 'd1', project_id: ID, record_type: 'disbursement', amount: 5000 }],
+    };
+    const res = fakeRes();
+    await finance.financeOverview({ db: pagedDb(tables), query: {} }, res);
+    assert.equal(res.body.data[0].liquidated_amount, 2500);
+    assert.equal(res.body.data[0].liquidated_pct, 50);
+    assert.equal(res.body.totals.liquidated_amount, 2500);
+  });
+  it('the public liquidation counts every accepted receipt', async () => {
+    const tables = {
+      projects: [{ id: ID, contract_amount: 5000 }],
+      financial_records: [{ id: 'd1', project_id: ID, record_type: 'disbursement', amount: 5000 }],
+      finance_receipts: many(1200, { status: 'accepted' }),
+    };
+    const data = await publicCtl.publicLiquidationData(pagedDb(tables), ID, async (paths) => Object.fromEntries(paths.map((p) => [p, `u/${p}`])));
+    assert.equal(data.summary.liquidated, 1200);
+    assert.equal(data.receipts.length, 1200);
+  });
+});
+
+describe('dates and descriptions', () => {
+  it('"not in the future" uses the date in the Philippines (Asia/Manila), not UTC', () => {
+    const lateEvening = new Date('2026-11-28T17:30:00Z'); // 29 Nov, 01:30 in Manila
+    assert.deepEqual(checkReceipt({ receipt_date: '2026-11-29' }, lateEvening), []);
+    assert.equal(checkReceipt({ receipt_date: '2026-11-30' }, lateEvening).length, 1);
+    const src = readFileSync(new URL('../services/liquidation.js', import.meta.url), 'utf8');
+    assert.match(src, /manilaDate\(now\)/);
+  });
+  it('impossible dates are a 400 (zod), real ones pass', async () => {
+    const { financialRecord, isoDate } = await import('../routes/schemas.js');
+    for (const bad of ['2026-02-31', '2026-02-29', '2026-13-01', '2026-00-10', '2026-04-31']) {
+      assert.equal(receiptUpload.safeParse({ amount: '5', receipt_date: bad }).success, false, bad);
+      assert.equal(isoDate.safeParse(bad).success, false, bad);
+    }
+    assert.equal(financialRecord.safeParse({ record_type: 'expense', amount: 5, record_date: '2026-02-30' }).success, false);
+    for (const ok of ['2028-02-29', '2026-12-31', '2026-01-01']) assert.equal(isoDate.safeParse(ok).success, true, ok);
+  });
+  it('a description of only spaces is stored as null', () => {
+    for (const blank of ['   ', '', '\t \n']) assert.equal(receiptUpload.parse({ amount: '5', receipt_date: '2026-11-02', description: blank }).description, null);
+    assert.equal(receiptUpload.parse({ amount: '5', receipt_date: '2026-11-02' }).description, undefined);
+    assert.equal(receiptUpload.parse({ amount: '5', receipt_date: '2026-11-02', description: ' Sand ' }).description, 'Sand');
+  });
+});
+
+describe('receipt files are removed with their record or project', () => {
+  it('deleting a project reads its receipt files before the delete and removes them after', () => {
+    const src = readFileSync(new URL('../controllers/projectsController.js', import.meta.url), 'utf8');
+    const fn = src.slice(src.indexOf('export async function deleteProject'));
+    const read = fn.indexOf(".from('finance_receipts').select('id, storage_path').eq('project_id', project.id)");
+    const del = fn.indexOf(".from('projects').delete()");
+    const remove = fn.indexOf('await removeReceiptFiles(receiptFiles);');
+    assert.ok(read > 0 && read < del && del < remove, `${read} ${del} ${remove}`);
+    const fin = readFileSync(new URL('../controllers/financeController.js', import.meta.url), 'utf8');
+    assert.match(fin.slice(fin.indexOf('export async function deleteFinancialRecord')), /await removeReceiptFiles\(receiptFiles\);/);
+  });
+  it('removeReceiptFiles removes in batches of 1000 and never throws', async () => {
+    const { removeReceiptFiles } = await import('../controllers/projectsController.js');
+    const batches = [];
+    const storage = { from: (bucket) => ({ remove: async (paths) => { batches.push([bucket, paths.length]); return { error: batches.length === 2 ? { message: 'boom' } : null }; } }) };
+    const errors = console.error;
+    console.error = () => {};
+    try {
+      await removeReceiptFiles(Array.from({ length: 2001 }, (_, i) => `p/${i}`), storage);
+      await removeReceiptFiles(['x'], { from: () => ({ remove: async () => { throw new Error('down'); } }) });
+    } finally {
+      console.error = errors;
+    }
+    assert.deepEqual(batches, [['finance-receipts', 1000], ['finance-receipts', 1000], ['finance-receipts', 1]]);
+    await removeReceiptFiles([], storage);
+    assert.equal(batches.length, 3);
+  });
+});

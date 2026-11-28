@@ -41,7 +41,8 @@ import { signedUrls } from '../services/storage.js';
 import { assertValid, checkFinancialRecord } from '../services/validationRules.js';
 import { logActivity, projectCode } from '../services/activityLog.js';
 import { badRequest, conflict, notFound, unwrap } from '../utils/httpError.js';
-import { applyProjectFilters } from './projectsController.js';
+import { readAllPages } from '../utils/pagination.js';
+import { applyProjectFilters, removeReceiptFiles } from './projectsController.js';
 
 // contractor_id and contractor.is_active (031): whether a contractor viewer may upload receipts here.
 const PROJECT_COLS = 'id, approved_budget, contract_amount, notice_to_proceed, overall_progress, contractor_id, contractor:contractors(is_active)';
@@ -73,9 +74,12 @@ export function financeByPhase(phases, records) {
   return [...rows, ...(none.obligated || none.disbursed || none.expenses ? [none] : [])];
 }
 
-/** A project's receipts, read through `db` (req.db: RLS lets staff, PACC and the project's contractor read them). */
+const byDateThenCreated = (a, b) => String(a.receipt_date).localeCompare(String(b.receipt_date)) || String(a.created_at).localeCompare(String(b.created_at));
+
+/** A project's receipts, read through `db` (req.db: RLS lets staff, PACC and the project's contractor read them), every page. */
 export async function loadReceipts(db, projectId) {
-  return unwrap(await db.from('finance_receipts').select(RECEIPT_COLS).eq('project_id', projectId).order('receipt_date').order('created_at'));
+  const rows = await readAllPages(() => db.from('finance_receipts').select(RECEIPT_COLS).eq('project_id', projectId));
+  return rows.sort(byDateThenCreated);
 }
 
 /**
@@ -153,9 +157,9 @@ export async function deleteFinancialRecord(req, res) {
   const row = unwrap(await adminClient.from('financial_records').select('id, record_type, amount').eq('id', req.params.recordId).eq('project_id', req.params.id).maybeSingle());
   if (!row) throw notFound('Financial record not found');
   // 031: the record's receipts (accepted ones too) go with it (cascade); their files are removed after.
-  const receiptFiles = unwrap(await adminClient.from('finance_receipts').select('storage_path').eq('financial_record_id', row.id)).map((r) => r.storage_path);
+  const receiptFiles = (await readAllPages(() => adminClient.from('finance_receipts').select('id, storage_path').eq('financial_record_id', row.id))).map((r) => r.storage_path);
   unwrap(await adminClient.from('financial_records').delete().eq('id', row.id));
-  if (receiptFiles.length) await adminClient.storage.from(RECEIPT_BUCKET).remove(receiptFiles);
+  await removeReceiptFiles(receiptFiles);
   await reevaluate(req.params.id, 'financial_record_deleted', req.user.id);
   await logActivity(req, {
     action: 'finance.delete',
@@ -193,12 +197,14 @@ export function withLiquidation(rows, liquidated) {
 async function loadLiquidated(db, projectIds) {
   const receipts = [];
   for (let i = 0; i < projectIds.length; i += 100) {
-    receipts.push(...unwrap(await db.from('finance_receipts').select('financial_record_id, project_id, amount, status').in('project_id', projectIds.slice(i, i + 100)).eq('status', 'accepted')));
+    const chunk = projectIds.slice(i, i + 100);
+    receipts.push(...(await readAllPages(() => db.from('finance_receipts').select('id, financial_record_id, project_id, amount, status').in('project_id', chunk).eq('status', 'accepted'))));
   }
   const recordIds = [...new Set(receipts.map((r) => r.financial_record_id))];
   const records = [];
   for (let i = 0; i < recordIds.length; i += 100) {
-    records.push(...unwrap(await db.from('financial_records').select('id, project_id, record_type, amount').in('id', recordIds.slice(i, i + 100))));
+    const chunk = recordIds.slice(i, i + 100);
+    records.push(...(await readAllPages(() => db.from('financial_records').select('id, project_id, record_type, amount').in('id', chunk))));
   }
   return liquidatedByProject(records, receipts);
 }

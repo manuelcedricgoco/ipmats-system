@@ -8,10 +8,11 @@
 import { adminClient } from '../config/supabase.js';
 import { addDays } from '../services/completion.js';
 import { canUseApproval } from './deletionRequestsController.js';
-import { pagination } from '../utils/pagination.js';
+import { pagination, readAllPages } from '../utils/pagination.js';
 import { changedFields, logActivity } from '../services/activityLog.js';
 import { withoutPaccFields } from '../services/contractorAccess.js';
 import { assertCompletionDateEditable } from '../services/completionVerification.js';
+import { RECEIPT_BUCKET } from '../services/liquidation.js';
 import { reevaluate } from '../services/projectEvaluation.js';
 import { assertValid, checkContractAmountChange, isLocationChange } from '../services/validationRules.js';
 import { OUTSIDE_PROVINCE_MESSAGE, isWithinOccidentalMindoro } from '../utils/geo.js';
@@ -244,6 +245,18 @@ export async function updateProject(req, res) {
  * request for the project (027); it is marked used right before the delete. Every phase, report,
  * finance record, photo and document of the project goes with it; PACC cases survive (024).
  */
+/** Remove finance-receipt files (best effort: a failure is logged, the delete already happened). */
+export async function removeReceiptFiles(paths, storage = adminClient?.storage) {
+  for (let i = 0; i < paths.length; i += 1000) {
+    try {
+      const { error } = await storage.from(RECEIPT_BUCKET).remove(paths.slice(i, i + 1000));
+      if (error) console.error('[finance-receipts] could not remove files', error.message);
+    } catch (e) {
+      console.error('[finance-receipts] could not remove files', e.message);
+    }
+  }
+}
+
 export async function deleteProject(req, res) {
   const project = await getProjectOrThrow(req.params.id, 'id, project_code, name');
   const now = new Date();
@@ -286,6 +299,9 @@ export async function deleteProject(req, res) {
     );
   }
 
+  // 031: the project's finance receipts go with it (cascade); their files are removed after the delete (best effort).
+  const receiptFiles = (await readAllPages(() => adminClient.from('finance_receipts').select('id, storage_path').eq('project_id', project.id))).map((r) => r.storage_path);
+
   try {
     // PACC keeps its case (project_id becomes NULL); tell PACC who deleted the project, before it goes.
     if (openCase) unwrap(await adminClient.from('pacc_activity').insert(paccDeletionEntry(project, req.user, openCase, now)));
@@ -297,6 +313,8 @@ export async function deleteProject(req, res) {
     }
     throw err;
   }
+
+  await removeReceiptFiles(receiptFiles);
 
   // project_id is now NULL on these rows, so they are updated by id.
   for (const r of openRequests) {

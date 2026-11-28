@@ -2,7 +2,7 @@
 
 The database is PostgreSQL 17, hosted by Supabase (project **IPMATS**). This page was written from the live
 database on 22 November 2026, not only from the migration files, and updated on 25 November 2026 for migrations
-019 and 020. The PACC parts (migrations 023–026) and the project deletion requests (027), all applied 27 November 2026, are written from the migration files, as are the contractor accounts (028, applied 27 November 2026; 029, applied 28 November 2026) and the progress rules (030: sub-activities, reference photos, verified 100%; applied by the project controller at merge time, immediately before the API of that PR is deployed), and finance liquidation (031: receipts of disbursements and expenses; additive, applied by the project controller before the merge).
+019 and 020. The PACC parts (migrations 023–026) and the project deletion requests (027), all applied 27 November 2026, are written from the migration files, as are the contractor accounts (028, applied 27 November 2026; 029, applied 28 November 2026) and the progress rules (030: sub-activities, reference photos, verified 100%; applied by the project controller at merge time, immediately before the API of that PR is deployed), and finance liquidation (031: receipts of disbursements and expenses; additive, applied 28 November 2026, before the merge).
 Where the two differ, the live schema wins.
 
 - What each table is used for in the app: [features.md](features.md)
@@ -820,7 +820,7 @@ progress-rules PR is deployed (that API reads every new table and column, so it 
 early: the API before it re-writes overall progress up to 100% (uncapped), never sets `completed_at`, and the data
 updates of 030 change `projects.updated_at`. Deploy order: 030 → the API → the client.
 031 (finance liquidation) is additive: the API before it never reads `finance_receipts` or the `finance-receipts`
-bucket, so the project controller applies it **before the merge**; the finance-liquidation API needs it (every finance
+bucket, so it was applied **before the merge** (to the IPMATS project on 28 November 2026); the finance-liquidation API needs it (every finance
 page reads the receipts). Deploy order: 031 → the API → the client.
 
 Rules the project follows:
