@@ -26,3 +26,15 @@ export function assertImageFormat(buffer, allowed = ['jpeg', 'png', 'webp']) {
   if (!format || !allowed.includes(format)) throw badRequest('The file is not a JPEG, PNG or WebP image.');
   return format;
 }
+
+/**
+ * A document that may be a PDF or an image (PACC case documents, finance receipts), from its first
+ * bytes: { ext, mime } or null. The client's MIME type and file name are never trusted.
+ */
+export function detectDocumentFormat(buffer) {
+  if (Buffer.isBuffer(buffer) && buffer.subarray(0, 4).toString('latin1') === '%PDF') return { ext: 'pdf', mime: 'application/pdf' };
+  const image = detectImageFormat(buffer);
+  if (image === 'jpeg') return { ext: 'jpg', mime: 'image/jpeg' };
+  if (image) return { ext: image, mime: `image/${image}` };
+  return null;
+}

@@ -11,11 +11,18 @@
  *   GET /api/public/projects       project cards: search, status / municipality filter, pagination
  *   GET /api/public/map            every project with coordinates (map pins)
  *   GET /api/public/projects/:id   map drawer: project details + public 360° images
+ *   GET /api/public/projects/:id/liquidation   finance liquidation (031): the summary and the
+ *                                  ACCEPTED receipts only. anon cannot read finance tables, so once the
+ *                                  project is known to be public (v_public_projects, as anon) this is
+ *                                  computed with the service role and returns only safe fields: no file
+ *                                  names, storage paths, notes, or uploader / reviewer identities.
  *
  * 360° images: the rows come from site_images through RLS (only images approved for the public);
  * the files are private in Storage, so the API signs short-lived links for exactly those rows.
  */
-import { anonClient } from '../config/supabase.js';
+import { adminClient, anonClient } from '../config/supabase.js';
+import { summarizeFinance } from '../services/completion.js';
+import { RECEIPT_BUCKET, acceptsReceipts, projectLiquidation, publicLiquidationSummary, toPublicReceipt } from '../services/liquidation.js';
 import { signedUrls } from '../services/storage.js';
 import { HttpError, notFound, unwrap } from '../utils/httpError.js';
 import { pagination } from '../utils/pagination.js';
@@ -99,4 +106,42 @@ export async function publicProject(req, res) {
       images: images.map(({ storage_path: path, ...i }) => ({ ...i, url: urls[path] ?? null })).filter((i) => i.url),
     },
   });
+}
+
+/** Public receipt links expire after 10 minutes (signed-in pages use the default hour). */
+export const PUBLIC_RECEIPT_TTL = 600;
+
+/**
+ * The public liquidation of a project, read with `db` (the service role): the summary (no counts
+ * of receipts awaiting review or returned) and the accepted receipts with short-lived links.
+ * Receipts whose link cannot be signed are left out.
+ */
+export async function publicLiquidationData(db, projectId, sign = (paths) => signedUrls(RECEIPT_BUCKET, paths, PUBLIC_RECEIPT_TTL)) {
+  const project = unwrap(await db.from('projects').select('id, contract_amount').eq('id', projectId).maybeSingle());
+  if (!project) throw notFound('Project not found');
+  const records = unwrap(await db.from('financial_records').select('id, record_type, amount').eq('project_id', projectId));
+  const accepted = unwrap(
+    await db
+      .from('finance_receipts')
+      .select('id, financial_record_id, storage_path, mime_type, amount, receipt_date, description, status')
+      .eq('project_id', projectId)
+      .eq('status', 'accepted')
+      .order('receipt_date')
+      .order('created_at'),
+  ).filter((r) => r.status === 'accepted');
+  const typeOf = new Map(records.map((r) => [r.id, r.record_type]));
+  const shown = accepted.filter((r) => acceptsReceipts(typeOf.get(r.financial_record_id)));
+  const urls = await sign(shown.map((r) => r.storage_path));
+  const summary = publicLiquidationSummary(projectLiquidation(records, shown, summarizeFinance(project, records).revised_contract_amount));
+  return {
+    summary,
+    receipts: shown.map((r) => toPublicReceipt(r, typeOf.get(r.financial_record_id), urls[r.storage_path])).filter((r) => r.url),
+  };
+}
+
+export async function publicLiquidation(req, res) {
+  const visible = unwrap(await db().from('v_public_projects').select('id').eq('id', req.params.id).maybeSingle());
+  if (!visible) throw notFound('Project not found');
+  if (!adminClient) throw new HttpError(503, 'The server is not connected to the database.');
+  res.json({ data: await publicLiquidationData(adminClient, visible.id) });
 }

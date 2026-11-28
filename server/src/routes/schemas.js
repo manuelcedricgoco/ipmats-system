@@ -211,6 +211,21 @@ export const financialRecord = z
   .refine((r) => r.amount !== 0, { message: 'Amount cannot be zero', path: ['amount'] })
   .refine((r) => r.record_type === 'variation_order' || r.amount > 0, { message: 'Amount must be positive (only a variation order can be negative)', path: ['amount'] });
 
+// Finance liquidation (031): a receipt of a disbursement or expense, sent as multipart/form-data
+// (the file in "file"). Amount in pesos with at most 2 decimals (numeric(15,2)).
+export const receiptUpload = z.object({
+  amount: z.preprocess(
+    (v) => (v === '' || v === null ? undefined : v),
+    z.coerce
+      .number({ required_error: 'Enter the receipt amount.', invalid_type_error: 'Enter the receipt amount.' })
+      .finite('Enter the receipt amount.')
+      .transform((v) => Math.round((v + Number.EPSILON) * 100) / 100)
+      .pipe(z.number().gt(0, 'The receipt amount must be more than 0.').max(9999999999999.99, 'The receipt amount is too large.')),
+  ),
+  receipt_date: isoDate,
+  description: nullable(text(500)),
+});
+
 // ---------------------------------------------------------------------------
 // WEEK 3 — 360° images, flag reviews and audit findings
 // ---------------------------------------------------------------------------

@@ -26,7 +26,7 @@ import { DOCUMENT_BUCKET, TYPE_LABELS as DOCUMENT_TYPE_LABELS } from './document
 import { BUCKET as PANORAMA_BUCKET } from './imagesController.js';
 import { removeAvatarFile } from '../services/avatars.js';
 import { logPacc } from '../services/paccActivity.js';
-import { detectImageFormat } from '../services/imageFormat.js';
+import { detectDocumentFormat } from '../services/imageFormat.js';
 import { signedUrl, signedUrls } from '../services/storage.js';
 import { pagination } from '../utils/pagination.js';
 import { HttpError, badRequest, conflict, notFound, unwrap } from '../utils/httpError.js';
@@ -270,13 +270,7 @@ export function outcomeForClosedCase(status) {
 }
 
 /** What a case document really is, from its first bytes (the client's MIME type is not trusted). */
-export function caseDocumentFormat(buffer) {
-  if (Buffer.isBuffer(buffer) && buffer.subarray(0, 4).toString('latin1') === '%PDF') return { ext: 'pdf', mime: 'application/pdf' };
-  const image = detectImageFormat(buffer);
-  if (image === 'jpeg') return { ext: 'jpg', mime: 'image/jpeg' };
-  if (image) return { ext: image, mime: `image/${image}` };
-  return null;
-}
+export const caseDocumentFormat = detectDocumentFormat;
 
 /** The contractor's name for the case's snapshot (null when no contractor is named). */
 export async function contractorNameFor(db, contractorId) {

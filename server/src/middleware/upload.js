@@ -1,4 +1,5 @@
 import multer from 'multer';
+import { RECEIPT_FILE_MESSAGE, RECEIPT_MAX_BYTES, receiptTooLarge } from '../services/liquidation.js';
 import { badRequest } from '../utils/httpError.js';
 
 const MB = 1024 * 1024;
@@ -44,6 +45,15 @@ export const uploadDocument = make(25 * MB, DOCUMENT_MIME_TYPES, 'file');
 
 /** PACC case document: PDF or image up to 25 MB (field "file"), the same limits as the pacc-case-documents bucket. */
 export const uploadCaseDocument = make(25 * MB, ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'], 'file', 'Attach a PDF, JPEG, PNG or WebP file.');
+
+/** Finance receipt (031): one PDF / JPEG / PNG / WebP up to 15 MB (field "file"), the limits of the finance-receipts bucket. */
+const receiptFile = make(RECEIPT_MAX_BYTES, ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'], 'file', RECEIPT_FILE_MESSAGE);
+export function uploadReceipt(req, res, next) {
+  receiptFile(req, res, (err) => {
+    if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') return next(receiptTooLarge());
+    return next(err);
+  });
+}
 
 /** Citizen report proof: 1-3 JPEG / PNG / WebP photos up to 10 MB each (field "proof"). */
 export const uploadProof = multer({
