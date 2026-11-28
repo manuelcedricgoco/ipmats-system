@@ -16,16 +16,26 @@
  *                                  project is known to be public (v_public_projects, as anon) this is
  *                                  computed with the service role and returns only safe fields: no file
  *                                  names, storage paths, notes, or uploader / reviewer identities.
+ *   GET /api/public/projects/:id/bidding       the abstract of bids (032): every round (number, status,
+ *                                  opening date, ABC, failure reason, award time) and, once a round is
+ *                                  evaluated, its bids (contractor name, amount, eligibility and its note,
+ *                                  rank, winner). An open round shows no bids. Same pattern as the
+ *                                  liquidation: visibility checked as anon, data read with the service
+ *                                  role, safe fields only: no ids, no round notes, nobody's identity. Failure
+ *                                  reasons and each bid's eligibility note ARE shown (transparency, as in a
+ *                                  published Abstract of Bids).
  *
  * 360° images: the rows come from site_images through RLS (only images approved for the public);
  * the files are private in Storage, so the API signs short-lived links for exactly those rows.
  */
 import { adminClient, anonClient } from '../config/supabase.js';
+import { toPublicRound } from '../services/bidding.js';
 import { summarizeFinance } from '../services/completion.js';
 import { RECEIPT_BUCKET, acceptsReceipts, projectLiquidation, publicLiquidationSummary, toPublicReceipt } from '../services/liquidation.js';
 import { signedUrls } from '../services/storage.js';
 import { HttpError, notFound, unwrap } from '../utils/httpError.js';
 import { pagination, readAllPages } from '../utils/pagination.js';
+import { loadBidding } from './biddingController.js';
 
 /** Landing-page counters: which project statuses each card counts (besides Total). */
 export const STAT_GROUPS = Object.freeze({
@@ -142,4 +152,17 @@ export async function publicLiquidation(req, res) {
   if (!visible) throw notFound('Project not found');
   if (!adminClient) throw new HttpError(503, 'The server is not connected to the database.');
   res.json({ data: await publicLiquidationData(adminClient, visible.id) });
+}
+
+/** The public abstract of bids of a project, read with `db` (the service role): safe fields only. */
+export async function publicBiddingData(db, projectId) {
+  const rounds = await loadBidding(db, projectId, { names: db, people: false });
+  return { rounds: rounds.map(toPublicRound) };
+}
+
+export async function publicBidding(req, res) {
+  const visible = unwrap(await db().from('v_public_projects').select('id').eq('id', req.params.id).maybeSingle());
+  if (!visible) throw notFound('Project not found');
+  if (!adminClient) throw new HttpError(503, 'The server is not connected to the database.');
+  res.json({ data: await publicBiddingData(adminClient, visible.id) });
 }

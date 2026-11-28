@@ -2,6 +2,7 @@ import { ArrowLeft, CheckCheck, FolderOpen, FolderPlus, ImageOff } from 'lucide-
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import FlagReasons from '../../components/audit/FlagReasons.jsx';
+import BiddingRounds from '../../components/bidding/BiddingRounds.jsx';
 import OpenCaseModal from '../../components/pacc/OpenCaseModal.jsx';
 import ProjectRecords from '../../components/pacc/ProjectRecords.jsx';
 import CompletionVerificationCard from '../../components/progress/CompletionVerificationCard.jsx';
@@ -22,7 +23,7 @@ const REPORT_STATUS_CLS = { received: 'bg-brand-50 text-brand-800', under_review
 
 /**
  * PACC investigation page for one project: project facts, the flag and its reasons, the citizen reports with their
- * proof, PACC's cases, the project's phases, progress, finance (with the liquidation and receipts, 031), 360° photos and documents (read-only), auditor
+ * proof, PACC's cases, the bidding of the contract (032), the project's phases, progress, finance (with the liquidation and receipts, 031), 360° photos and documents (read-only), auditor
  * decisions and findings, and the flag history. Opening it marks new reports "under review" (server).
  */
 export default function PaccProjectPage() {
@@ -157,6 +158,17 @@ export default function PaccProjectPage() {
               ))}
             </ul>
           </Card>
+        )}
+
+        {/* 032: the bidding rounds and their ranked bids, read-only (every action is off for PACC) */}
+        {data.bidding && (
+          <section aria-labelledby="pacc-bidding" className="space-y-3">
+            <div>
+              <h2 id="pacc-bidding" className="text-sm font-semibold text-slate-900">Bidding of the contract</h2>
+              <p className="text-sm text-slate-500">Read-only. Rounds, bids, eligibility, rank and the award, as DPWH personnel recorded them.</p>
+            </div>
+            <BiddingRounds bidding={data.bidding} />
+          </section>
         )}
 
         <ProjectRecords project={p} phases={phases} progress={progress} finance={finance} records={records} images={images} documents={documents} liquidation={data.liquidation} />

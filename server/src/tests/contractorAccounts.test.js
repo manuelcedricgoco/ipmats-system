@@ -105,6 +105,7 @@ const CONTRACTOR_ROUTES = new Set([
   'get /projects/:id/flags',
   'get /projects/:id/findings',
   'get /projects/:id/completion-verification',
+  'get /projects/:id/bidding', // 032: read only (RLS: own company's projects)
 ]);
 
 describe('a contractor account reaches only its own project pages', () => {

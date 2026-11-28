@@ -75,6 +75,14 @@ Anyone can also report a problem on a project to PACC, anonymously and with phot
     - Status and physical progress, with start and target dates (a Completed project reads "Completed – awaiting
       verification" or "Completed – verified", see [Completion verification](#completion-verification)).
     - Contract cost.
+    - **Bidding** (032, `components/public/PublicBidding.jsx`, `GET /public/projects/:id/bidding`): the abstract
+      of bids, newest round first. Each round shows its number, status, opening date and ABC; an **open** round
+      shows "Bidding open" and "The bids are shown once they are evaluated." (the API sends no bids for it). Once a
+      round is no longer open (evaluated, awarded or failed): every bidder with its amount, eligibility (and the reason a bid failed), rank and the
+      "Winner"; a failed round shows the reason for the failure of bidding, an awarded one its award date. No ids,
+      round notes or names of DEO staff are sent. "No bidding is recorded for this project." when there is none
+      (for example a project registered with its contractor). If the call fails, the rest of the drawer still
+      shows, with a "Try again" link.
     - **Liquidation** (031, `components/public/PublicLiquidation.jsx`): the % liquidated with a bar, the money
       released (disbursed + expenses), the amount backed by accepted receipts, the amount not yet liquidated, an
       "Over-liquidated by ₱X" note when accepted receipts exceed the records, and the **accepted receipts** (amount,
@@ -94,7 +102,8 @@ Anyone can also report a problem on a project to PACC, anonymously and with phot
 - **Touches:**
   - Pages and components: `pages/public/PublicMapPage.jsx`, `components/public/PublicProjectMap.jsx`,
     `ProjectDrawer.jsx`, `components/map/ProjectMap.jsx`, `components/viewer360/PanoramaViewer.jsx`.
-  - API: `GET /public/map`, `GET /public/projects/:id`, `GET /public/projects/:id/liquidation` (031).
+  - API: `GET /public/map`, `GET /public/projects/:id`, `GET /public/projects/:id/liquidation` (031),
+    `GET /public/projects/:id/bidding` (032).
   - Data: `v_public_projects` (including `pacc_public_status`, migration 024), `site_images` (every photo; public
     as soon as it is uploaded); files in the `panoramas` bucket through expiring signed links; accepted
     `finance_receipts` (read by the API with the service role) in the `finance-receipts` bucket.
@@ -218,7 +227,7 @@ Sidebar items appear only for the roles that can use them. "All staff" = Admin, 
   - Data: `v_project_summary`, `audit_findings`.
 
 ### Project Management
-- **In the UI:** "Project Management" (`/app/projects`), "Register project", and the project page with six tabs.
+- **In the UI:** "Project Management" (`/app/projects`), "Register project", and the project page with seven tabs.
 - **Why:** Objective 1 — one central record of every project: office, contractor, budget, duration and location.
 - **Who:** all staff view. Only DPWH Personnel register and edit (migration 027). The Admin deletes directly;
   Personnel delete only with an approved [deletion request](#deletion-requests).
@@ -238,6 +247,11 @@ Sidebar items appear only for the roles that can use them. "All staff" = Admin, 
       after saving.
     - The target completion date is computed as NTP + duration.
     - The contract amount cannot exceed the approved budget.
+    - **After a bidding award (032):** the contractor and the contract amount are read-only, each with the note "The
+      contractor and contract amount were set by the bidding award." (the form reads `contract_locked` from
+      `GET /projects/:id/bidding`; the API also answers 409 with that message to a different value). While a round
+      is in progress the contractor field says the award sets it. Projects without an award are edited as before.
+      See [Bidding](#bidding-project-tab).
     - The status is **automatic** (Not started, On-going, Delayed, Completed). When registering a project, staff
       may choose Automatic, Not started or On-going as the starting status; the next evaluation (a progress
       report, a photo, or the daily check) recalculates it from the Notice to Proceed and progress. Completed is
@@ -254,8 +268,8 @@ Sidebar items appear only for the roles that can use them. "All staff" = Admin, 
       images tabs hide their editing buttons with the message "This project's completion was verified; its
       progress and photos can no longer change." Finance records and documents can still be added. On the Edit
       form the actual completion date is disabled, with the same message (other fields stay editable).
-  - **Project page tabs:** Overview, Phases & progress, Finance, 360° images, Flag & audit, Documents (described
-    below). Auditors see a "Read-only" label. The editing buttons of every tab (phases, progress, adding finance
+  - **Project page tabs:** Overview, Bidding, Phases & progress, Finance, 360° images, Flag & audit, Documents
+    (described below). Auditors see a "Read-only" label. The editing buttons of every tab (phases, progress, adding finance
     records, photo upload and mark final, document upload) are shown to Personnel only; the Admin keeps the
     delete buttons.
   - **PACC case status (staff):** while the project has a non-closed PACC case, the project header and the list
@@ -280,6 +294,60 @@ Sidebar items appear only for the roles that can use them. "All staff" = Admin, 
   - Data: `projects`, `project_pacc_status` (029; was `projects.pacc_case_status`), `v_project_summary`, `project_deletion_requests`,
     `municipalities`, `barangays`, `agencies`, `contractors`.
   - The place search uses the public OpenStreetMap Nominatim service.
+
+### Bidding (project tab)
+- **In the UI:** the project tab "Bidding" (`/app/projects/:id/bidding`, 032), between Overview and Phases &
+  progress.
+- **Why:** a record of how each contract was awarded (instructor checklist: "Bidding of project contract"), and the
+  public abstract of bids.
+- **Who:** DPWH Personnel record the bidding. The Admin and the Auditor read it; a contractor reads it on its own
+  company's projects (read only); PACC reads it on its investigation page; the public reads the abstract of bids.
+  Exact rules: [roles-and-permissions.md, footnote 18](roles-and-permissions.md).
+- **What it does:**
+  - **Summary:** "Not yet awarded" (no contractor), the round in progress, "Awarded in round N to <contractor> at
+    ₱X" (the contractor and contract amount come from the award), or, for a project registered with its
+    contractor, "This project already has a contractor." (no round can be opened).
+  - **Rounds** (newest first): round number, status chip (Open, Evaluated, Awarded, Failure of bidding), the
+    opening date of bids, the ABC (the approved budget when the round was opened), notes, the reason for a failure
+    of bidding, and "Awarded to … at ₱X on <date> by <name>".
+  - **Bids table** per round: contractor (with "Winner" on the awarded bid, and a line when the contractor is now
+    inactive), rank (passed bids by amount, lowest = 1; equal amounts share a rank), bid amount with an "Above the
+    ABC" warning, and the eligibility chip (Pending, Passed, Failed) with its note.
+  - **Personnel buttons**, shown from the API's `permissions` and each round's `actions`, so the page never offers
+    what the API would refuse:
+    - **Open a bidding round** (opening date of bids, notes) when the project has no contractor and no round in
+      progress. **Edit round** (opening date, notes) while it is open.
+    - **Add bid** while the round is open: a contractor from the active contractors that have no bid in the round
+      yet (new bidders are added on the Contractors page first) and the amount; a bid above the ABC can be
+      recorded, with a warning that it cannot pass. **Change** (amount) and **remove** a bid while the round is
+      open.
+    - **Eligibility** (open or evaluated round): passed, failed with a reason (5–500 characters), or back to
+      pending while the round is open. A bid above the ABC cannot pass ("A bid above the ABC cannot pass.").
+    - **Evaluate** (open round): switched off, with the reason under the round, until every bid is passed or
+      failed ("Set every bid to passed or failed before evaluating."); a confirmation says the bids can then no
+      longer be added, changed or removed.
+    - **Award** (evaluated round): switched off with the API's reason (for example a tie for the lowest amount, or
+      "This project already has a contractor."). The confirmation names the contractor and amount and explains
+      that the award sets the project's contractor and contract amount, that the round becomes final, and that the
+      two can no longer be changed in the project form (contract changes go through variation orders). It awards
+      the rank-1 passed bid only.
+    - **Failure of bidding** (open or evaluated round) with a reason (5–500 characters); a new round can then be
+      opened. Awarded and failed rounds are final: no buttons.
+  - Every dialog shows the API's message when it refuses (for example "This bidding round is closed." after
+    someone else closed it), and every write answers with the whole bidding, which the tab shows at once. After
+    an award the project header and Overview reload with the new contractor.
+  - **PACC:** the same rounds and bids, read-only, on the [Investigation page](#investigation-page).
+  - **Public:** the abstract of bids in the project drawer ([Project map (public)](#project-map-public)).
+- **Touches:**
+  - Pages and components: `pages/dpwh/project/BiddingTab.jsx`, `components/bidding/BiddingRounds.jsx`,
+    `components/public/PublicBidding.jsx`, `pages/dpwh/ProjectFormPage.jsx` (the lock), `pages/pacc/PaccProjectPage.jsx`;
+    helpers in `lib/bidding.js`.
+  - API: `GET /projects/:id/bidding`, `POST /projects/:id/bidding/rounds`, `PATCH /bidding/rounds/:roundId`,
+    `POST /bidding/rounds/:roundId/bids`, `PATCH` / `DELETE /bidding/bids/:bidId`,
+    `POST /bidding/rounds/:roundId/evaluate`, `/fail`, `/award`; `GET /public/projects/:id/bidding`;
+    `GET /pacc/projects/:id` (`bidding`).
+  - Data: `bidding_rounds`, `bids`, the database function `award_bidding_round` (sets the round awarded and the
+    project's `contractor_id` and `contract_amount` in one transaction), `projects`, `contractors`.
 
 ### Progress Monitoring
 - **In the UI:** "Progress Monitoring" (`/app/progress`) and the project tab "Phases & progress".
@@ -654,6 +722,8 @@ That is a convenience only: RLS (`private.contractor_company()`) and the API (`P
   project"). Opens the project page.
 - **Project page tabs** (`lib/contractor.js` `projectPermissions`):
   - **Overview:** read only.
+  - **Bidding** (032): the rounds and bids of the company's project (every bidder, amount, eligibility, rank and
+    the winner), read only.
   - **Phases & progress:** view, and "Submit progress update" (per sub-activity where the phase has them, with the
     description and 1–5 reference photos). No phase-plan or sub-activity editing. When every phase reaches
     100 % the form says that DPWH Personnel confirm the completion date; it has no completion-date field (the API
@@ -706,7 +776,8 @@ abolished in 2022, so this is a modelled role.
 ### Investigation page
 - **In the UI:** a project from the inbox (`/pacc/projects/:id`).
 - **What it does:** project facts, the flag and its reasons, auditor decisions and findings, the citizen
-  reports with their proof photos (expiring signed links), and, read-only, the construction phases, the 50 most
+  reports with their proof photos (expiring signed links), and, read-only, the bidding of the contract (032: every
+  round with its ranked bids, eligibility and the award; no buttons), the construction phases, the 50 most
   recent progress reports (with the work done and the reference photos, which open in a new tab), the sub-activities
   of each phase, the financial records with a summary, the liquidation and receipts (031: the liquidation summary
   and every receipt of each disbursement and expense, in any status, with the uploader, the review note and an

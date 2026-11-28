@@ -2,7 +2,7 @@
 
 The database is PostgreSQL 17, hosted by Supabase (project **IPMATS**). This page was written from the live
 database on 22 November 2026, not only from the migration files, and updated on 25 November 2026 for migrations
-019 and 020. The PACC parts (migrations 023–026) and the project deletion requests (027), all applied 27 November 2026, are written from the migration files, as are the contractor accounts (028, applied 27 November 2026; 029, applied 28 November 2026) and the progress rules (030: sub-activities, reference photos, verified 100%; applied 28 November 2026 at the merge of PR #16, immediately before its API was deployed), and finance liquidation (031: receipts of disbursements and expenses; additive, applied 28 November 2026, before its merge).
+019 and 020. The PACC parts (migrations 023–026) and the project deletion requests (027), all applied 27 November 2026, are written from the migration files, as are the contractor accounts (028, applied 27 November 2026; 029, applied 28 November 2026) and the progress rules (030: sub-activities, reference photos, verified 100%; applied 28 November 2026 at the merge of PR #16, immediately before its API was deployed), and finance liquidation (031: receipts of disbursements and expenses; additive, applied 28 November 2026, before its merge), and bidding (032: bidding rounds, bids and the award; additive, applied 28 November 2026, before its merge).
 Where the two differ, the live schema wins.
 
 - What each table is used for in the app: [features.md](features.md)
@@ -10,12 +10,14 @@ Where the two differ, the live schema wins.
 
 ## Overview
 
-- **28 tables** in the `public` schema (6 of them for the PACC portal, 024; `project_deletion_requests` from 027; `project_pacc_status` from 029; `phase_activities`, `progress_photos` and `completion_verifications` from 030; `finance_receipts` from 031), plus one helper table in the `private` schema.
+- **30 tables** in the `public` schema (6 of them for the PACC portal, 024; `project_deletion_requests` from 027; `project_pacc_status` from 029; `phase_activities`, `progress_photos` and `completion_verifications` from 030; `finance_receipts` from 031; `bidding_rounds` and `bids` from 032), plus one helper table in the `private` schema.
 - **2 views** that join projects with their place, office, contractor and totals.
 - **7 enum types** and several text columns limited by `CHECK` rules.
 - **8 private storage buckets** for files (photos, evidence, documents, profile photos, citizen report proof, PACC case documents, progress report reference photos, finance receipts).
 - Row Level Security (RLS) is **on for every table**. All policies only allow reading. Every insert, update and
   delete is done by the Node.js API with the service-role key, after the API has checked the user's role.
+- **One callable function**, `public.award_bidding_round` (032), executable by the service role only: the bidding
+  award in one transaction.
 
 ## Entity-relationship diagram
 
@@ -38,6 +40,10 @@ erDiagram
   PROJECTS ||--o{ COMPLETION_VERIFICATIONS : "verified in (030)"
   PROJECTS ||--o{ FINANCIAL_RECORDS : "paid through"
   FINANCIAL_RECORDS ||--o{ FINANCE_RECEIPTS : "liquidated by (031)"
+  PROJECTS ||--o{ BIDDING_ROUNDS : "bid out in (032)"
+  BIDDING_ROUNDS ||--o{ BIDS : "receives (032)"
+  CONTRACTORS ||--o{ BIDS : "bids in (032)"
+  BIDDING_ROUNDS |o--o| BIDS : "awarded to (032)"
   PROJECTS ||--o{ SITE_IMAGES : "photographed in"
   PROJECTS ||--o{ PROJECT_DOCUMENTS : "documented by"
   PROJECTS ||--o{ FLAG_HISTORY : "evaluated in"
@@ -332,6 +338,52 @@ returned by the Auditor. Only **accepted** receipts count as liquidated and only
 A record's liquidated amount is the sum of its accepted receipts, shown capped at the record amount (the excess is
 reported as "over-liquidated by"). The project's unliquidated amount is (disbursed + expenses) − liquidated, never
 below 0. These are computed by the API (`server/src/services/liquidation.js`), not stored.
+
+### bidding_rounds
+Rounds of bidding of a project's contract (032). A project registered "Not yet awarded" (no contractor) is bid out
+in rounds 1, 2, …; a failed round (failure of bidding) is followed by a new one, and every round stays on record.
+Status: `open` → `evaluated` → `awarded`, or `failed` (from open or evaluated). Awarded and failed rounds are
+**final** (trigger `bidding_rounds_guard`). Recorded by DPWH Personnel through the API.
+
+| Column | Type | Null | Default | Description |
+|---|---|---|---|---|
+| id | uuid | no | gen_random_uuid() | Primary key |
+| project_id | uuid | no | — | Project (deleted with it); never changes |
+| round_no | integer | no | — | 1, 2, …, unique per project (`bidding_rounds_project_round_no`); never changes |
+| status | text | no | `'open'` | `open`, `evaluated`, `awarded` or `failed`. At most one `open`/`evaluated` round per project (partial unique index `bidding_rounds_one_active_per_project`) and at most one `awarded` round (`bidding_rounds_one_awarded_per_project`) |
+| opening_date | date | no | — | Date of the opening of bids; editable while open |
+| abc | numeric(15,2) | no | — | Approved Budget for the Contract: the project's `approved_budget` when the round was opened (snapshot, ≥ 0); never changes |
+| notes | text | yes | — | Staff notes, at most 1000 characters; editable while open; never public |
+| failure_reason | text | yes | — | Why bidding failed, at most 500 characters; at least 5 (trimmed) when `failed` (CHECK `bidding_rounds_failed_reason`), only on a failed round |
+| awarded_bid_id | uuid | yes | — | The winning bid (set null, only when everything is deleted); only on an awarded round |
+| awarded_at | timestamptz | yes | — | Set exactly when `awarded` (CHECK `bidding_rounds_awarded_at`) |
+| awarded_by | uuid | yes | — | Who awarded (set null) |
+| created_by | uuid | yes | — | Who opened the round (set null) |
+| created_at, updated_at | timestamptz | no | now() | `updated_at` kept by `set_updated_at` |
+
+### bids
+Bids of registered contractors (picked from `contractors`) in a bidding round (032), one per contractor per round
+(`bids_one_per_contractor`). Rank is not stored: the API ranks the passed bids by amount (lowest = 1, equal amounts
+share a rank; `server/src/services/bidding.js`).
+
+| Column | Type | Null | Default | Description |
+|---|---|---|---|---|
+| id | uuid | no | gen_random_uuid() | Primary key |
+| round_id | uuid | no | — | The round (deleted with it); never changes |
+| project_id | uuid | no | — | The round's project (trigger), for RLS; never changes |
+| contractor_id | uuid | no | — | The bidder (restrict: a contractor with bids cannot be deleted); never changes |
+| amount | numeric(15,2) | no | — | Bid amount, > 0; changes only while the round is open |
+| eligibility | text | no | `'pending'` | `pending`, `passed` or `failed`. A bid above the round's ABC cannot be `passed`; an evaluated round's bids stay `passed` or `failed` |
+| eligibility_note | text | yes | — | At most 500 characters; at least 5 (trimmed) when `failed` (CHECK `bids_failed_note`) |
+| created_by | uuid | yes | — | Who recorded it (set null) |
+| created_at, updated_at | timestamptz | no | now() | `updated_at` kept by `set_updated_at` |
+
+The award (`award_bidding_round`) goes only to the **unique lowest passed bid** of an **evaluated** round, at most the
+ABC and the project's current approved budget, of an active contractor, and only while the project has **no
+contractor**. In the same transaction it sets the round `awarded` and the project's `contractor_id` and
+`contract_amount` (the winning amount). After an award the API refuses to change the project's contractor or contract
+amount (409 "The contractor and contract amount were set by the bidding award."), and so does the trigger
+`projects_award_lock`; contract changes go through variation orders.
 
 ### site_images
 360° (and regular) site photos. The files are in the private `panoramas` bucket.
@@ -656,13 +708,17 @@ Both views use `security_invoker`, so the reader's own permissions (RLS) apply.
 | progress_photos.progress_update_id | progress_updates | cascade | Reference photos belong to one report (030) |
 | finance_receipts.financial_record_id | financial_records | cascade | Receipts belong to one disbursement or expense; deleting the record (Admin) removes them, accepted ones too (031) |
 | finance_receipts.project_id | projects | cascade | Receipts belong to one project (031) |
+| bidding_rounds.project_id, bids.project_id | projects | cascade | Rounds and bids belong to one project (032) |
+| bids.round_id | bidding_rounds | cascade | Bids belong to one round (032); a final round's bids go only with the project |
+| bids.contractor_id | contractors | restrict | A contractor with bids on record cannot be deleted (the API answers 409; deactivate it instead) (032) |
+| bidding_rounds.awarded_bid_id | bids | set null | The winning bid (032) |
 | project_deletion_requests.project_id | projects | set null | The request stays (with the project code and name) when the project is deleted |
 | pacc_case_notes.author_id | profiles | restrict | A PACC member with notes cannot be deleted |
 | flag_reviews.auditor_id, audit_findings.auditor_id | profiles | restrict | An auditor with decisions or findings cannot be deleted |
 | audit_findings.assigned_to | profiles | set null | Person responsible for the corrective action |
-| "Who did it" columns: `*.created_by`, `updated_by`, `submitted_by`, `uploaded_by`, `reviewed_by`, `suspended_by`, `public_reviewed_by`, `published_by`, `action_updated_by`, `activity_logs.actor_id`, `system_settings.updated_by`, `pacc_cases.opened_by`, `pacc_case_documents.uploaded_by`, `pacc_activity.actor_id`, `project_deletion_requests.requested_by`, `project_deletion_requests.decided_by`, `progress_photos.uploaded_by`, `completion_verifications.verified_by` (030), `finance_receipts.uploaded_by` and `reviewed_by` (031) | profiles | set null | Records who acted |
+| "Who did it" columns: `*.created_by`, `updated_by`, `submitted_by`, `uploaded_by`, `reviewed_by`, `suspended_by`, `public_reviewed_by`, `published_by`, `action_updated_by`, `activity_logs.actor_id`, `system_settings.updated_by`, `pacc_cases.opened_by`, `pacc_case_documents.uploaded_by`, `pacc_activity.actor_id`, `project_deletion_requests.requested_by`, `project_deletion_requests.decided_by`, `progress_photos.uploaded_by`, `completion_verifications.verified_by` (030), `finance_receipts.uploaded_by` and `reviewed_by` (031), `bidding_rounds.created_by` and `awarded_by`, `bids.created_by` (032) | profiles | set null | Records who acted |
 
-Deleting a project removes its phases, sub-activities, reports and their reference photos, finances and their receipts, photos, documents, flag history, reviews, findings and completion verifications
+Deleting a project removes its phases, sub-activities, reports and their reference photos, finances and their receipts, bidding rounds and bids (awarded and failed ones too), photos, documents, flag history, reviews, findings and completion verifications
 (cascade). Its citizen reports, PACC cases and deletion requests are kept: they lose the link but keep the project code and name. When a non-closed PACC case exists, the API first writes one `pacc_activity` entry (actor "System") naming who deleted the project (027). The append-only trigger allows this only as part of such a cascade. The API additionally refuses to
 delete a user who has any of these records ([roles-and-permissions](roles-and-permissions.md)).
 
@@ -707,6 +763,8 @@ These are `text` columns limited by a `CHECK` rule, not enum types.
 | finance_receipts.status | `submitted`, `accepted`, `returned` (031) |
 | finance_receipts.mime_type | `application/pdf`, `image/jpeg`, `image/png`, `image/webp` (031) |
 | finance_receipts.uploaded_by_role | `dpwh_personnel`, `contractor` (031) |
+| bidding_rounds.status | `open`, `evaluated`, `awarded`, `failed` (032) |
+| bids.eligibility | `pending`, `passed`, `failed` (032) |
 | projects.project_code | Format `YY` + `OM` + 4 or more digits, e.g. `26OM0332` |
 
 ### Lookup tables
@@ -723,6 +781,10 @@ These are `text` columns limited by a `CHECK` rule, not enum types.
 | `prevent_modification` | before update or delete on `flag_history`, `flag_reviews`, `activity_logs`, `pacc_case_notes`, `pacc_activity`, `completion_verifications` (030) | Makes them append-only (deletes allowed only through a cascade (project or case)) |
 | `set_updated_at` | before update on tables with `updated_at`, except `projects` | Sets `updated_at = now()` |
 | `private.finance_receipts_guard()` | before insert, update or delete on `finance_receipts` (031) | A receipt belongs to a disbursement or expense of the same project ("Receipts can only be added to disbursements and expenses."); the status moves only `submitted` → `accepted` / `returned`; an **accepted** receipt is never updated ("An accepted receipt cannot be changed.") or deleted ("An accepted receipt cannot be deleted."). Cascades (deleting the record or project) and the set-null of a removed account run at trigger depth > 1 and are allowed |
+| `private.bidding_rounds_guard()` | before insert, update or delete on `bidding_rounds` (032) | A round starts `open`; the status moves only `open` → `evaluated` / `failed` and `evaluated` → `awarded` / `failed`; an **awarded** or **failed** round is never changed or deleted ("This bidding round is closed."); project, number and ABC never change; only an open round's opening date and notes are edited; `evaluated` needs at least one bid and none `pending` ("Set every bid to passed or failed before evaluating."); `awarded` needs `awarded_bid_id` to be the unique lowest `passed` bid of the round, at most the ABC ("Only the lowest passed bid can be awarded."). Cascades and set-null run at trigger depth > 1 and are allowed |
+| `private.bids_guard()` | before insert, update or delete on `bids` (032) | Locks the bid's round (`FOR SHARE`, so a concurrent evaluate or award waits); no change on a final round ("This bidding round is closed."); insert, delete and amount changes only while the round is open ("Bids can only be added, changed or removed while the round is open."); an evaluated round's bids stay passed or failed; round, project (= the round's project) and contractor never change; a bid above the ABC cannot pass ("A bid above the ABC cannot pass."). Cascades run at trigger depth > 1 and are allowed |
+| `private.projects_award_lock()` | before update of `contractor_id` or `contract_amount` on `projects` (trigger `projects_award_lock`, 032) | Once the project has an awarded round, its contractor and contract amount can only be the winning bid's ("The contractor and contract amount were set by the bidding award."): the award itself sets exactly those values and passes, any other change is refused (the API answers 409 first; this closes the race with an edit read just before the award). Cascades run at trigger depth > 1 and are allowed |
+| `public.award_bidding_round(p_round_id, p_bid_id, p_actor_id)` | called by the API (`POST /bidding/rounds/:roundId/award`), service role only (EXECUTE revoked from public, anon and authenticated) (032) | The award in **one transaction**: locks the round (`FOR UPDATE`) and then the project, re-checks every rule (evaluated round, project without a contractor, unique lowest passed bid, equal to `p_bid_id` when given, ≤ ABC and ≤ approved budget, active contractor), sets the round `awarded` (bid, time, actor) and the project's `contractor_id`, `contract_amount` and `updated_by`, and returns `{ round_id, project_id, bid_id, contractor_id, amount, awarded_at }`. Any refusal raises (P0001 with the reason; P0002 for an unknown round) and nothing changes |
 | `private.projects_set_updated_at()` | before update on `projects` (trigger `projects_updated_at`, 027) | Sets `updated_at = now()`, unless only `pacc_public_status` changed (the list also names `pacc_case_status`, which 029 moved out of `projects`) (the generated `public_flag` is not compared); then `updated_at` is kept. anon can read `updated_at`, so a hidden PACC case must not move it |
 | `private.app_role()` | used by RLS | The caller's role, only if the account is active **and approved** |
 | `private.is_staff()` | used by RLS | True when `app_role()` is admin, DPWH personnel or auditor |
@@ -735,7 +797,7 @@ These are `text` columns limited by a `CHECK` rule, not enum types.
 
 ## Row Level Security
 
-RLS is enabled on all 28 tables. There are **no insert, update or delete policies**, and the `anon` and
+RLS is enabled on all 30 tables. There are **no insert, update or delete policies**, and the `anon` and
 `authenticated` roles have only `SELECT` privileges. So nothing can be written with the browser's key: every write
 goes through the API, which uses the service-role key (it bypasses RLS) after checking the user.
 
@@ -766,6 +828,7 @@ goes through the API, which uses the service-role key (it bypasses RLS) after ch
 | project_phases, progress_updates, financial_records, site_images, flag_history, flag_reviews, audit_findings, project_documents | "…: contractor read" (029) | authenticated | Rows of the contractor's own company's projects. Contractors have no policy on activity_logs, system_settings, deletion requests or any PACC table, and read only their own profile |
 | phase_activities, progress_photos, completion_verifications | "activities / progress photos / verifications: staff read", "…: pacc read" and "…: contractor read" (030) | authenticated | Every row for staff and PACC; the contractor's own company's projects for a contractor. anon has no grant |
 | finance_receipts | "receipts: staff read", "receipts: pacc read" and "receipts: contractor read" (031) | authenticated | Every row for staff and PACC; the contractor's own company's projects for a contractor. anon has no grant: the public liquidation (summary and accepted receipts only) is computed by the API with the service role |
+| bidding_rounds, bids | "bidding rounds: staff read" / "bids: staff read", "…: pacc read" and "…: contractor read" (032) | authenticated | Every row for staff and PACC; the rounds and bids of the contractor's own company's projects for a contractor (so a company sees the bidding of the projects it was awarded, every bidder included). anon has no grant: the public abstract of bids is computed by the API with the service role, without ids, round notes or anyone's identity (failure reasons and each bid's eligibility note are shown, as in a published Abstract of Bids), and an open round's bids are not shown |
 
 `anon` may also read the `v_public_projects` view. It cannot read any other table or view.
 A signed-in account that is pending or declined is not staff, so it can read only its own profile and the lookup
@@ -801,10 +864,10 @@ write files. It hands out signed links that expire (1 hour by default, `SIGNED_U
 
 ## Migrations
 
-The migration files are in `database/migrations/`. They are numbered and run in number order, `001` to `031`.
-The live database's migration history lists 001–031 as applied, in that order (019 and 020 on 25 November
+The migration files are in `database/migrations/`. They are numbered and run in number order, `001` to `032`.
+The live database's migration history lists 001–032 as applied, in that order (019 and 020 on 25 November
 2026; 021 and 022 on 27 November 2026, each before the matching API was deployed; 023, 024, 025 and 026 on 27 November
-2026 for the PACC portal; 027 on 27 November 2026 for project deletion requests and the staff-visible PACC case status; 028, the `contractor` role value, on its own on 27 November 2026; 029, contractor accounts, on 28 November 2026; 030, progress rules, on 28 November 2026 at merge time (PR #16); 031, finance liquidation, on 28 November 2026 before its merge). On a fresh database, 023 must be applied on its own before 024, because a new enum value
+2026 for the PACC portal; 027 on 27 November 2026 for project deletion requests and the staff-visible PACC case status; 028, the `contractor` role value, on its own on 27 November 2026; 029, contractor accounts, on 28 November 2026; 030, progress rules, on 28 November 2026 at merge time (PR #16); 031, finance liquidation, on 28 November 2026 before its merge; 032, bidding, on 28 November 2026 before its merge). On a fresh database, 023 must be applied on its own before 024, because a new enum value
 must be committed before it can be used, and 025 must be applied after 024 and before the API that closes cases is
 deployed. Apply 026 after 025 and before deploying the API that writes `pacc_cases.contractor_name`
 (without it, opening or editing a case fails). Apply 027 after 026 and before deploying
@@ -822,6 +885,11 @@ updates of 030 change `projects.updated_at`. Deploy order: 030 → the API → t
 031 (finance liquidation) is additive: the API before it never reads `finance_receipts` or the `finance-receipts`
 bucket, so it was applied **before its merge** (to the IPMATS project on 28 November 2026); the finance-liquidation API needs it (every finance
 page reads the receipts). Deploy order: 031 → the API → the client.
+032 (bidding) is additive too: it only adds `bidding_rounds`, `bids`, their guard triggers and read policies, and the
+function `award_bidding_round` and the `projects_award_lock` trigger (which acts only on a project with an awarded round, and there is none before the bidding API), which the API before it never touches, so it was applied **before its merge** (to the
+IPMATS project on 28 November 2026). The bidding API needs it: the project edit reads `bidding_rounds` whenever the
+contractor or contract amount is sent, and the PACC project view reads the rounds. Deploy order: 032 → merge → the
+API → the client.
 
 Rules the project follows:
 - An applied migration is never edited or deleted. A mistake is undone by a new migration (013 → 014, 006 → 016).
@@ -861,3 +929,4 @@ Rules the project follows:
 | 029 | contractor_accounts | `profiles.contractor_id` (restrict) with CHECK `profiles_contractor_has_company`; `profiles.requested_contractor_id` (set null) and `requested_contractor_license` (at most 50 characters); `profiles_requested_role_check` allows `contractor`; `handle_new_user` accepts a contractor request with an existing company (role stays empty until approval); `private.contractor_company()`; "…: contractor read" policies on projects, contractors and eight project tables; table `project_pacc_status` (staff and PACC read, backfilled from the open cases) kept by a replaced `private.sync_pacc_public_status()`; `projects.pacc_case_status` dropped and `v_project_summary` recreated with `pacc_case_status` from the new table (same columns and grants) |
 | 030 | progress_rules | Table `phase_activities` (sub-activities of a phase; name 2–120, weight > 0 and ≤ 100, accomplishment 0–100, unique per phase and sequence); `progress_updates.description` (≤ 2000) and `activity_snapshot`; table `progress_photos` (reference photos of a report); `projects.completed_at` and `completion_verified_at` (anon column grant on the latter); append-only table `completion_verifications` (`auditor` / `pacc`, `verified` / `not_yet` with a reason; a PACC row names no member); staff, PACC and contractor read policies on the three new tables (no anon grant); `completion_verified_at` appended to `v_public_projects`, `completed_at` and `completion_verified_at` to `v_project_summary`; bucket `progress-photos` (private, 10 MB, JPEG / PNG / WebP); existing Completed projects get `completed_at`, and stored overall progress above 99 % (projects and report history) becomes 99 % |
 | 031 | finance_liquidation | Table `finance_receipts` (receipts of disbursements and expenses: file, amount > 0, receipt date, description ≤ 500, status `submitted` / `accepted` / `returned`, a reason of 5–500 characters when returned, reviewer, uploader and role); trigger `finance_receipts_guard` (`private.finance_receipts_guard()`: only disbursements and expenses of the same project, submitted → accepted / returned only, an accepted receipt never changed or deleted except by cascade); staff, PACC and contractor read policies (no anon grant); bucket `finance-receipts` (private, 15 MB, PDF / JPEG / PNG / WebP). Additive only |
+| 032 | bidding | Tables `bidding_rounds` (round number unique per project, status `open` / `evaluated` / `awarded` / `failed`, opening date, ABC snapshot, notes ≤ 1000, failure reason 5–500 when failed, award bid / time / actor; at most one open-or-evaluated and one awarded round per project) and `bids` (one per contractor per round, amount > 0, eligibility `pending` / `passed` / `failed` with a note of 5–500 when failed; contractor restrict); triggers `bidding_rounds_guard` and `bids_guard` (status order, final rounds and their bids never changed, bids only while open, no pass above the ABC, evaluate only with every bid decided, award only to the unique lowest passed bid) and `projects_award_lock` (after an award the project's contractor and contract amount stay as awarded); function `public.award_bidding_round` (service role only: round awarded + project contractor and contract amount in one transaction); staff, PACC and contractor read policies (no anon grant). Additive only |

@@ -16,6 +16,7 @@ import { isLocked } from '../../../lib/progress.js';
 
 const TABS = [
   { to: '', label: 'Overview', end: true },
+  { to: 'bidding', label: 'Bidding' }, // 032 — bidding of the contract (read only for everyone but DPWH Personnel)
   { to: 'progress', label: 'Phases & progress' }, // Week 2 — Objective 3
   { to: 'finance', label: 'Finance' }, // Week 2 — Objective 4
   { to: 'images', label: '360° images' }, // Week 3 — Objective 2
@@ -23,7 +24,7 @@ const TABS = [
   { to: 'documents', label: 'Documents' }, // gap fix — supporting project documents
 ];
 
-/** Project page frame: header, tabs, and the selected tab (Overview / Phases & progress / Finance). */
+/** Project page frame: header, tabs, and the selected tab (Overview / Bidding / Phases & progress / Finance / …). */
 export default function ProjectLayout() {
   const { id } = useParams();
   const { role } = useAuth();
@@ -77,7 +78,7 @@ export default function ProjectLayout() {
       </div>
       <DeletionRequestNotice request={deletion.data?.request} />
 
-      {/* On phones the five tabs scroll sideways: the fade on the right shows there is more, and the open tab is scrolled into view. */}
+      {/* On phones the seven tabs scroll sideways: the fade on the right shows there is more, and the open tab is scrolled into view. */}
       <div className="relative mb-6">
       <nav ref={tabsRef} aria-label="Project sections" className="relative flex gap-1 overflow-x-auto border-b border-slate-200 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {TABS.map((t) => (

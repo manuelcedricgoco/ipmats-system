@@ -19,8 +19,8 @@ export const CONTRACTOR_NAV = [
   { to: '/app/account', label: 'My account' },
 ];
 
-/** The project page tabs a contractor may open (all of them, mostly read only); `''` is the Overview. */
-const CONTRACTOR_PROJECT_TABS = ['', 'progress', 'images', 'finance', 'flags', 'documents'];
+/** The project page tabs a contractor may open (all of them, mostly read only; Bidding, 032, read only); `''` is the Overview. */
+const CONTRACTOR_PROJECT_TABS = ['', 'bidding', 'progress', 'images', 'finance', 'flags', 'documents'];
 
 /**
  * May this role open this /app path? Staff are left to the role lists on each route (always true here).

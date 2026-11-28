@@ -237,6 +237,41 @@ export const receiptUpload = z.object({
   description: z.preprocess((v) => (typeof v === 'string' && !v.trim() ? null : v), text(500).nullable().optional()),
 });
 
+// Bidding (032): rounds and bids of a project's contract (rules in services/bidding.js).
+// A bid amount in pesos with at most 2 decimals (numeric(15,2)).
+const bidAmount = z.preprocess(
+  (v) => (v === '' || v === null ? undefined : v),
+  z.coerce
+    .number({ required_error: 'Enter the bid amount.', invalid_type_error: 'Enter the bid amount.' })
+    .finite('Enter the bid amount.')
+    .transform((v) => Math.round((v + Number.EPSILON) * 100) / 100)
+    .pipe(z.number().gt(0, 'The bid amount must be more than 0.').max(9999999999999.99, 'The bid amount is too large.')),
+);
+// Only spaces (or nothing) is stored as null, not ''.
+const blankToNull = (schema) => z.preprocess((v) => (typeof v === 'string' && !v.trim() ? null : v), schema.nullable().optional());
+export const biddingRoundCreate = z.object({
+  opening_date: isoDate,
+  notes: blankToNull(text(1000)),
+});
+export const biddingRoundUpdate = z
+  .object({ opening_date: isoDate.optional(), notes: blankToNull(text(1000)) })
+  .refine((o) => o.opening_date !== undefined || o.notes !== undefined, 'Nothing to update');
+export const bidCreate = z.object({
+  contractor_id: z.string({ required_error: 'Choose a contractor from the list.' }).uuid('Choose a contractor from the list.'),
+  amount: bidAmount,
+});
+export const bidUpdate = z
+  .object({
+    amount: bidAmount.optional(),
+    eligibility: z.enum(['pending', 'passed', 'failed'], { message: 'Choose pending, passed or failed.' }).optional(),
+    // The 5–500 characters of a failed bid's reason are checked with the bid (services/bidding.js).
+    eligibility_note: blankToNull(z.string().max(2000)),
+  })
+  .refine((o) => o.amount !== undefined || o.eligibility !== undefined || o.eligibility_note !== undefined, 'Nothing to update');
+/** { reason }: checked (5–500 characters, trimmed) by the controller, so the refusal carries its own message. */
+export const biddingRoundFail = z.object({ reason: z.unknown().optional() });
+export const biddingRoundAward = z.object({ bid_id: opt(z.string().uuid('Choose a bid of this round.')) });
+
 // ---------------------------------------------------------------------------
 // WEEK 3 — 360° images, flag reviews and audit findings
 // ---------------------------------------------------------------------------

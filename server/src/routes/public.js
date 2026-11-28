@@ -12,4 +12,6 @@ r.get('/projects/:id', h(c.publicProject));
 r.get('/map', h(c.publicMap));
 // Finance liquidation (031): the summary and the accepted receipts of a public project.
 r.get('/projects/:id/liquidation', h(c.publicLiquidation));
+// Bidding (032): the abstract of bids of a public project (open rounds without their bids).
+r.get('/projects/:id/bidding', h(c.publicBidding));
 export default r;

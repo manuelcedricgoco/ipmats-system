@@ -69,6 +69,12 @@ export async function deleteContractor(req, res) {
   if (accounts) {
     throw conflict(`This contractor has ${accounts} user account(s). Delete them or give them another company first, or edit the contractor and untick "Active" instead.`);
   }
+  // 032: bids keep their contractor (bids.contractor_id is ON DELETE RESTRICT): the abstract of bids stays complete.
+  const { count: bids, error: bErr } = await adminClient.from('bids').select('id', { count: 'exact', head: true }).eq('contractor_id', contractorId);
+  unwrap({ data: null, error: bErr });
+  if (bids) {
+    throw conflict(`This contractor has ${bids} bid(s) on record in project biddings. Edit the contractor and untick "Active" instead.`);
+  }
   unwrap(await adminClient.from('contractors').delete().eq('id', contractorId));
   await logActivity(req, {
     action: 'contractor.delete',

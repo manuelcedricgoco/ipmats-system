@@ -12,6 +12,7 @@ import { useReference } from '../../hooks/useReference.js';
 import { api } from '../../lib/api.js';
 import { MANUAL_STATUSES, PROJECT_TYPES, REGISTRATION_STATUSES, STATUS_META } from '../../lib/constants.js';
 import { VERIFIED_LOCK_MESSAGE, isLocked } from '../../lib/progress.js';
+import { AWARD_LOCK_MESSAGE, isContractLocked, roundInProgress } from '../../lib/bidding.js';
 import { date, peso } from '../../lib/format.js';
 import { OUTSIDE_PROVINCE_MESSAGE, PROVINCE_BOUNDS, isWithinOccidentalMindoro } from '../../lib/geo.js';
 
@@ -25,6 +26,8 @@ export const addDays = (d, n) => {
   x.setUTCDate(x.getUTCDate() + Number(n));
   return x.toISOString().slice(0, 10);
 };
+
+const BIDDING_CHECK_MESSAGE = 'Checking whether the contract was awarded through bidding…';
 
 const EMPTY = {
   project_code: '', name: '', description: '', project_type: 'road', agency_id: '', contractor_id: '', contract_ref_no: '',
@@ -45,6 +48,14 @@ export default function ProjectFormPage() {
   const { ref } = useReference();
   const existing = useApi(editing ? `/projects/${id}` : null, undefined, { select: (r) => r.data });
   const completionLocked = editing && isLocked(existing.data);
+  // 032: after a bidding award the contractor and contract amount stay as awarded (the API answers 409 to a
+  // change). While the bidding is loading both fields wait; if it cannot be read they stay editable and the API
+  // still refuses a change.
+  const bidding = useApi(editing ? `/projects/${id}/bidding` : null, undefined, { select: (r) => r.data });
+  const contractLocked = editing && isContractLocked(bidding.data);
+  const biddingPending = editing && !bidding.data && !bidding.error;
+  const contractReadOnly = contractLocked || biddingPending;
+  const biddingInProgress = editing && !contractLocked && Boolean(roundInProgress(bidding.data?.rounds));
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState(null);
@@ -54,6 +65,13 @@ export default function ProjectFormPage() {
     // Project status is always calculated from progress and schedule.
     if (p) setForm({ ...Object.fromEntries(Object.keys(EMPTY).map((k) => [k, p[k] ?? ''])), status: MANUAL_STATUSES.includes(p.status) ? p.status : 'auto' });
   }, [existing.data]);
+
+  // Once the award lock is known, the two fields show the awarded values (a change typed before cannot stick).
+  useEffect(() => {
+    const awarded = bidding.data?.project;
+    if (!contractLocked || !awarded) return;
+    setForm((f) => ({ ...f, contractor_id: awarded.contractor_id ?? '', contract_amount: awarded.contract_amount ?? '' }));
+  }, [contractLocked, bidding.data, existing.data]);
 
   const set = (k) => (e) => {
     const v = e.target.value;
@@ -205,8 +223,17 @@ export default function ProjectFormPage() {
               <Field label="Implementing office / agency" required error={fe.agency_id} hint={<Link className="text-brand-700 hover:underline" to="/app/agencies">Manage offices</Link>}>
                 {(a) => <Select {...a} value={form.agency_id} onChange={set('agency_id')} required><option value="">Select office</option>{ref?.agencies.filter((x) => x.is_active !== false || String(x.id) === String(form.agency_id)).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</Select>}
               </Field>
-              <Field label="Contractor" error={fe.contractor_id} hint={<Link className="text-brand-700 hover:underline" to="/app/contractors">Manage contractors</Link>}>
-                {(a) => <Select {...a} value={form.contractor_id} onChange={set('contractor_id')}><option value="">Not yet awarded</option>{ref?.contractors.filter((c) => c.is_active || c.id === form.contractor_id).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select>}
+              <Field
+                label="Contractor"
+                error={fe.contractor_id}
+                hint={
+                  contractLocked ? AWARD_LOCK_MESSAGE
+                    : biddingPending ? BIDDING_CHECK_MESSAGE
+                    : biddingInProgress ? <>A bidding round is in progress: the award sets the contractor. <Link className="text-brand-700 hover:underline" to={`/app/projects/${id}/bidding`}>Open the bidding</Link></>
+                      : <Link className="text-brand-700 hover:underline" to="/app/contractors">Manage contractors</Link>
+                }
+              >
+                {(a) => <Select {...a} value={form.contractor_id} onChange={set('contractor_id')} disabled={contractReadOnly}><option value="">Not yet awarded</option>{ref?.contractors.filter((c) => c.is_active || c.id === form.contractor_id).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select>}
               </Field>
               <Field label="Contract reference no.">{(a) => <Input {...a} value={form.contract_ref_no} onChange={set('contract_ref_no')} />}</Field>
               <Field label="Fund source">{(a) => <Input {...a} value={form.fund_source} onChange={set('fund_source')} placeholder="e.g. GAA 2026 – Regular Infrastructure" />}</Field>
@@ -242,7 +269,9 @@ export default function ProjectFormPage() {
             <CardHeader title="Budget" />
             <CardBody className="space-y-4">
               <Field label="Approved budget (ABC, PHP)" required error={fe.approved_budget}>{(a) => <Input {...a} type="number" min="0" step="0.01" value={form.approved_budget} onChange={set('approved_budget')} required />}</Field>
-              <Field label="Contract amount (PHP)" error={fe.contract_amount} hint="Leave blank until the contract is awarded">{(a) => <Input {...a} type="number" min="0" step="0.01" value={form.contract_amount} onChange={set('contract_amount')} invalid={contractOverBudget} />}</Field>
+              <Field label="Contract amount (PHP)" error={fe.contract_amount} hint={contractLocked ? AWARD_LOCK_MESSAGE : biddingPending ? BIDDING_CHECK_MESSAGE : 'Leave blank until the contract is awarded'}>
+                {(a) => <Input {...a} type="number" min="0" step="0.01" value={form.contract_amount} onChange={set('contract_amount')} invalid={contractOverBudget} readOnly={contractReadOnly} aria-readonly={contractReadOnly || undefined} className={contractReadOnly ? 'cursor-not-allowed bg-slate-50 text-slate-700' : ''} />}
+              </Field>
               {contractOverBudget && <Alert tone="error">The contract amount cannot be higher than the approved budget (ABC).</Alert>}
               {savings !== null && <p className="rounded-md bg-emerald-50 px-3 py-2 text-xs text-emerald-900">Bid savings: <strong className="tabular-nums">{peso(savings)}</strong></p>}
             </CardBody>
