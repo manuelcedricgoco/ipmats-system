@@ -28,6 +28,22 @@ describe('PACC read-only project records', () => {
     expect(buttons).toEqual(['Open']); // the only button opens a document
 
   });
+  it('031: shows the liquidation and each disbursement\'s receipts, read-only', () => {
+    const liquidation = { revised_contract_amount: 1000, total_disbursed: 300, total_expenses: 0, total_to_liquidate: 300, liquidated: 120, unliquidated: 180, liquidated_pct: 40, over_liquidated: false, over_liquidated_by: 0, accepted_count: 1, submitted_count: 1, returned_count: 0 };
+    const records = [{
+      ...props.records[0],
+      liquidation: { status: 'partly_liquidated', liquidated_pct: 40, liquidated_amount: 120, over_liquidated_by: 0 },
+      receipts: [
+        { id: 'x1', amount: 120, receipt_date: '2026-10-05', description: 'Cement', status: 'accepted', mime_type: 'application/pdf', url: 'https://storage.example/x1.pdf', uploaded_by_name: 'Juan', uploaded_by_role: 'contractor', can_delete: false },
+        { id: 'x2', amount: 50, receipt_date: '2026-10-06', description: 'Sand', status: 'submitted', mime_type: 'image/png', url: null, uploaded_by_name: 'Ana', uploaded_by_role: 'dpwh_personnel', can_delete: false },
+      ],
+    }];
+    const html = renderToStaticMarkup(<ProjectRecords {...props} records={records} liquidation={liquidation} />);
+    for (const text of ['Liquidation and receipts', 'Partly liquidated', 'Cement', 'Sand', 'Juan (Contractor)', 'Accepted', 'Submitted', '1 awaiting review']) expect(html).toContain(text);
+    expect(html).toContain('href="https://storage.example/x1.pdf" target="_blank" rel="noopener noreferrer"');
+    const buttons = [...html.matchAll(/<button[^>]*>(.*?)<\/button>/g)].map((m) => m[1].replace(/<[^>]+>/g, ''));
+    expect(buttons).toEqual(['Open']); // still only the document button: no accept / return / delete for PACC
+  });
   it('says so when there are no records', () => {
     const html = renderToStaticMarkup(<ProjectRecords {...props} phases={[]} progress={[]} records={[]} images={[]} documents={[]} />);
     for (const text of ['No phases set up yet.', 'No progress reports yet.', 'No financial records yet.', 'No 360° photos yet.', 'No documents uploaded.']) expect(html).toContain(text);

@@ -5,6 +5,7 @@ import { FlagBadge, Pill, StatusBadge } from '../common/Badges.jsx';
 import Button from '../common/Button.jsx';
 import { ErrorState, Skeleton } from '../common/Feedback.jsx';
 import PanoramaViewer from '../viewer360/PanoramaViewer.jsx';
+import PublicLiquidation from './PublicLiquidation.jsx';
 import ReportProblemModal from './ReportProblemModal.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useApi } from '../../hooks/useApi.js';
@@ -46,8 +47,9 @@ function Detail({ label, children }) {
  * PUBLIC PORTAL — project drawer. It sits OVER THE MAP (inside the map box): a panel on the right
  * on wider screens, a bottom sheet on phones, so the map stays visible and usable beside it.
  * Header → 360° viewer (or a slim "no photo" row) → status and physical progress → contract
- * cost → location / office / contractor → actions → "Magsumbong / Report a problem". It scrolls on its own;
- * the page does not. The API sends only public fields (no automatic flag, findings, finances or activity).
+ * cost → liquidation → location / office / contractor → actions → "Magsumbong / Report a problem". It scrolls on
+ * its own; the page does not. The API sends only public fields (no automatic flag, findings, finance records or
+ * activity). The liquidation (031) is its own call: the summary and the receipts the Auditor accepted.
  * A PACC case status is shown only when PACC chose to make it public (`pacc_public_status`); it appears here
  * only, never on cards or map pins, and no report counts are shown anywhere public.
  */
@@ -181,6 +183,11 @@ export default function ProjectDrawer({ projectId, onClose, onRecenter }) {
             <div className="px-4 py-3">
               <p className="text-xs text-slate-500">Contract cost</p>
               <p className="text-xl font-bold tabular-nums text-slate-900">{pesoWhole(p.contract_amount)}</p>
+            </div>
+
+            {/* 4b. Finance liquidation: summary and accepted receipts */}
+            <div className="px-4 py-3">
+              <PublicLiquidation projectId={p.id} />
             </div>
 
             {/* 5. Details */}

@@ -146,6 +146,39 @@ describe('the PACC project view', () => {
     assert.deepEqual(photos.ops.find(([op]) => op === 'in').slice(1), ['progress_update_id', ['pu1']]);
   });
 
+  it('031: each disbursement / expense carries its receipts (read-only, no storage path) and the liquidation', async () => {
+    const { projectView } = await import('../controllers/paccController.js');
+    const receipt = (id, status, amount) => ({
+      id, financial_record_id: 'f1', project_id: ID, storage_path: `${ID}/f1/${id}.pdf`, file_name: `${id}.pdf`, mime_type: 'application/pdf',
+      size_bytes: 10, amount: String(amount), receipt_date: '2026-11-02', description: 'Cement', status, review_note: status === 'returned' ? 'Blurred copy' : null,
+      reviewed_by: null, reviewed_at: null, uploaded_by: 'u1', uploaded_by_role: 'contractor', created_at: '2026-11-02T00:00:00Z', updated_at: '2026-11-02T00:00:00Z',
+    });
+    const db = fakeDb({ ...tables, finance_receipts: [receipt('x1', 'accepted', 120), receipt('x2', 'submitted', 50), receipt('x3', 'returned', 30)] });
+    let body;
+    await projectView({ params: { id: ID }, db, user: { id: 'pacc-1', role: 'pacc' } }, { json: (b) => (body = b) });
+    const d = body.data;
+    const [disb, vo] = d.financial_records;
+    assert.deepEqual(disb.receipts.map((r) => r.id), ['x1', 'x2', 'x3']);
+    assert.deepEqual(vo.receipts, []);
+    for (const r of disb.receipts) {
+      assert.equal('storage_path' in r, false);
+      assert.equal('url' in r, true);
+      assert.equal(r.can_delete, false);
+    }
+    assert.equal(disb.receipts[0].amount, 120);
+    assert.equal(disb.receipts[0].uploaded_by_role, 'contractor');
+    assert.equal(disb.receipts[2].review_note, 'Blurred copy');
+    assert.equal(disb.liquidation.liquidated_amount, 120);
+    assert.equal(disb.liquidation.status, 'partly_liquidated');
+    assert.equal(vo.liquidation, null);
+    assert.equal(d.liquidation.liquidated, 120);
+    assert.equal(d.liquidation.unliquidated, 180);
+    assert.equal(d.liquidation.submitted_count, 1);
+    assert.equal(d.liquidation.returned_count, 1);
+    const q = db.calls.find((c) => c.table === 'finance_receipts');
+    assert.ok(q.ops.some(([op, col, v]) => op === 'eq' && col === 'project_id' && v === ID));
+  });
+
   it('reads the proof photos of many reports in chunks of 100', async () => {
     const { projectView } = await import('../controllers/paccController.js');
     const db = fakeDb(tables);

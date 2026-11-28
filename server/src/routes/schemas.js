@@ -10,7 +10,17 @@ const empty = (v) => (v === '' || v === 'null' || v === undefined ? undefined : 
 const opt = (schema) => z.preprocess(empty, schema.optional());
 const nullable = (schema) => z.preprocess((v) => (v === '' || v === 'null' ? null : v), schema.nullable().optional());
 
-export const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD');
+/** A real calendar date as YYYY-MM-DD: 2026-02-31 or 2026-13-01 is refused (400), never passed on to the database. */
+export const isRealDate = (v) => {
+  const d = new Date(`${v}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v;
+};
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+// The real-date check runs only on a value of the right shape, so a malformed one gets a single message.
+export const isoDate = z
+  .string()
+  .regex(DATE_PATTERN, 'Use YYYY-MM-DD')
+  .refine((v) => !DATE_PATTERN.test(v) || isRealDate(v), 'Enter a real date (YYYY-MM-DD).');
 const money = z.coerce.number().finite().min(0).max(1e13);
 const text = (max) => z.string().trim().max(max);
 /** A percentage stored as numeric(5,2): rounded to 2 decimals before the range check, so the database never refuses or drifts. */
@@ -210,6 +220,22 @@ export const financialRecord = z
   })
   .refine((r) => r.amount !== 0, { message: 'Amount cannot be zero', path: ['amount'] })
   .refine((r) => r.record_type === 'variation_order' || r.amount > 0, { message: 'Amount must be positive (only a variation order can be negative)', path: ['amount'] });
+
+// Finance liquidation (031): a receipt of a disbursement or expense, sent as multipart/form-data
+// (the file in "file"). Amount in pesos with at most 2 decimals (numeric(15,2)).
+export const receiptUpload = z.object({
+  amount: z.preprocess(
+    (v) => (v === '' || v === null ? undefined : v),
+    z.coerce
+      .number({ required_error: 'Enter the receipt amount.', invalid_type_error: 'Enter the receipt amount.' })
+      .finite('Enter the receipt amount.')
+      .transform((v) => Math.round((v + Number.EPSILON) * 100) / 100)
+      .pipe(z.number().gt(0, 'The receipt amount must be more than 0.').max(9999999999999.99, 'The receipt amount is too large.')),
+  ),
+  receipt_date: isoDate,
+  // Only spaces (or nothing) is stored as null, not ''.
+  description: z.preprocess((v) => (typeof v === 'string' && !v.trim() ? null : v), text(500).nullable().optional()),
+});
 
 // ---------------------------------------------------------------------------
 // WEEK 3 — 360° images, flag reviews and audit findings

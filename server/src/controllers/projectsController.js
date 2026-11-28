@@ -8,10 +8,11 @@
 import { adminClient } from '../config/supabase.js';
 import { addDays } from '../services/completion.js';
 import { canUseApproval } from './deletionRequestsController.js';
-import { pagination } from '../utils/pagination.js';
+import { pagination, readAllPages } from '../utils/pagination.js';
 import { changedFields, logActivity } from '../services/activityLog.js';
 import { withoutPaccFields } from '../services/contractorAccess.js';
 import { assertCompletionDateEditable } from '../services/completionVerification.js';
+import { RECEIPT_BUCKET } from '../services/liquidation.js';
 import { reevaluate } from '../services/projectEvaluation.js';
 import { assertValid, checkContractAmountChange, isLocationChange } from '../services/validationRules.js';
 import { OUTSIDE_PROVINCE_MESSAGE, isWithinOccidentalMindoro } from '../utils/geo.js';
@@ -239,6 +240,18 @@ export async function updateProject(req, res) {
   res.json({ data: { id, evaluation } });
 }
 
+/** Remove finance-receipt files (best effort: a failure is logged, the delete already happened). */
+export async function removeReceiptFiles(paths, storage = adminClient?.storage) {
+  for (let i = 0; i < paths.length; i += 1000) {
+    try {
+      const { error } = await storage.from(RECEIPT_BUCKET).remove(paths.slice(i, i + 1000));
+      if (error) console.error('[finance-receipts] could not remove files', error.message);
+    } catch (e) {
+      console.error('[finance-receipts] could not remove files', e.message);
+    }
+  }
+}
+
 /**
  * The Admin deletes directly. DPWH Personnel need their own approved, unexpired, unused deletion
  * request for the project (027); it is marked used right before the delete. Every phase, report,
@@ -265,6 +278,10 @@ export async function deleteProject(req, res) {
   const openCase = unwrap(
     await adminClient.from('pacc_cases').select('id, status').eq('project_id', project.id).in('status', OPEN_CASE_STATUSES).limit(1).maybeSingle(),
   );
+
+  // 031: the project's finance receipts go with it (cascade); their files are removed after the delete (best effort).
+  // Read before the approval is marked used, so a failed read never uses up the approval.
+  const receiptFiles = (await readAllPages(() => adminClient.from('finance_receipts').select('id, storage_path').eq('project_id', project.id))).map((r) => r.storage_path);
 
   let openRequests = [];
   if (approval) {
@@ -297,6 +314,8 @@ export async function deleteProject(req, res) {
     }
     throw err;
   }
+
+  await removeReceiptFiles(receiptFiles);
 
   // project_id is now NULL on these rows, so they are updated by id.
   for (const r of openRequests) {

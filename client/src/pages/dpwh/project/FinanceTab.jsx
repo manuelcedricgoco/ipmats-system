@@ -1,9 +1,10 @@
-import { Banknote, Landmark, Plus, Scale, Trash2, Wallet } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { Banknote, ChevronDown, Landmark, Plus, RotateCcw, Scale, ShieldCheck, Trash2, Upload, Wallet } from 'lucide-react';
+import { Fragment, useEffect, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { Pill } from '../../../components/common/Badges.jsx';
 import Button from '../../../components/common/Button.jsx';
 import { Card, CardBody, CardHeader, StatCard } from '../../../components/common/Card.jsx';
+import ConfirmDialog from '../../../components/common/ConfirmDialog.jsx';
 import { Alert, ErrorState, PageLoader } from '../../../components/common/Feedback.jsx';
 import { Field, Input, Select, Textarea } from '../../../components/common/Form.jsx';
 import Modal from '../../../components/common/Modal.jsx';
@@ -13,11 +14,19 @@ import { api } from '../../../lib/api.js';
 import { RECORD_TYPE_CLS, RECORD_TYPE_HINTS, RECORD_TYPES } from '../../../lib/constants.js';
 import { date, peso, pesoCompact, pct, todayIso } from '../../../lib/format.js';
 import UtilizationBar from '../../../components/common/UtilizationBar.jsx';
+import { LiquidationSummary, ReceiptList, RecordLiquidationCell } from '../../../components/finance/Liquidation.jsx';
+import UploadReceiptModal from '../../../components/finance/UploadReceiptModal.jsx';
+import { acceptsReceipts, checkReturnNote, receiptsToggleLabel } from '../../../lib/liquidation.js';
 
 /**
  * WEEK 2 — Project financial monitoring (Jonalyn Pagilagan, front-end).
  * Approved budget, contract amount (+ variation orders), disbursements and
  * remaining balance, with every financial record and the form to add one.
+ *
+ * Finance liquidation (031): the liquidation summary, and for each disbursement / expense its liquidation status
+ * and receipts. Upload (with the privacy reminder) follows the API's `permissions.can_upload_receipts` (DPWH
+ * Personnel; a contractor on its own company's projects); Accept / Return `permissions.can_review_receipts`
+ * (the Auditor); delete each receipt's `can_delete`. Only accepted receipts count as liquidated.
  */
 export default function FinanceTab() {
   const { project, reloadProject, canEdit, canDelete } = useOutletContext();
@@ -26,12 +35,46 @@ export default function FinanceTab() {
   const [adding, setAdding] = useState(false);
   const [filter, setFilter] = useState('');
   const [removing, setRemoving] = useState(null);
+  const [open, setOpen] = useState(() => new Set()); // records whose receipts are shown
+  const [uploadFor, setUploadFor] = useState(null); // the record a receipt is uploaded for
+  const [review, setReview] = useState(null); // { receipt, decision: 'accept' | 'return' | 'delete' }
+  const [note, setNote] = useState('');
 
   if (loading && !data) return <PageLoader label="Loading financial records…" withHeader={false} />;
   if (error) return <ErrorState error={error} onRetry={reload} />;
   const s = data.summary;
   const records = [...data.records].reverse().filter((r) => !filter || r.record_type === filter);
   const gap = s.utilization_pct - s.physical_progress; // money paid ahead of work done
+  const perms = data.permissions || {};
+  const liquidation = data.liquidation;
+  const toggle = (id) => setOpen((cur) => {
+    const next = new Set(cur);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    return next;
+  });
+  const cols = 8 + (canDelete ? 1 : 0);
+  const startReview = (receipt, decision) => {
+    setNote('');
+    setReview({ receipt, decision });
+  };
+  // ConfirmDialog shows a thrown error (the API's message) and stays open.
+  const decide = async () => {
+    const { receipt, decision } = review;
+    if (decision === 'delete') {
+      await api.del(`/finance/receipts/${receipt.id}`);
+      toast.success('Receipt deleted.');
+    } else if (decision === 'accept') {
+      await api.post(`/finance/receipts/${receipt.id}/accept`);
+      toast.success('Receipt accepted. Its amount now counts as liquidated.');
+    } else {
+      await api.post(`/finance/receipts/${receipt.id}/return`, { note: note.trim() });
+      toast.success('Receipt returned to the uploader.');
+    }
+    setReview(null);
+    reload();
+  };
+  const noteProblem = review?.decision === 'return' ? checkReturnNote(note) : null;
 
   const remove = async () => {
     try {
@@ -96,6 +139,18 @@ export default function FinanceTab() {
         </Card>
       </div>
 
+      {liquidation && (
+        <Card>
+          <CardHeader
+            title="Liquidation"
+            description="How much of the money released is backed by receipts the Auditor accepted. Submitted and returned receipts do not count."
+          />
+          <CardBody>
+            <LiquidationSummary liquidation={liquidation} />
+          </CardBody>
+        </Card>
+      )}
+
       <Card className="overflow-hidden">
         <CardHeader
           title="Financial records"
@@ -125,18 +180,42 @@ export default function FinanceTab() {
                   <th scope="col" className="px-4 py-2.5">Reference no.</th>
                   <th scope="col" className="px-4 py-2.5">Description</th>
                   <th scope="col" className="px-4 py-2.5 text-right">Amount</th>
+                  <th scope="col" className="px-4 py-2.5">Liquidation</th>
+                  <th scope="col" className="px-4 py-2.5">Receipts</th>
                   {canDelete && <th scope="col" className="px-4 py-2.5"><span className="sr-only">Actions</span></th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {records.map((r) => (
-                  <tr key={r.id} className="transition-colors hover:bg-slate-50">
+                {records.map((r) => {
+                  const takesReceipts = acceptsReceipts(r.record_type);
+                  const shown = open.has(r.id);
+                  const receipts = r.receipts || [];
+                  return (
+                  <Fragment key={r.id}>
+                  <tr className="transition-colors hover:bg-slate-50">
                     <td className="whitespace-nowrap px-4 py-2.5">{date(r.record_date)}</td>
                     <td className="px-4 py-2.5"><Pill className={RECORD_TYPE_CLS[r.record_type]}>{RECORD_TYPES[r.record_type]}</Pill></td>
                     <td className="px-4 py-2.5 text-xs text-slate-600">{r.phase_name || '—'}</td>
                     <td className="px-4 py-2.5 font-mono text-xs">{r.reference_no || '—'}</td>
                     <td className="px-4 py-2.5 text-slate-600">{r.description || '—'}</td>
                     <td className={`whitespace-nowrap px-4 py-2.5 text-right font-semibold tabular-nums ${Number(r.amount) < 0 ? 'text-red-700' : ''}`}>{peso(r.amount)}</td>
+                    <td className="px-4 py-2.5"><RecordLiquidationCell liquidation={r.liquidation} /></td>
+                    <td className="px-4 py-2.5">
+                      {takesReceipts ? (
+                        <button
+                          type="button"
+                          onClick={() => toggle(r.id)}
+                          aria-expanded={shown}
+                          aria-controls={`receipts-${r.id}`}
+                          className="inline-flex items-center gap-1 whitespace-nowrap rounded px-1.5 py-1 text-xs font-semibold text-brand-700 hover:bg-brand-50"
+                        >
+                          {receiptsToggleLabel(receipts)}
+                          <ChevronDown className={`h-3.5 w-3.5 transition-transform ${shown ? 'rotate-180' : ''}`} aria-hidden />
+                        </button>
+                      ) : (
+                        <span className="text-xs text-slate-400" title="Obligations and variation orders take no receipt; their papers go in the Documents tab.">Not needed</span>
+                      )}
+                    </td>
                     {canDelete && (
                       <td className="px-4 py-2.5 text-right">
                         <button type="button" onClick={() => setRemoving(r)} className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-700" aria-label={`Delete ${r.reference_no || 'record'}`}>
@@ -145,7 +224,30 @@ export default function FinanceTab() {
                       </td>
                     )}
                   </tr>
-                ))}
+                  {takesReceipts && shown && (
+                    <tr id={`receipts-${r.id}`} className="bg-slate-50/70">
+                      {/* !static: the sticky first column (phones) must not pin this full-width cell */}
+                      <td colSpan={cols} className="!static !max-w-none !bg-slate-50 px-4 py-3 !shadow-none">
+                        <div className="sticky left-4 max-w-[calc(100vw-4rem)] space-y-2 lg:max-w-none">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Receipts of {RECORD_TYPES[r.record_type].toLowerCase()} {r.reference_no || ''}</p>
+                            {perms.can_upload_receipts && <Button size="sm" icon={Upload} onClick={() => setUploadFor(r)}>Upload receipt</Button>}
+                          </div>
+                          <ReceiptList
+                            receipts={receipts}
+                            canReview={perms.can_review_receipts}
+                            onAccept={(x) => startReview(x, 'accept')}
+                            onReturn={(x) => startReview(x, 'return')}
+                            onDelete={(x) => startReview(x, 'delete')}
+                            emptyText={perms.can_upload_receipts ? 'No receipts yet. Upload the receipts that show where this amount went.' : 'No receipts yet.'}
+                          />
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -187,6 +289,36 @@ export default function FinanceTab() {
       )}
 
       <RecordModal open={adding} onClose={() => setAdding(false)} project={project} summary={s} phases={(data.by_phase || []).filter((p) => p.phase_id)} onSaved={() => { setAdding(false); toast.success('Financial record saved.'); reload(); reloadProject(); }} />
+      <UploadReceiptModal
+        open={Boolean(uploadFor)}
+        onClose={() => setUploadFor(null)}
+        projectId={project.id}
+        record={uploadFor}
+        onDone={() => {
+          setUploadFor(null);
+          toast.success('Receipt uploaded. It counts as liquidated once the Auditor accepts it.');
+          reload();
+        }}
+      />
+      <ConfirmDialog
+        open={Boolean(review)}
+        onClose={() => setReview(null)}
+        title={review?.decision === 'accept' ? 'Accept this receipt?' : review?.decision === 'return' ? 'Return this receipt?' : 'Delete this receipt?'}
+        description={review ? `${peso(review.receipt.amount)} · receipt date ${date(review.receipt.receipt_date)}` : ''}
+        confirmLabel={review?.decision === 'accept' ? 'Accept' : review?.decision === 'return' ? 'Return' : 'Delete'}
+        confirmVariant={review?.decision === 'accept' ? 'primary' : 'danger'}
+        confirmIcon={review?.decision === 'accept' ? ShieldCheck : review?.decision === 'return' ? RotateCcw : Trash2}
+        confirmDisabled={Boolean(noteProblem)}
+        onConfirm={decide}
+      >
+        {review?.decision === 'accept' && <p>An accepted receipt counts as liquidated, is shown to the public and can no longer be changed or deleted.</p>}
+        {review?.decision === 'delete' && <p>The file is removed as well. This cannot be undone.</p>}
+        {review?.decision === 'return' && (
+          <Field label="Reason for returning" required hint="Tell the uploader what to fix (5–500 characters). They can upload a new receipt." error={note.trim() ? noteProblem : null}>
+            {(a) => <Textarea {...a} value={note} onChange={(e) => setNote(e.target.value)} rows={3} maxLength={500} autoFocus />}
+          </Field>
+        )}
+      </ConfirmDialog>
       <Modal
         open={Boolean(removing)}
         onClose={() => setRemoving(null)}
@@ -195,7 +327,7 @@ export default function FinanceTab() {
         description={removing ? `${RECORD_TYPES[removing.record_type]} ${removing.reference_no || ''} · ${peso(removing.amount)}` : ''}
         footer={<><Button variant="secondary" onClick={() => setRemoving(null)}>Cancel</Button><Button variant="danger" icon={Trash2} onClick={remove}>Delete</Button></>}
       >
-        <p className="text-sm text-slate-600">Only remove entries that were recorded by mistake. The totals are recomputed immediately.</p>
+        <p className="text-sm text-slate-600">Only remove entries that were recorded by mistake. The totals are recomputed immediately.{removing?.receipts?.length ? ` Its ${removing.receipts.length} receipt(s) are deleted with it, accepted ones included.` : ''}</p>
       </Modal>
     </div>
   );

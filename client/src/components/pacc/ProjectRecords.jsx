@@ -5,6 +5,8 @@ import { Pill } from '../common/Badges.jsx';
 import { Card, CardBody, CardHeader, DetailList } from '../common/Card.jsx';
 import ProgressBar from '../common/ProgressBar.jsx';
 import ReportPhotos from '../progress/ReportPhotos.jsx';
+import { LiquidationSummary, ReceiptList, RecordLiquidationCell } from '../finance/Liquidation.jsx';
+import { acceptsReceipts } from '../../lib/liquidation.js';
 import { RECORD_TYPE_CLS, RECORD_TYPES } from '../../lib/constants.js';
 import { date, dateTime, pct, peso } from '../../lib/format.js';
 
@@ -15,8 +17,11 @@ const LINKS_NOTE = 'Links open for one hour; reload the page for fresh links.';
 /**
  * PACC investigation page, read-only project records kept by DPWH personnel: phases and progress reports,
  * financial records, 360° photos and supporting documents (GET /pacc/projects/:id). PACC can change none of them.
+ * Finance liquidation (031): the liquidation summary and each disbursement's / expense's receipts (every status,
+ * with the uploader and the Auditor's decision), read-only.
  */
-export default function ProjectRecords({ project: p, phases, progress, finance, records, images, documents }) {
+export default function ProjectRecords({ project: p, phases, progress, finance, records, images, documents, liquidation }) {
+  const liquidated = records.filter((r) => acceptsReceipts(r.record_type));
   return (
     <>
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -122,6 +127,34 @@ export default function ProjectRecords({ project: p, phases, progress, finance, 
           </div>
         )}
       </Card>
+
+      {liquidation && (
+        <Card className="overflow-hidden">
+          <CardHeader title="Liquidation and receipts" description={`Receipts of disbursements and expenses; only receipts the Auditor accepted count as liquidated. ${LINKS_NOTE}`} />
+          <CardBody className="space-y-5">
+            <LiquidationSummary liquidation={liquidation} />
+            {liquidated.length === 0 ? (
+              <p className="text-sm text-slate-500">No disbursements or expenses yet.</p>
+            ) : (
+              <ul className="space-y-4" aria-label="Receipts per record">
+                {liquidated.map((r) => (
+                  <li key={r.id} className="space-y-2">
+                    <div className="flex flex-wrap items-start justify-between gap-2 text-sm">
+                      <p className="flex flex-wrap items-center gap-2">
+                        <Pill className={RECORD_TYPE_CLS[r.record_type]}>{RECORD_TYPES[r.record_type]}</Pill>
+                        <span className="font-semibold tabular-nums text-slate-900">{peso(r.amount)}</span>
+                        <span className="text-xs text-slate-500">{date(r.record_date)}{r.reference_no ? ` · ${r.reference_no}` : ''}</span>
+                      </p>
+                      <RecordLiquidationCell liquidation={r.liquidation} />
+                    </div>
+                    <ReceiptList receipts={r.receipts || []} />
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardBody>
+        </Card>
+      )}
 
       <Card className="overflow-hidden">
         <CardHeader title="360° photos" description={`${images.length} photo${images.length === 1 ? '' : 's'}, newest inspection first. Opens the full photo in a new tab. ${LINKS_NOTE}`} />

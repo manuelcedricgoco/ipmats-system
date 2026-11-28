@@ -97,6 +97,8 @@ const CONTRACTOR_ROUTES = new Set([
   'get /projects/:id/progress',
   'post /projects/:id/progress',
   'get /projects/:id/finance',
+  'post /projects/:id/finance/:recordId/receipts',
+  'delete /finance/receipts/:receiptId',
   'get /projects/:id/images',
   'post /projects/:id/images',
   'get /projects/:id/documents',

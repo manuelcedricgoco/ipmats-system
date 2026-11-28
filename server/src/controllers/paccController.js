@@ -3,7 +3,9 @@
  *   GET  /pacc/inbox                              projects that need PACC's attention, with the reasons
  *   GET  /pacc/projects/:id                       investigation view (opening it marks new reports "under review"); also
  *                                                 the project's phases, recent progress, finance, 360° photos and
- *                                                 documents, read-only
+ *                                                 documents, read-only; finance liquidation (031): each
+ *                                                 disbursement / expense with its receipts (signed links) and
+ *                                                 liquidation, and the project's liquidation summary
  *   POST /pacc/reports/:reportId/close            close one citizen report with an outcome
  *   POST /pacc/projects/:id/reports/close-all     close every open report of a project with one outcome
  *   GET  /pacc/cases                              every case, newest first
@@ -23,10 +25,12 @@ import { verificationState } from '../services/completionVerification.js';
 import { finalizeCompletionIfReady, loadVerifications } from './completionController.js';
 import { loadReportPhotos, withActivities } from './phasesController.js';
 import { DOCUMENT_BUCKET, TYPE_LABELS as DOCUMENT_TYPE_LABELS } from './documentsController.js';
+import { loadReceipts, receiptsForViewer } from './financeController.js';
 import { BUCKET as PANORAMA_BUCKET } from './imagesController.js';
 import { removeAvatarFile } from '../services/avatars.js';
+import { projectLiquidation, recordLiquidation } from '../services/liquidation.js';
 import { logPacc } from '../services/paccActivity.js';
-import { detectImageFormat } from '../services/imageFormat.js';
+import { detectDocumentFormat } from '../services/imageFormat.js';
 import { signedUrl, signedUrls } from '../services/storage.js';
 import { pagination } from '../utils/pagination.js';
 import { HttpError, badRequest, conflict, notFound, unwrap } from '../utils/httpError.js';
@@ -125,7 +129,7 @@ export async function projectView(req, res) {
     }
   }
 
-  const [reportRows, history, reviews, findings, cases, phases, progress, financial, imageRows, documentRows, activities, verifications] = await Promise.all([
+  const [reportRows, history, reviews, findings, cases, phases, progress, financial, imageRows, documentRows, activities, verifications, receiptRows] = await Promise.all([
     req.db
       .from('citizen_reports')
       .select('id, category, description, status, outcome, case_id, submitted_on')
@@ -164,17 +168,20 @@ export async function projectView(req, res) {
     // 030: sub-activities and the completion verifications (RLS "…: pacc read").
     req.db.from('phase_activities').select('*').eq('project_id', id).order('sequence_no').then(unwrap),
     loadVerifications(req.db, id),
+    // 031: the project's receipts (RLS "receipts: pacc read"); PACC never uploads, reviews or deletes them.
+    loadReceipts(req.db, id),
   ]);
 
   const files = await inChunks(
     reportRows.map((r) => r.id),
     (chunk) => req.db.from('citizen_report_files').select('id, report_id, storage_path').in('report_id', chunk).order('id'),
   );
-  const [urls, imageUrls, documentUrls, reportPhotos] = await Promise.all([
+  const [urls, imageUrls, documentUrls, reportPhotos, receipts] = await Promise.all([
     signedUrls('citizen-reports', files.map((f) => f.storage_path)),
     signedUrls(PANORAMA_BUCKET, imageRows.map((r) => r.storage_path)),
     signedUrls(DOCUMENT_BUCKET, documentRows.map((r) => r.storage_path)),
     loadReportPhotos(req.db, progress.map((u) => u.id)),
+    receiptsForViewer(receiptRows, req.user, project),
   ]);
   const paccCaseOpen = cases.some((cs) => OPEN_CASE.includes(cs.status));
   const reports = reportRows.map((r) => ({
@@ -182,6 +189,7 @@ export async function projectView(req, res) {
     files: files.filter((f) => f.report_id === r.id).map((f) => ({ id: f.id, url: urls[f.storage_path] ?? null })),
   }));
   const phaseName = Object.fromEntries(phases.map((ph) => [ph.id, ph.name]));
+  const financeSummary = summarizeFinance(project, financial);
 
   res.json({
     data: {
@@ -194,8 +202,14 @@ export async function projectView(req, res) {
       cases,
       phases: withActivities(phases, activities),
       progress_updates: progress.map(({ submitter, ...u }) => ({ ...u, submitted_by_name: submitter?.full_name ?? null, photos: reportPhotos.get(u.id) ?? [] })),
-      financial_records: financial.map((r) => ({ ...r, phase_name: r.phase_id ? phaseName[r.phase_id] ?? null : null })),
-      finance_summary: summarizeFinance(project, financial),
+      financial_records: financial.map((r) => ({
+        ...r,
+        phase_name: r.phase_id ? phaseName[r.phase_id] ?? null : null,
+        receipts: receipts.filter((x) => x.financial_record_id === r.id),
+        liquidation: recordLiquidation(r, receiptRows),
+      })),
+      finance_summary: financeSummary,
+      liquidation: projectLiquidation(financial, receiptRows, financeSummary.revised_contract_amount),
       images: imageRows.map(({ phase, uploader, storage_path, ...r }) => ({
         ...r,
         phase_name: phase?.name ?? null,
@@ -270,13 +284,7 @@ export function outcomeForClosedCase(status) {
 }
 
 /** What a case document really is, from its first bytes (the client's MIME type is not trusted). */
-export function caseDocumentFormat(buffer) {
-  if (Buffer.isBuffer(buffer) && buffer.subarray(0, 4).toString('latin1') === '%PDF') return { ext: 'pdf', mime: 'application/pdf' };
-  const image = detectImageFormat(buffer);
-  if (image === 'jpeg') return { ext: 'jpg', mime: 'image/jpeg' };
-  if (image) return { ext: image, mime: `image/${image}` };
-  return null;
-}
+export const caseDocumentFormat = detectDocumentFormat;
 
 /** The contractor's name for the case's snapshot (null when no contractor is named). */
 export async function contractorNameFor(db, contractorId) {

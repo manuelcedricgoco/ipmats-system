@@ -2,7 +2,7 @@
 
 The database is PostgreSQL 17, hosted by Supabase (project **IPMATS**). This page was written from the live
 database on 22 November 2026, not only from the migration files, and updated on 25 November 2026 for migrations
-019 and 020. The PACC parts (migrations 023–026) and the project deletion requests (027), all applied 27 November 2026, are written from the migration files, as are the contractor accounts (028, applied 27 November 2026; 029, applied 28 November 2026) and the progress rules (030: sub-activities, reference photos, verified 100%; applied by the project controller at merge time, immediately before the API of that PR is deployed).
+019 and 020. The PACC parts (migrations 023–026) and the project deletion requests (027), all applied 27 November 2026, are written from the migration files, as are the contractor accounts (028, applied 27 November 2026; 029, applied 28 November 2026) and the progress rules (030: sub-activities, reference photos, verified 100%; applied 28 November 2026 at the merge of PR #16, immediately before its API was deployed), and finance liquidation (031: receipts of disbursements and expenses; additive, applied 28 November 2026, before its merge).
 Where the two differ, the live schema wins.
 
 - What each table is used for in the app: [features.md](features.md)
@@ -10,10 +10,10 @@ Where the two differ, the live schema wins.
 
 ## Overview
 
-- **27 tables** in the `public` schema (6 of them for the PACC portal, 024; `project_deletion_requests` from 027; `project_pacc_status` from 029; `phase_activities`, `progress_photos` and `completion_verifications` from 030), plus one helper table in the `private` schema.
+- **28 tables** in the `public` schema (6 of them for the PACC portal, 024; `project_deletion_requests` from 027; `project_pacc_status` from 029; `phase_activities`, `progress_photos` and `completion_verifications` from 030; `finance_receipts` from 031), plus one helper table in the `private` schema.
 - **2 views** that join projects with their place, office, contractor and totals.
 - **7 enum types** and several text columns limited by `CHECK` rules.
-- **7 private storage buckets** for files (photos, evidence, documents, profile photos, citizen report proof, PACC case documents, progress report reference photos).
+- **8 private storage buckets** for files (photos, evidence, documents, profile photos, citizen report proof, PACC case documents, progress report reference photos, finance receipts).
 - Row Level Security (RLS) is **on for every table**. All policies only allow reading. Every insert, update and
   delete is done by the Node.js API with the service-role key, after the API has checked the user's role.
 
@@ -37,6 +37,7 @@ erDiagram
   PROGRESS_UPDATES ||--o{ PROGRESS_PHOTOS : "shown by (030)"
   PROJECTS ||--o{ COMPLETION_VERIFICATIONS : "verified in (030)"
   PROJECTS ||--o{ FINANCIAL_RECORDS : "paid through"
+  FINANCIAL_RECORDS ||--o{ FINANCE_RECEIPTS : "liquidated by (031)"
   PROJECTS ||--o{ SITE_IMAGES : "photographed in"
   PROJECTS ||--o{ PROJECT_DOCUMENTS : "documented by"
   PROJECTS ||--o{ FLAG_HISTORY : "evaluated in"
@@ -300,6 +301,37 @@ Money events of a project.
 | created_by | uuid | yes | — | Who recorded it |
 | created_at | timestamptz | no | now() | When it was recorded |
 | phase_id | uuid | yes | — | Construction phase it belongs to (optional) |
+
+### finance_receipts
+Receipts that show where a disbursement or expense went (031). One record can have several. Files are stored as
+uploaded in the private `finance-receipts` bucket (PDF, JPEG, PNG or WebP, at most 15 MB; the API checks the actual
+bytes). Uploaded by DPWH Personnel (any project) or the project's contractor (own company's projects); accepted or
+returned by the Auditor. Only **accepted** receipts count as liquidated and only they are shown to the public
+(through the API).
+
+| Column | Type | Null | Default | Description |
+|---|---|---|---|---|
+| id | uuid | no | gen_random_uuid() | Primary key |
+| financial_record_id | uuid | no | — | The disbursement or expense (deleted with it) |
+| project_id | uuid | no | — | Project (deleted with it); must be the record's project (trigger) |
+| storage_path | text | no | — | `<project_id>/<financial_record_id>/<uuid>.<ext>` in `finance-receipts`, unique. Never sent to the client |
+| file_name | text | no | — | Original file name, 1–200 characters (never shown to the public) |
+| mime_type | text | no | — | `application/pdf`, `image/jpeg`, `image/png` or `image/webp`, from the file's bytes |
+| size_bytes | integer | no | — | File size, > 0 |
+| amount | numeric(15,2) | no | — | Amount on the receipt, > 0 |
+| receipt_date | date | no | — | Date on the receipt (the API refuses a future date) |
+| description | text | yes | — | What was bought or paid, at most 500 characters |
+| status | text | no | `'submitted'` | `submitted`, `accepted` or `returned` |
+| review_note | text | yes | — | The Auditor's reason, at most 500 characters; at least 5 (trimmed) when `returned` (CHECK `finance_receipts_returned_note`) |
+| reviewed_by | uuid | yes | — | The Auditor who decided (set null) |
+| reviewed_at | timestamptz | yes | — | When decided; set exactly when the status is not `submitted` (CHECK `finance_receipts_reviewed_at`) |
+| uploaded_by | uuid | yes | — | Who uploaded it (set null) |
+| uploaded_by_role | text | yes | — | `dpwh_personnel` or `contractor` |
+| created_at, updated_at | timestamptz | no | now() | `updated_at` kept by `set_updated_at` |
+
+A record's liquidated amount is the sum of its accepted receipts, shown capped at the record amount (the excess is
+reported as "over-liquidated by"). The project's unliquidated amount is (disbursed + expenses) − liquidated, never
+below 0. These are computed by the API (`server/src/services/liquidation.js`), not stored.
 
 ### site_images
 360° (and regular) site photos. The files are in the private `panoramas` bucket.
@@ -622,13 +654,15 @@ Both views use `security_invoker`, so the reader's own permissions (RLS) apply.
 | phase_activities.phase_id | project_phases | cascade | Sub-activities belong to one phase (030) |
 | phase_activities.project_id, progress_photos.project_id, completion_verifications.project_id | projects | cascade | Belong to one project (030) |
 | progress_photos.progress_update_id | progress_updates | cascade | Reference photos belong to one report (030) |
+| finance_receipts.financial_record_id | financial_records | cascade | Receipts belong to one disbursement or expense; deleting the record (Admin) removes them, accepted ones too (031) |
+| finance_receipts.project_id | projects | cascade | Receipts belong to one project (031) |
 | project_deletion_requests.project_id | projects | set null | The request stays (with the project code and name) when the project is deleted |
 | pacc_case_notes.author_id | profiles | restrict | A PACC member with notes cannot be deleted |
 | flag_reviews.auditor_id, audit_findings.auditor_id | profiles | restrict | An auditor with decisions or findings cannot be deleted |
 | audit_findings.assigned_to | profiles | set null | Person responsible for the corrective action |
-| "Who did it" columns: `*.created_by`, `updated_by`, `submitted_by`, `uploaded_by`, `reviewed_by`, `suspended_by`, `public_reviewed_by`, `published_by`, `action_updated_by`, `activity_logs.actor_id`, `system_settings.updated_by`, `pacc_cases.opened_by`, `pacc_case_documents.uploaded_by`, `pacc_activity.actor_id`, `project_deletion_requests.requested_by`, `project_deletion_requests.decided_by`, `progress_photos.uploaded_by`, `completion_verifications.verified_by` (030) | profiles | set null | Records who acted |
+| "Who did it" columns: `*.created_by`, `updated_by`, `submitted_by`, `uploaded_by`, `reviewed_by`, `suspended_by`, `public_reviewed_by`, `published_by`, `action_updated_by`, `activity_logs.actor_id`, `system_settings.updated_by`, `pacc_cases.opened_by`, `pacc_case_documents.uploaded_by`, `pacc_activity.actor_id`, `project_deletion_requests.requested_by`, `project_deletion_requests.decided_by`, `progress_photos.uploaded_by`, `completion_verifications.verified_by` (030), `finance_receipts.uploaded_by` and `reviewed_by` (031) | profiles | set null | Records who acted |
 
-Deleting a project removes its phases, sub-activities, reports and their reference photos, finances, photos, documents, flag history, reviews, findings and completion verifications
+Deleting a project removes its phases, sub-activities, reports and their reference photos, finances and their receipts, photos, documents, flag history, reviews, findings and completion verifications
 (cascade). Its citizen reports, PACC cases and deletion requests are kept: they lose the link but keep the project code and name. When a non-closed PACC case exists, the API first writes one `pacc_activity` entry (actor "System") naming who deleted the project (027). The append-only trigger allows this only as part of such a cascade. The API additionally refuses to
 delete a user who has any of these records ([roles-and-permissions](roles-and-permissions.md)).
 
@@ -670,6 +704,9 @@ These are `text` columns limited by a `CHECK` rule, not enum types.
 | pacc_cases.status | `under_investigation`, `case_filed`, `resolved`, `dismissed` |
 | completion_verifications.verifier_role | `auditor`, `pacc` (030) |
 | completion_verifications.decision | `verified`, `not_yet` (030) |
+| finance_receipts.status | `submitted`, `accepted`, `returned` (031) |
+| finance_receipts.mime_type | `application/pdf`, `image/jpeg`, `image/png`, `image/webp` (031) |
+| finance_receipts.uploaded_by_role | `dpwh_personnel`, `contractor` (031) |
 | projects.project_code | Format `YY` + `OM` + 4 or more digits, e.g. `26OM0332` |
 
 ### Lookup tables
@@ -685,6 +722,7 @@ These are `text` columns limited by a `CHECK` rule, not enum types.
 | `projects_lock_code` | before a project update | Refuses any change to the Project ID |
 | `prevent_modification` | before update or delete on `flag_history`, `flag_reviews`, `activity_logs`, `pacc_case_notes`, `pacc_activity`, `completion_verifications` (030) | Makes them append-only (deletes allowed only through a cascade (project or case)) |
 | `set_updated_at` | before update on tables with `updated_at`, except `projects` | Sets `updated_at = now()` |
+| `private.finance_receipts_guard()` | before insert, update or delete on `finance_receipts` (031) | A receipt belongs to a disbursement or expense of the same project ("Receipts can only be added to disbursements and expenses."); the status moves only `submitted` → `accepted` / `returned`; an **accepted** receipt is never updated ("An accepted receipt cannot be changed.") or deleted ("An accepted receipt cannot be deleted."). Cascades (deleting the record or project) and the set-null of a removed account run at trigger depth > 1 and are allowed |
 | `private.projects_set_updated_at()` | before update on `projects` (trigger `projects_updated_at`, 027) | Sets `updated_at = now()`, unless only `pacc_public_status` changed (the list also names `pacc_case_status`, which 029 moved out of `projects`) (the generated `public_flag` is not compared); then `updated_at` is kept. anon can read `updated_at`, so a hidden PACC case must not move it |
 | `private.app_role()` | used by RLS | The caller's role, only if the account is active **and approved** |
 | `private.is_staff()` | used by RLS | True when `app_role()` is admin, DPWH personnel or auditor |
@@ -697,7 +735,7 @@ These are `text` columns limited by a `CHECK` rule, not enum types.
 
 ## Row Level Security
 
-RLS is enabled on all 27 tables. There are **no insert, update or delete policies**, and the `anon` and
+RLS is enabled on all 28 tables. There are **no insert, update or delete policies**, and the `anon` and
 `authenticated` roles have only `SELECT` privileges. So nothing can be written with the browser's key: every write
 goes through the API, which uses the service-role key (it bypasses RLS) after checking the user.
 
@@ -727,6 +765,7 @@ goes through the API, which uses the service-role key (it bypasses RLS) after ch
 | contractors | contractors: contractor read (029) | authenticated | The contractor's own company's row |
 | project_phases, progress_updates, financial_records, site_images, flag_history, flag_reviews, audit_findings, project_documents | "…: contractor read" (029) | authenticated | Rows of the contractor's own company's projects. Contractors have no policy on activity_logs, system_settings, deletion requests or any PACC table, and read only their own profile |
 | phase_activities, progress_photos, completion_verifications | "activities / progress photos / verifications: staff read", "…: pacc read" and "…: contractor read" (030) | authenticated | Every row for staff and PACC; the contractor's own company's projects for a contractor. anon has no grant |
+| finance_receipts | "receipts: staff read", "receipts: pacc read" and "receipts: contractor read" (031) | authenticated | Every row for staff and PACC; the contractor's own company's projects for a contractor. anon has no grant: the public liquidation (summary and accepted receipts only) is computed by the API with the service role |
 
 `anon` may also read the `v_public_projects` view. It cannot read any other table or view.
 A signed-in account that is pending or declined is not staff, so it can read only its own profile and the lookup
@@ -740,7 +779,7 @@ suspended or deactivated) reads no project data at all: `private.contractor_comp
 
 ## File storage
 
-All seven buckets are **private**, and there are no storage policies. Only the API (service role) can read or
+All eight buckets are **private**, and there are no storage policies. Only the API (service role) can read or
 write files. It hands out signed links that expire (1 hour by default, `SIGNED_URL_TTL`).
 
 | Bucket | Holds | Size limit | File types |
@@ -752,19 +791,20 @@ write files. It hands out signed links that expire (1 hour by default, `SIGNED_U
 | `citizen-reports` | Proof photos of citizen reports, re-encoded without metadata (024) | 10 MB | JPEG |
 | `pacc-case-documents` | PACC case documents (024) | 25 MB | PDF, JPEG, PNG, WebP |
 | `progress-photos` | Reference photos of progress reports, stored as uploaded (030); shown to staff, PACC and the project's contractor | 10 MB | JPEG, PNG, WebP |
+| `finance-receipts` | Receipts of disbursements and expenses, stored as uploaded (031); shown to staff, PACC and the project's contractor, and **accepted** ones to the public (10-minute links) | 15 MB | PDF, JPEG, PNG, WebP |
 
 > **Drift between the files and the live database:** only `avatars` (003), `citizen-reports` and
-> `pacc-case-documents` (024) and `progress-photos` (030) are created by a migration. Migrations 007 and 010 only *update* the limits of `panoramas`, `audit-evidence` and `project-documents`; no file in the
+> `pacc-case-documents` (024), `progress-photos` (030) and `finance-receipts` (031) are created by a migration. Migrations 007 and 010 only *update* the limits of `panoramas`, `audit-evidence` and `project-documents`; no file in the
 > repository creates those three buckets. They exist in the live project, so they were created another way
 > (probably the Supabase dashboard — not verified). A new database built from the migration files alone would not
 > have them.
 
 ## Migrations
 
-The migration files are in `database/migrations/`. They are numbered and run in number order, `001` to `030`.
-The live database's migration history lists 001–029 as applied, in that order (019 and 020 on 25 November
+The migration files are in `database/migrations/`. They are numbered and run in number order, `001` to `031`.
+The live database's migration history lists 001–031 as applied, in that order (019 and 020 on 25 November
 2026; 021 and 022 on 27 November 2026, each before the matching API was deployed; 023, 024, 025 and 026 on 27 November
-2026 for the PACC portal; 027 on 27 November 2026 for project deletion requests and the staff-visible PACC case status; 028, the `contractor` role value, on its own on 27 November 2026; 029, contractor accounts, on 28 November 2026). On a fresh database, 023 must be applied on its own before 024, because a new enum value
+2026 for the PACC portal; 027 on 27 November 2026 for project deletion requests and the staff-visible PACC case status; 028, the `contractor` role value, on its own on 27 November 2026; 029, contractor accounts, on 28 November 2026; 030, progress rules, on 28 November 2026 at merge time (PR #16); 031, finance liquidation, on 28 November 2026 before its merge). On a fresh database, 023 must be applied on its own before 024, because a new enum value
 must be committed before it can be used, and 025 must be applied after 024 and before the API that closes cases is
 deployed. Apply 026 after 025 and before deploying the API that writes `pacc_cases.contractor_name`
 (without it, opening or editing a case fails). Apply 027 after 026 and before deploying
@@ -775,10 +815,13 @@ moves the staff-visible PACC case status from `projects.pacc_case_status` to the
 the older API (PRs #13/#14) fails between applying 029 and deploying #15 on `GET /projects/:id/deletion-request`
 (every project page for DPWH Personnel and the Admin) and `GET /deletion-requests` (the Admin's sidebar badge and
 page). Deploy #15 right after 029.
-030 (progress rules) is new: the project controller applies it **at merge time, immediately before** the API of the
-progress-rules PR is deployed (that API reads every new table and column, so it fails without 030). Do not apply it
+030 (progress rules) was applied **at merge time, immediately before** the API of the
+progress-rules PR was deployed (that API reads every new table and column, so it fails without 030). On another database, do not apply it
 early: the API before it re-writes overall progress up to 100% (uncapped), never sets `completed_at`, and the data
 updates of 030 change `projects.updated_at`. Deploy order: 030 → the API → the client.
+031 (finance liquidation) is additive: the API before it never reads `finance_receipts` or the `finance-receipts`
+bucket, so it was applied **before its merge** (to the IPMATS project on 28 November 2026); the finance-liquidation API needs it (every finance
+page reads the receipts). Deploy order: 031 → the API → the client.
 
 Rules the project follows:
 - An applied migration is never edited or deleted. A mistake is undone by a new migration (013 → 014, 006 → 016).
@@ -817,3 +860,4 @@ Rules the project follows:
 | 028 | contractor_role | Adds `contractor` to `user_role` (only that, so it is committed before 029 uses it) |
 | 029 | contractor_accounts | `profiles.contractor_id` (restrict) with CHECK `profiles_contractor_has_company`; `profiles.requested_contractor_id` (set null) and `requested_contractor_license` (at most 50 characters); `profiles_requested_role_check` allows `contractor`; `handle_new_user` accepts a contractor request with an existing company (role stays empty until approval); `private.contractor_company()`; "…: contractor read" policies on projects, contractors and eight project tables; table `project_pacc_status` (staff and PACC read, backfilled from the open cases) kept by a replaced `private.sync_pacc_public_status()`; `projects.pacc_case_status` dropped and `v_project_summary` recreated with `pacc_case_status` from the new table (same columns and grants) |
 | 030 | progress_rules | Table `phase_activities` (sub-activities of a phase; name 2–120, weight > 0 and ≤ 100, accomplishment 0–100, unique per phase and sequence); `progress_updates.description` (≤ 2000) and `activity_snapshot`; table `progress_photos` (reference photos of a report); `projects.completed_at` and `completion_verified_at` (anon column grant on the latter); append-only table `completion_verifications` (`auditor` / `pacc`, `verified` / `not_yet` with a reason; a PACC row names no member); staff, PACC and contractor read policies on the three new tables (no anon grant); `completion_verified_at` appended to `v_public_projects`, `completed_at` and `completion_verified_at` to `v_project_summary`; bucket `progress-photos` (private, 10 MB, JPEG / PNG / WebP); existing Completed projects get `completed_at`, and stored overall progress above 99 % (projects and report history) becomes 99 % |
+| 031 | finance_liquidation | Table `finance_receipts` (receipts of disbursements and expenses: file, amount > 0, receipt date, description ≤ 500, status `submitted` / `accepted` / `returned`, a reason of 5–500 characters when returned, reviewer, uploader and role); trigger `finance_receipts_guard` (`private.finance_receipts_guard()`: only disbursements and expenses of the same project, submitted → accepted / returned only, an accepted receipt never changed or deleted except by cascade); staff, PACC and contractor read policies (no anon grant); bucket `finance-receipts` (private, 15 MB, PDF / JPEG / PNG / WebP). Additive only |
