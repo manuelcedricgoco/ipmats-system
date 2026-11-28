@@ -11,13 +11,13 @@ import { canUseApproval } from './deletionRequestsController.js';
 import { pagination, readAllPages } from '../utils/pagination.js';
 import { changedFields, logActivity } from '../services/activityLog.js';
 import { withoutPaccFields } from '../services/contractorAccess.js';
-import { assertAwardLock } from '../services/bidding.js';
+import { AWARD_LOCK_MESSAGE, assertAwardLock } from '../services/bidding.js';
 import { assertCompletionDateEditable } from '../services/completionVerification.js';
 import { RECEIPT_BUCKET } from '../services/liquidation.js';
 import { reevaluate } from '../services/projectEvaluation.js';
 import { assertValid, checkContractAmountChange, isLocationChange } from '../services/validationRules.js';
 import { OUTSIDE_PROVINCE_MESSAGE, isWithinOccidentalMindoro } from '../utils/geo.js';
-import { badRequest, forbidden, notFound, unwrap } from '../utils/httpError.js';
+import { badRequest, conflict, forbidden, notFound, unwrap } from '../utils/httpError.js';
 
 const LIST_COLUMNS =
   'id, project_code, name, project_type, status, approved_budget, contract_amount, notice_to_proceed, duration_days, ' +
@@ -234,7 +234,10 @@ export async function updateProject(req, res) {
     body.target_completion_date = addDays(ntp, days);
   }
   const before = unwrap(await adminClient.from('projects').select('*').eq('id', id).single());
-  unwrap(await adminClient.from('projects').update({ ...body, updated_by: req.user.id }).eq('id', id));
+  const updated = await adminClient.from('projects').update({ ...body, updated_by: req.user.id }).eq('id', id);
+  // 032: an award committed after the check above: the projects_award_lock trigger refuses the edit (409, as the check).
+  if (updated.error?.code === 'P0001' && updated.error.message === AWARD_LOCK_MESSAGE) throw conflict(AWARD_LOCK_MESSAGE);
+  unwrap(updated);
   const evaluation = await reevaluate(id, 'project_updated', req.user.id);
   const changed = changedFields(before, body);
   await logActivity(req, {

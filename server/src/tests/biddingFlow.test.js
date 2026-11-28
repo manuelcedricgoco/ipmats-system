@@ -73,6 +73,7 @@ class Query {
     return { data: hit.map((r) => ({ ...r })) };
   }
   result() {
+    if (this.op === 'update' && this.table === 'projects' && this.store.projectUpdateError) return { data: null, error: this.store.projectUpdateError };
     const { data, error } = this.run();
     if (error) return { data: null, error };
     if (this.opts.count) return { data: this.opts.head ? null : data, count: data.length, error: null };
@@ -139,7 +140,10 @@ before(async () => {
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service'; // a client object exists; every call below is stubbed
   const { adminClient, anonClient } = await import('../config/supabase.js');
   for (const client of [adminClient, anonClient]) {
-    client.from = (table) => new Query(store, table);
+    client.from = (table) => {
+      if (store.throwOn?.includes(table)) throw new Error(`${table} is down`);
+      return new Query(store, table);
+    };
     Object.defineProperty(client, 'storage', {
       configurable: true,
       value: { from: () => ({ createSignedUrls: async (paths) => ({ data: paths.map((p) => ({ path: p, signedUrl: `https://signed/${p}` })), error: null }) }) },
@@ -448,6 +452,18 @@ describe('the award', () => {
     assert.equal(p1.contractor_id, null);
     assert.equal(p1.contract_amount, null);
   });
+  it('the award stands when the flag re-evaluation or the activity log fails afterwards (200, awarded view)', async () => {
+    const { roundId, ids } = await evaluated();
+    // Everything the re-evaluation and the log touch is down; the bidding view's own tables still answer.
+    store.throwOn = ['activity_logs', 'site_images', 'project_phases', 'progress_updates', 'flag_history', 'flag_reviews', 'system_settings', 'v_project_summary', 'audit_findings'];
+    const res = await personnel.award(roundId, {});
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    assert.equal(res.body.data.rounds[0].status, 'awarded');
+    assert.equal(res.body.data.rounds[0].awarded_bid_id, ids.alpha);
+    assert.equal(res.body.data.project.contract_locked, true);
+    assert.equal(res.body.data.evaluation, null);
+    assert.equal(store.projects.find((p) => p.id === P1).contractor_id, ALPHA);
+  });
   it('the winning bid cannot lower the contract below what is already disbursed', async () => {
     const { roundId } = await evaluated();
     store.financial_records.push({ id: randomUUID(), project_id: P1, record_type: 'disbursement', amount: 950 });
@@ -530,6 +546,15 @@ describe('the project form after an award', () => {
     const p1 = store.projects.find((p) => p.id === P1);
     assert.equal(p1.name, 'Road A (renamed)');
     assert.equal(p1.contractor_id, ALPHA);
+  });
+  it('an award that commits between the check and the edit: the trigger\'s refusal is 409 with the same message', async () => {
+    store.projectUpdateError = { code: 'P0001', message: 'The contractor and contract amount were set by the bidding award.' };
+    const res = await personnel.editProject(P2, { contractor_id: CHARLIE });
+    assert.equal(res.status, 409);
+    assert.equal(msg(res), 'The contractor and contract amount were set by the bidding award.');
+    store.projectUpdateError = { code: 'P0001', message: 'The Project ID cannot be changed.' };
+    const other = await personnel.editProject(P2, { contractor_id: CHARLIE });
+    assert.equal(other.status, 400, 'other trigger refusals keep their 400');
   });
   it('a project without an award is edited as before', async () => {
     const res = await personnel.editProject(P2, { contractor_id: CHARLIE, contract_amount: 400 });

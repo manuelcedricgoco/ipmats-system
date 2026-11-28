@@ -21,7 +21,9 @@
  *                                  evaluated, its bids (contractor name, amount, eligibility and its note,
  *                                  rank, winner). An open round shows no bids. Same pattern as the
  *                                  liquidation: visibility checked as anon, data read with the service
- *                                  role, safe fields only (no ids, notes or anyone's identity).
+ *                                  role, safe fields only: no ids, no round notes, nobody's identity. Failure
+ *                                  reasons and each bid's eligibility note ARE shown (transparency, as in a
+ *                                  published Abstract of Bids).
  *
  * 360° images: the rows come from site_images through RLS (only images approved for the public);
  * the files are private in Storage, so the API signs short-lived links for exactly those rows.

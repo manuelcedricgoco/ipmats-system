@@ -373,22 +373,37 @@ export async function awardRound(req, res) {
   if (error?.code === 'P0002') throw notFound('Bidding round not found');
   checked({ data, error });
 
-  const evaluation = await reevaluate(project.id, 'bidding_award', req.user.id);
-  await logActivity(req, {
-    action: 'bidding.award',
-    entityType: 'bidding_round',
-    entityId: round.id,
-    projectId: project.id,
-    summary: `Awarded ${project.project_code} (bidding round ${round.round_no}) to ${winner.contractor_name} at ${peso(winner.amount)}; contractor and contract amount set`,
-    details: {
-      round_no: round.round_no,
-      bid_id: winner.id,
-      contractor_id: winner.contractor_id,
-      contractor_name: winner.contractor_name,
-      amount: Number(winner.amount),
-      abc: Number(round.abc),
-      bids: bids.length,
-    },
-  });
+  // The award is committed: a failure from here on is logged and the award still answers 200.
+  let evaluation = null;
+  try {
+    evaluation = await reevaluate(project.id, 'bidding_award', req.user.id);
+  } catch (err) {
+    console.error('[bidding] re-evaluation after the award failed', project.id, err?.message);
+  }
+  await logAward(req, { round, project, winner, bids });
   await respond(req, res, project.id, 200, { evaluation });
+}
+
+/** The award's activity-log entry; a failure is only logged (the award is already committed). */
+async function logAward(req, { round, project, winner, bids }) {
+  try {
+    await logActivity(req, {
+      action: 'bidding.award',
+      entityType: 'bidding_round',
+      entityId: round.id,
+      projectId: project.id,
+      summary: `Awarded ${project.project_code} (bidding round ${round.round_no}) to ${winner.contractor_name} at ${peso(winner.amount)}; contractor and contract amount set`,
+      details: {
+        round_no: round.round_no,
+        bid_id: winner.id,
+        contractor_id: winner.contractor_id,
+        contractor_name: winner.contractor_name,
+        amount: Number(winner.amount),
+        abc: Number(round.abc),
+        bids: bids.length,
+      },
+    });
+  } catch (err) {
+    console.error('[bidding] logging the award failed', project.id, err?.message);
+  }
 }

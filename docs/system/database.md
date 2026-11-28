@@ -2,7 +2,7 @@
 
 The database is PostgreSQL 17, hosted by Supabase (project **IPMATS**). This page was written from the live
 database on 22 November 2026, not only from the migration files, and updated on 25 November 2026 for migrations
-019 and 020. The PACC parts (migrations 023–026) and the project deletion requests (027), all applied 27 November 2026, are written from the migration files, as are the contractor accounts (028, applied 27 November 2026; 029, applied 28 November 2026) and the progress rules (030: sub-activities, reference photos, verified 100%; applied 28 November 2026 at the merge of PR #16, immediately before its API was deployed), and finance liquidation (031: receipts of disbursements and expenses; additive, applied 28 November 2026, before its merge), and bidding (032: bidding rounds, bids and the award; additive, applied before its merge by the project controller).
+019 and 020. The PACC parts (migrations 023–026) and the project deletion requests (027), all applied 27 November 2026, are written from the migration files, as are the contractor accounts (028, applied 27 November 2026; 029, applied 28 November 2026) and the progress rules (030: sub-activities, reference photos, verified 100%; applied 28 November 2026 at the merge of PR #16, immediately before its API was deployed), and finance liquidation (031: receipts of disbursements and expenses; additive, applied 28 November 2026, before its merge), and bidding (032: bidding rounds, bids and the award; additive, applied 28 November 2026, before its merge).
 Where the two differ, the live schema wins.
 
 - What each table is used for in the app: [features.md](features.md)
@@ -828,7 +828,7 @@ goes through the API, which uses the service-role key (it bypasses RLS) after ch
 | project_phases, progress_updates, financial_records, site_images, flag_history, flag_reviews, audit_findings, project_documents | "…: contractor read" (029) | authenticated | Rows of the contractor's own company's projects. Contractors have no policy on activity_logs, system_settings, deletion requests or any PACC table, and read only their own profile |
 | phase_activities, progress_photos, completion_verifications | "activities / progress photos / verifications: staff read", "…: pacc read" and "…: contractor read" (030) | authenticated | Every row for staff and PACC; the contractor's own company's projects for a contractor. anon has no grant |
 | finance_receipts | "receipts: staff read", "receipts: pacc read" and "receipts: contractor read" (031) | authenticated | Every row for staff and PACC; the contractor's own company's projects for a contractor. anon has no grant: the public liquidation (summary and accepted receipts only) is computed by the API with the service role |
-| bidding_rounds, bids | "bidding rounds: staff read" / "bids: staff read", "…: pacc read" and "…: contractor read" (032) | authenticated | Every row for staff and PACC; the rounds and bids of the contractor's own company's projects for a contractor (so a company sees the bidding of the projects it was awarded, every bidder included). anon has no grant: the public abstract of bids is computed by the API with the service role, without ids, notes or anyone's identity, and an open round's bids are not shown |
+| bidding_rounds, bids | "bidding rounds: staff read" / "bids: staff read", "…: pacc read" and "…: contractor read" (032) | authenticated | Every row for staff and PACC; the rounds and bids of the contractor's own company's projects for a contractor (so a company sees the bidding of the projects it was awarded, every bidder included). anon has no grant: the public abstract of bids is computed by the API with the service role, without ids, round notes or anyone's identity (failure reasons and each bid's eligibility note are shown, as in a published Abstract of Bids), and an open round's bids are not shown |
 
 `anon` may also read the `v_public_projects` view. It cannot read any other table or view.
 A signed-in account that is pending or declined is not staff, so it can read only its own profile and the lookup
@@ -865,9 +865,9 @@ write files. It hands out signed links that expire (1 hour by default, `SIGNED_U
 ## Migrations
 
 The migration files are in `database/migrations/`. They are numbered and run in number order, `001` to `032`.
-The live database's migration history lists 001–031 as applied, in that order (019 and 020 on 25 November
+The live database's migration history lists 001–032 as applied, in that order (019 and 020 on 25 November
 2026; 021 and 022 on 27 November 2026, each before the matching API was deployed; 023, 024, 025 and 026 on 27 November
-2026 for the PACC portal; 027 on 27 November 2026 for project deletion requests and the staff-visible PACC case status; 028, the `contractor` role value, on its own on 27 November 2026; 029, contractor accounts, on 28 November 2026; 030, progress rules, on 28 November 2026 at merge time (PR #16); 031, finance liquidation, on 28 November 2026 before its merge). On a fresh database, 023 must be applied on its own before 024, because a new enum value
+2026 for the PACC portal; 027 on 27 November 2026 for project deletion requests and the staff-visible PACC case status; 028, the `contractor` role value, on its own on 27 November 2026; 029, contractor accounts, on 28 November 2026; 030, progress rules, on 28 November 2026 at merge time (PR #16); 031, finance liquidation, on 28 November 2026 before its merge; 032, bidding, on 28 November 2026 before its merge). On a fresh database, 023 must be applied on its own before 024, because a new enum value
 must be committed before it can be used, and 025 must be applied after 024 and before the API that closes cases is
 deployed. Apply 026 after 025 and before deploying the API that writes `pacc_cases.contractor_name`
 (without it, opening or editing a case fails). Apply 027 after 026 and before deploying
@@ -886,8 +886,8 @@ updates of 030 change `projects.updated_at`. Deploy order: 030 → the API → t
 bucket, so it was applied **before its merge** (to the IPMATS project on 28 November 2026); the finance-liquidation API needs it (every finance
 page reads the receipts). Deploy order: 031 → the API → the client.
 032 (bidding) is additive too: it only adds `bidding_rounds`, `bids`, their guard triggers and read policies, and the
-function `award_bidding_round` and the `projects_award_lock` trigger (which acts only on a project with an awarded round, and there is none before the bidding API), which the API before it never touches, so it is applied **before its merge** (by the
-project controller, after review). The bidding API needs it: the project edit reads `bidding_rounds` whenever the
+function `award_bidding_round` and the `projects_award_lock` trigger (which acts only on a project with an awarded round, and there is none before the bidding API), which the API before it never touches, so it was applied **before its merge** (to the
+IPMATS project on 28 November 2026). The bidding API needs it: the project edit reads `bidding_rounds` whenever the
 contractor or contract amount is sent, and the PACC project view reads the rounds. Deploy order: 032 → merge → the
 API → the client.
 
