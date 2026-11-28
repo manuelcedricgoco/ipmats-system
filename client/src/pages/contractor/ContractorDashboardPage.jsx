@@ -9,6 +9,7 @@ import { useAuth } from '../../context/AuthContext.jsx';
 import { useApi } from '../../hooks/useApi.js';
 import { contractorDashboardSummary, contractorEmptyMessage } from '../../lib/contractor.js';
 import { date, pct, todayIso } from '../../lib/format.js';
+import { rowPointsBehind } from '../../lib/progress.js';
 
 /**
  * Contractor dashboard (029): the company's own projects (RLS lets a contractor read nothing else), each with its
@@ -44,7 +45,7 @@ export default function ContractorDashboardPage() {
           <Card className="overflow-hidden">
             <ul className="divide-y divide-slate-100">
               {rows.map((p) => {
-                const gap = Number(p.overall_progress || 0) - Number(p.planned_progress || 0);
+                const gap = -rowPointsBehind(p); // a Completed project is never behind (030)
                 return (
                   <li key={p.id} className="flex flex-col gap-3 px-4 py-4 sm:px-5 lg:flex-row lg:items-center">
                     <div className="min-w-0 flex-1">
@@ -60,7 +61,7 @@ export default function ContractorDashboardPage() {
                     <div className="w-full lg:w-64">
                       {Number(p.phase_count) > 0 ? (
                         <>
-                          <ProgressBar value={p.overall_progress} planned={p.planned_progress} size="sm" />
+                          <ProgressBar value={p.overall_progress} planned={p.planned_progress} status={p.status} size="sm" />
                           <p className={`mt-1 text-xs ${gap < 0 ? 'text-amber-800' : 'text-slate-500'}`}>
                             Planned {pct(p.planned_progress, 2)} · {gap < 0 ? `${Math.abs(gap).toFixed(2)} pts behind` : 'on or ahead of plan'}
                           </p>

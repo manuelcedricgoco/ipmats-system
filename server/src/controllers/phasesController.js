@@ -70,7 +70,7 @@ export async function getPhases(req, res) {
       phases: withActivities(phases, activities),
       overall_progress: overall,
       planned_progress: planned,
-      slippage: computeSlippage(overall, planned),
+      slippage: computeSlippage(overall, planned, project.status),
       completion_verified_at: project.completion_verified_at ?? null,
       completion_label: completionLabel(project),
       locked: Boolean(project.completion_verified_at),

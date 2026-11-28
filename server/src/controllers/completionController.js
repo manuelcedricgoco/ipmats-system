@@ -7,10 +7,12 @@
  * progress becomes 100% and the project is locked (services/completionVerification.js).
  * Auditor decisions are logged in activity_logs, PACC decisions in pacc_activity; the moment the
  * project becomes verified also gets a neutral activity_logs line "Completion verified".
+ * A PACC row names no member (verified_by NULL, verifier_name 'PACC'): the contractor, possibly the
+ * investigated party, reads the history; the member is recorded in pacc_activity only.
  */
 import { adminClient } from '../config/supabase.js';
 import { logActivity, projectCode } from '../services/activityLog.js';
-import { assertCanVerify, currentVerifications, isFullyVerified, verificationState } from '../services/completionVerification.js';
+import { assertCanVerify, currentVerifications, isFullyVerified, verificationState, verifierIdentity } from '../services/completionVerification.js';
 import { logPacc } from '../services/paccActivity.js';
 import { reevaluate } from '../services/projectEvaluation.js';
 import { notFound, unwrap } from '../utils/httpError.js';
@@ -30,7 +32,7 @@ export async function getCompletionVerification(req, res) {
   const project = unwrap(await req.db.from('projects').select(PROJECT_COLS).eq('id', req.params.id).maybeSingle());
   if (!project) throw notFound('Project not found');
   const rows = await loadVerifications(req.db, project.id);
-  res.json({ data: verificationState(project, rows, req.user) });
+  res.json({ data: verificationState(project, rows) });
 }
 
 async function recordVerification(req, res, role) {
@@ -53,8 +55,7 @@ async function recordVerification(req, res, role) {
         verifier_role: role,
         decision,
         note: note || null,
-        verified_by: req.user.id,
-        verifier_name: req.user.profile?.full_name || req.user.email || null,
+        ...verifierIdentity(role, req.user),
       })
       .select(ROW_COLS)
       .single(),
@@ -101,7 +102,7 @@ async function recordVerification(req, res, role) {
     current = unwrap(await adminClient.from('projects').select(PROJECT_COLS).eq('id', id).single());
     rows = await loadVerifications(adminClient, id);
   }
-  res.status(201).json({ data: verificationState(current, rows, req.user, role === 'pacc' ? { pacc_case_open: hasOpenPaccCase } : {}) });
+  res.status(201).json({ data: verificationState(current, rows, role === 'pacc' ? { pacc_case_open: hasOpenPaccCase } : {}) });
 }
 
 export const verifyAsAuditor = (req, res) => recordVerification(req, res, 'auditor');

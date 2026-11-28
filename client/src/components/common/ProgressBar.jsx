@@ -1,10 +1,13 @@
 /**
  * WEEK 2 — progress bar with an optional "planned" marker.
  * Green = on or ahead of plan, amber = up to 10 points behind, red = more than 10 points behind.
+ * `status`: a Completed project is never behind (030: 99% awaiting verification vs a plan of 100%).
  */
-export default function ProgressBar({ value = 0, planned = null, label = true, size = 'md', className = '' }) {
+import { pointsBehind } from '../../lib/progress.js';
+
+export default function ProgressBar({ value = 0, planned = null, status = null, label = true, size = 'md', className = '' }) {
   const v = Math.max(0, Math.min(100, Number(value) || 0));
-  const behind = planned == null ? 0 : Number(planned) - v;
+  const behind = pointsBehind(v, planned, status);
   const tone = planned == null ? 'bg-brand-600' : behind > 10 ? 'bg-red-600' : behind > 0.5 ? 'bg-amber-500' : 'bg-emerald-600';
   const h = size === 'sm' ? 'h-1.5' : 'h-2.5';
   return (

@@ -61,19 +61,30 @@ export function assertCanVerify({ project, role, decision, hasOpenPaccCase = fal
   if (role === 'pacc' && decision === 'verified' && hasOpenPaccCase) throw conflict(PACC_OPEN_CASE_MESSAGE);
 }
 
+/** Name shown for every PACC decision: no PACC member is named in completion_verifications. */
+export const PACC_VERIFIER_NAME = 'PACC';
+
 /**
- * One verification as the caller may see it. A contractor (the party whose work is verified) is
- * not told which PACC member decided: the name and account are left out for PACC rows.
+ * Who a new verification row names. An Auditor row names the auditor. A PACC row names no member
+ * (verified_by NULL, verifier_name 'PACC'; CHECK completion_verifications_pacc_anonymous): the
+ * project's contractor, possibly the investigated party, reads the history. The PACC member is
+ * recorded in pacc_activity only (logPacc).
  */
-function publicRow(row, completedAt, user) {
-  const hideName = user?.role === 'contractor' && row.verifier_role === 'pacc';
+export function verifierIdentity(role, user) {
+  if (role === 'pacc') return { verified_by: null, verifier_name: PACC_VERIFIER_NAME };
+  return { verified_by: user?.id ?? null, verifier_name: user?.profile?.full_name || user?.email || null };
+}
+
+/** One verification as the API returns it (PACC rows already name no member). */
+function publicRow(row, completedAt) {
+  const pacc = row.verifier_role === 'pacc';
   return {
     id: row.id,
     verifier_role: row.verifier_role,
     decision: row.decision,
     note: row.note ?? null,
-    verifier_name: hideName ? null : row.verifier_name ?? null,
-    verified_by: hideName ? null : row.verified_by ?? null,
+    verifier_name: pacc ? PACC_VERIFIER_NAME : row.verifier_name ?? null,
+    verified_by: pacc ? null : row.verified_by ?? null,
     created_at: row.created_at,
     counts: countsFor(row, completedAt),
   };
@@ -86,7 +97,7 @@ function publicRow(row, completedAt, user) {
  *     history }        (every decision, newest first; `counts` = made after completed_at)
  * `extra` adds caller-specific fields (the PACC view adds pacc_case_open).
  */
-export function verificationState(project, rows = [], user = null, extra = {}) {
+export function verificationState(project, rows = [], extra = {}) {
   const isCompleted = project.status === 'completed';
   const completedAt = isCompleted ? project.completed_at ?? null : null;
   const current = isCompleted ? currentVerifications(rows, completedAt) : { auditor: null, pacc: null };
@@ -100,9 +111,9 @@ export function verificationState(project, rows = [], user = null, extra = {}) {
     is_completed: isCompleted,
     is_verified: Boolean(project.completion_verified_at),
     label: isCompleted ? (project.completion_verified_at ? COMPLETED_VERIFIED_LABEL : COMPLETED_AWAITING_LABEL) : null,
-    auditor: current.auditor ? publicRow(current.auditor, completedAt, user) : null,
-    pacc: current.pacc ? publicRow(current.pacc, completedAt, user) : null,
-    history: sorted.map((r) => ({ ...publicRow(r, completedAt, user), counts: counting(r) })),
+    auditor: current.auditor ? publicRow(current.auditor, completedAt) : null,
+    pacc: current.pacc ? publicRow(current.pacc, completedAt) : null,
+    history: sorted.map((r) => ({ ...publicRow(r, completedAt), counts: counting(r) })),
     ...extra,
   };
 }

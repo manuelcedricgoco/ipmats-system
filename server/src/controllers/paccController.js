@@ -186,7 +186,7 @@ export async function projectView(req, res) {
   res.json({
     data: {
       project: { ...project, completion_label: completionLabel(project) },
-      completion_verification: verificationState(project, verifications, req.user, { pacc_case_open: paccCaseOpen }),
+      completion_verification: verificationState(project, verifications, { pacc_case_open: paccCaseOpen }),
       reports,
       flag_history: history,
       flag_reviews: reviews.map(({ auditor, ...r }) => ({ ...r, auditor_name: auditor?.full_name ?? null })),

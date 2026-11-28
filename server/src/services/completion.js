@@ -92,8 +92,21 @@ export function computePlannedProgress(project, phases = [], todayInput = new Da
   return round2(clamp(linearPlanned(project.notice_to_proceed, project.target_completion_date, today) ?? 0));
 }
 
-/** Slippage = actual − planned (negative = behind schedule). */
-export const computeSlippage = (actual, planned) => round2(Number(actual) - Number(planned));
+/**
+ * Slippage = actual − planned (negative = behind schedule). A Completed project has no slippage
+ * (030: awaiting verification it stores 99% against a plan of 100%, which is not "behind").
+ */
+export const computeSlippage = (actual, planned, status = null) => (status === 'completed' ? 0 : round2(Number(actual) - Number(planned)));
+
+/**
+ * Points behind schedule from a stored project row: planned_progress − overall_progress
+ * (positive = behind), 0 for a Completed project (030). Used wherever slippage is derived from
+ * the stored values (dashboard, audit PDF).
+ */
+export function behindSchedule(row) {
+  if (row?.status === 'completed') return 0;
+  return round2(Number(row?.planned_progress || 0) - Number(row?.overall_progress || 0));
+}
 
 /** Default phases per project type, used when setting up a plan. Weights total 100. */
 const PHASE_TEMPLATES = {

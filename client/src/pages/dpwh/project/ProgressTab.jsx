@@ -139,7 +139,7 @@ export default function ProgressTab() {
                 <td className="px-4 py-3">Overall</td>
                 <td className="px-4 py-3 text-right tabular-nums">{pct(d.phases.reduce((s, x) => s + Number(x.weight), 0), 0)}</td>
                 <td colSpan={2} />
-                <td className="px-4 py-3"><ProgressBar value={d.overall_progress} planned={d.planned_progress} /></td>
+                <td className="px-4 py-3"><ProgressBar value={d.overall_progress} planned={d.planned_progress} status={project?.status} /></td>
                 <td className="px-4 py-3 text-right tabular-nums">{pct(d.overall_progress, 2)}</td>
               </tr>
             </tfoot>

@@ -8,8 +8,10 @@ import request from 'supertest';
 import {
   COMPLETED_AWAITING_LABEL,
   COMPLETED_VERIFIED_LABEL,
+  behindSchedule,
   completionLabel,
   computeActivityProgress,
+  computeSlippage,
   officialProgress,
 } from '../services/completion.js';
 import {
@@ -21,7 +23,9 @@ import {
   assertNotLocked,
   currentVerifications,
   isFullyVerified,
+  PACC_VERIFIER_NAME,
   verificationState,
+  verifierIdentity,
 } from '../services/completionVerification.js';
 import { evaluateProject } from '../services/flagDetection.js';
 import { completionTimestamps } from '../services/projectEvaluation.js';
@@ -33,7 +37,6 @@ import { errorHandler } from '../middleware/errorHandler.js';
 const ID = '9f343767-8d98-5863-903c-3bc97288d015';
 const A1 = 'aaaaaaaa-0000-4000-8000-000000000001';
 const A2 = 'aaaaaaaa-0000-4000-8000-000000000002';
-const COMPANY = 'cccccccc-0000-4000-8000-000000000001';
 const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0x10, 0x4a, 0x46, 0x49, 0x46, 0, 1]);
 const PDF = Buffer.from('%PDF-1.4 not a photo');
 const messages = (problems) => problems.map((p) => p.message).join(' | ');
@@ -120,6 +123,30 @@ describe('officialProgress', () => {
     for (const f of ['../controllers/reportsController.js', '../services/report.js']) {
       const src = readFileSync(new URL(f, import.meta.url), 'utf8');
       assert.doesNotMatch(src, /computeOverallProgress|detectCompletion/, f);
+    }
+  });
+});
+
+describe('slippage of a Completed project is 0', () => {
+  it('computeSlippage (actual − planned) is 0 when Completed', () => {
+    assert.equal(computeSlippage(99, 100, 'completed'), 0);
+    assert.equal(computeSlippage(40, 50, 'ongoing'), -10);
+    assert.equal(computeSlippage(40, 50), -10);
+  });
+  it('behindSchedule (planned − overall from a stored row) is 0 when Completed', () => {
+    assert.equal(behindSchedule({ status: 'completed', overall_progress: 99, planned_progress: 100 }), 0);
+    assert.equal(behindSchedule({ status: 'delayed', overall_progress: 40.5, planned_progress: 60 }), 19.5);
+    assert.equal(behindSchedule({ status: 'ongoing', overall_progress: 80, planned_progress: 70 }), -10);
+    assert.equal(behindSchedule(null), 0);
+  });
+  it('is used by the phases view, the dashboard and the audit PDF', () => {
+    const read = (f) => readFileSync(new URL(f, import.meta.url), 'utf8');
+    assert.match(read('../controllers/phasesController.js'), /slippage: computeSlippage\(overall, planned, project\.status\)/);
+    assert.match(read('../controllers/dashboardController.js'), /slippage: behindSchedule\(r\)/);
+    assert.match(read('../services/report.js'), /const slip = behindSchedule\(p\);/);
+    // no other planned − overall computation is left on the server
+    for (const f of ['../controllers/dashboardController.js', '../services/report.js', '../controllers/reportsController.js', '../controllers/mapController.js', '../controllers/flagsController.js']) {
+      assert.doesNotMatch(read(f), /planned_progress\) - Number\(r\.overall_progress|planned - actual/, f);
     }
   });
 });
@@ -246,37 +273,52 @@ describe('assertCanVerify', () => {
 describe('verificationState', () => {
   const project = { id: ID, status: 'completed', completed_at: '2026-11-20T00:00:00Z', completion_verified_at: null };
   const rows = [
-    { id: 'v1', verifier_role: 'pacc', decision: 'not_yet', note: 'Site visit pending', verified_by: 'p1', verifier_name: 'PACC Member', created_at: '2026-11-21T00:00:00Z' },
+    { id: 'v1', verifier_role: 'pacc', decision: 'not_yet', note: 'Site visit pending', verified_by: null, verifier_name: 'PACC', created_at: '2026-11-21T00:00:00Z' },
     { id: 'v0', verifier_role: 'auditor', decision: 'verified', note: null, verified_by: 'a1', verifier_name: 'Auditor A', created_at: '2026-11-19T00:00:00Z' },
   ];
   it('current decisions, the label and the history (newest first, with whether each counts)', () => {
-    const s = verificationState(project, rows, user('auditor'));
+    const s = verificationState(project, rows);
     assert.equal(s.label, COMPLETED_AWAITING_LABEL);
     assert.equal(s.is_verified, false);
     assert.equal(s.auditor, null); // made before completed_at
     assert.equal(s.pacc.decision, 'not_yet');
     assert.deepEqual(s.history.map((h) => [h.id, h.counts]), [['v1', true], ['v0', false]]);
-    assert.equal(s.history[0].verifier_name, 'PACC Member');
-  });
-  it("a contractor is not told which PACC member decided (the decision and reason stay)", () => {
-    const s = verificationState(project, rows, user('contractor', { contractor_id: COMPANY }));
-    assert.equal(s.pacc.verifier_name, null);
-    assert.equal(s.pacc.verified_by, null);
-    assert.equal(s.pacc.note, 'Site visit pending');
+    assert.equal(s.history[0].verifier_name, 'PACC');
     assert.equal(s.history[1].verifier_name, 'Auditor A');
+    assert.equal(s.history[1].verified_by, 'a1');
     assert.equal('pacc_case_open' in s, false);
   });
+  it('a PACC decision never names the PACC member, for anyone (the decision and reason stay)', () => {
+    // even a row written before the rule (or by hand) is answered without the member
+    const s = verificationState(project, [{ ...rows[0], verified_by: 'p1', verifier_name: 'PACC Member' }, rows[1]]);
+    assert.equal(s.pacc.verifier_name, 'PACC');
+    assert.equal(s.pacc.verified_by, null);
+    assert.equal(s.pacc.note, 'Site visit pending');
+  });
   it('not Completed: no label and nothing counts', () => {
-    const s = verificationState({ ...project, status: 'ongoing', completed_at: null }, rows, user('auditor'));
+    const s = verificationState({ ...project, status: 'ongoing', completed_at: null }, rows);
     assert.equal(s.label, null);
     assert.equal(s.pacc, null);
     assert.ok(s.history.every((h) => h.counts === false));
   });
   it('verified', () => {
-    const s = verificationState({ ...project, completion_verified_at: '2026-11-22T00:00:00Z' }, [], user('pacc'), { pacc_case_open: false });
+    const s = verificationState({ ...project, completion_verified_at: '2026-11-22T00:00:00Z' }, [], { pacc_case_open: false });
     assert.equal(s.label, COMPLETED_VERIFIED_LABEL);
     assert.equal(s.is_verified, true);
     assert.equal(s.pacc_case_open, false);
+  });
+});
+
+describe('verifierIdentity', () => {
+  it('an Auditor row names the auditor', () => {
+    assert.deepEqual(verifierIdentity('auditor', user('auditor')), { verified_by: 'auditor-id', verifier_name: 'Ana Cruz' });
+  });
+  it("a PACC row names no member: verified_by NULL, verifier_name 'PACC' (the member goes to pacc_activity only)", () => {
+    assert.equal(PACC_VERIFIER_NAME, 'PACC');
+    assert.deepEqual(verifierIdentity('pacc', user('pacc')), { verified_by: null, verifier_name: 'PACC' });
+    const src = readFileSync(new URL('../controllers/completionController.js', import.meta.url), 'utf8');
+    assert.match(src, /\.\.\.verifierIdentity\(role, req\.user\),/);
+    assert.doesNotMatch(src, /verified_by: req\.user\.id/);
   });
 });
 
@@ -570,6 +612,7 @@ describe('migration 030', () => {
     assert.match(code, /verifier_role text not null check \(verifier_role in \('auditor', 'pacc'\)\)/);
     assert.match(code, /decision\s+text not null check \(decision in \('verified', 'not_yet'\)\)/);
     assert.match(code, /check \(decision <> 'not_yet' or coalesce\(char_length\(note\), 0\) >= 5\)/);
+    assert.match(code, /constraint completion_verifications_pacc_anonymous check \(verifier_role <> 'pacc' or \(verified_by is null and verifier_name = 'PACC'\)\)/);
   });
   it('adds the report and project columns', () => {
     assert.match(code, /add column if not exists description text,\s+add column if not exists activity_snapshot jsonb not null default '\[\]'::jsonb;/);

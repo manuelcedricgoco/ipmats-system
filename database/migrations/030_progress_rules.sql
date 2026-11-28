@@ -23,7 +23,8 @@
 --                             verification"); after it, 100% ("Completed – verified") and the
 --                             project's progress, phase plan and 360° photos are locked (API).
 --   completion_verifications  Every Auditor / PACC decision on a completion ('verified', or
---                             'not_yet' with a reason). Append-only.
+--                             'not_yet' with a reason). Append-only. A PACC row names no member
+--                             (verified_by NULL, verifier_name 'PACC'): the contractor reads it.
 --
 -- Access (read only; writes go through the API, as everywhere else):
 --   * phase_activities, progress_photos and completion_verifications: staff
@@ -121,10 +122,13 @@ create table if not exists public.completion_verifications (
   verifier_role text not null check (verifier_role in ('auditor', 'pacc')),
   decision      text not null check (decision in ('verified', 'not_yet')),
   note          text check (char_length(note) <= 500),
-  verified_by   uuid references public.profiles (id) on delete set null,
-  verifier_name text,                                -- copied, so the history stays readable
+  verified_by   uuid references public.profiles (id) on delete set null,  -- the auditor; NULL for PACC
+  verifier_name text,                                -- the auditor's name, copied; 'PACC' for PACC
   created_at    timestamptz not null default now(),
-  constraint completion_verifications_not_yet_note check (decision <> 'not_yet' or coalesce(char_length(note), 0) >= 5)
+  constraint completion_verifications_not_yet_note check (decision <> 'not_yet' or coalesce(char_length(note), 0) >= 5),
+  -- A PACC decision names no PACC member: the project's contractor (possibly the investigated
+  -- party) reads this history. The member is recorded in pacc_activity only.
+  constraint completion_verifications_pacc_anonymous check (verifier_role <> 'pacc' or (verified_by is null and verifier_name = 'PACC'))
 );
 comment on table public.completion_verifications is
   'Auditor and PACC decisions on a project''s completion (verified, or not yet with a reason). Append-only. Readable by staff, PACC and the project''s contractor; never by anon.';
