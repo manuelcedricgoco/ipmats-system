@@ -178,7 +178,7 @@ describe('presenting a deletion request', () => {
   it('flattens the names and computes expired', () => {
     const row = {
       id: 'r1', status: 'approved', approval_expires_at: new Date(NOW.getTime() - 1000).toISOString(),
-      requester: { full_name: 'Ana Cruz' }, decider: { full_name: 'Admin Reyes' }, project: { pacc_case_status: 'case_filed' },
+      requester: { full_name: 'Ana Cruz' }, decider: { full_name: 'Admin Reyes' }, project: { pacc_status: { case_status: 'case_filed' } },
     };
     const out = dr.presentRequest(row, NOW);
     assert.equal(out.requested_by_name, 'Ana Cruz');
@@ -186,6 +186,12 @@ describe('presenting a deletion request', () => {
     assert.equal(out.pacc_case_status, 'case_filed');
     assert.equal(out.expired, true);
     assert.equal('requester' in out || 'decider' in out || 'project' in out, false);
+  });
+  it('reads the PACC case status from project_pacc_status (029), as an object or a one-item list', () => {
+    assert.equal(dr.presentRequest({ status: 'pending', project: { pacc_status: [{ case_status: 'under_investigation' }] } }, NOW).pacc_case_status, 'under_investigation');
+    assert.equal(dr.presentRequest({ status: 'pending', project: { pacc_status: [] } }, NOW).pacc_case_status, null);
+    assert.equal(dr.presentRequest({ status: 'pending', project: { pacc_status: null } }, NOW).pacc_case_status, null);
+    assert.equal(dr.presentRequest({ status: 'pending', project: null }, NOW).pacc_case_status, null);
   });
   it('an unexpired approval and a pending request are not expired; a request marked expired is', () => {
     assert.equal(dr.presentRequest({ status: 'approved', approval_expires_at: new Date(NOW.getTime() + DAY).toISOString() }, NOW).expired, false);

@@ -12,6 +12,7 @@ import { useAuth } from '../../../context/AuthContext.jsx';
 import { useToast } from '../../../context/ToastContext.jsx';
 import { useApi } from '../../../hooks/useApi.js';
 import { api } from '../../../lib/api.js';
+import { byLabel } from '../../../lib/contractor.js';
 import { date, dateTime, todayIso } from '../../../lib/format.js';
 import { isNetworkError, queueUpload } from '../../../lib/offlineUploads.js';
 
@@ -45,12 +46,14 @@ function Checks({ img }) {
 /**
  * WEEK 3 — 360° image upload and Pannellum viewer (Tracy Ann Milaflores, front-end).
  * Shows the site photos of one project in an interactive 360° viewer, lets DPWH personnel
- * upload new ones, and shows the GPS / timestamp checks made by the server.
+ * and the project's contractor (029) upload new ones, and shows the GPS / timestamp checks made by the server.
  * Every uploaded photo is shown on the public portal at once (no approval step); with no connection a photo is
  * saved on the device and uploaded later (lib/offlineUploads.js).
  */
 export default function ImagesTab() {
-  const { project, reloadProject, canEdit, canDelete } = useOutletContext();
+  // canReport: upload (DPWH Personnel and the project's contractor, 029); canEdit: the final mark (Personnel);
+  // canDelete: delete (System Administrator).
+  const { project, reloadProject, canEdit, canDelete, canReport, canConfirmCompletion } = useOutletContext();
   const toast = useToast();
   const images = useApi(`/projects/${project.id}/images`, undefined, { select: (r) => r.data });
   const phases = useApi(`/projects/${project.id}/phases`, undefined, { select: (r) => r.data.phases });
@@ -95,6 +98,7 @@ export default function ImagesTab() {
       onClose={() => setUploading(false)}
       project={project}
       phases={phases.data || []}
+      canConfirmCompletion={canConfirmCompletion}
       onDone={(msg) => {
         setUploading(false);
         changed(msg);
@@ -108,7 +112,7 @@ export default function ImagesTab() {
         <EmptyState
           title="No 360° images yet"
           description="Projects without panoramic site photos are flagged Yellow automatically."
-          action={canEdit && <Button icon={Upload} onClick={() => setUploading(true)}>Upload a 360° image</Button>}
+          action={canReport && <Button icon={Upload} onClick={() => setUploading(true)}>Upload a 360° image</Button>}
         />
         {uploadModal}
       </>
@@ -128,7 +132,7 @@ export default function ImagesTab() {
                   Compare two dates
                 </Button>
               )}
-              {canEdit && <Button size="sm" icon={Upload} onClick={() => setUploading(true)}>Upload 360° image</Button>}
+              {canReport && <Button size="sm" icon={Upload} onClick={() => setUploading(true)}>Upload 360° image</Button>}
             </>
           }
         />
@@ -169,7 +173,7 @@ export default function ImagesTab() {
                   </div>
                   {img.phase_name && <p className="text-xs text-slate-600">{img.phase_name}</p>}
                   <Checks img={img} />
-                  <p className="mt-1 text-[11px] text-slate-400">Uploaded by {img.uploaded_by_name || '—'}</p>
+                  <p className="mt-1 text-[11px] text-slate-400">Uploaded by {byLabel(img.uploaded_by_name, img.uploaded_by_role)}</p>
                 </button>
                 {(canEdit || canDelete) && (
                   <div className="mt-2 flex flex-wrap gap-3 border-t border-slate-100 pt-2">
@@ -195,8 +199,11 @@ export default function ImagesTab() {
   );
 }
 
-/** Upload one 360° panorama. The server validates GPS + timestamp, stores it and re-evaluates the flag. */
-function UploadModal({ open, onClose, project, phases, onDone }) {
+/**
+ * Upload one 360° panorama. The server validates GPS + timestamp, stores it and re-evaluates the flag.
+ * The "final as-built" mark is for DPWH Personnel only (canConfirmCompletion): a contractor's upload never carries it.
+ */
+function UploadModal({ open, onClose, project, phases, canConfirmCompletion = false, onDone }) {
   const { profile } = useAuth();
   const [file, setFile] = useState(null);
   const [form, setForm] = useState({});
@@ -215,8 +222,8 @@ function UploadModal({ open, onClose, project, phases, onDone }) {
     setResult(null);
     setQueued(false);
     const currentPhase = phases.find((ph) => Number(ph.accomplishment) < 100) || phases.at(-1);
-    setForm({ inspection_date: todayIso(), phase_id: currentPhase?.id || '', latitude: '', longitude: '', caption: '', is_final: false });
-  }, [open, phases]);
+    setForm({ inspection_date: todayIso(), phase_id: currentPhase?.id || '', latitude: '', longitude: '', caption: '', ...(canConfirmCompletion ? { is_final: false } : {}) });
+  }, [open, phases, canConfirmCompletion]);
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }));
   const useMyLocation = () => {
@@ -345,12 +352,14 @@ function UploadModal({ open, onClose, project, phases, onDone }) {
           </div>
           <Button variant="ghost" size="sm" icon={Crosshair} onClick={useMyLocation} loading={locating}>Use my current location</Button>
           <Field label="Caption">{(a) => <Input {...a} value={form.caption || ''} onChange={set('caption')} maxLength={300} placeholder="e.g. Station 0+250, facing north" />}</Field>
-          <Checkbox
-            label="Final as-built 360° image"
-            description="Needed (with every phase at 100% and an actual completion date) for the project to count as Completed."
-            checked={Boolean(form.is_final)}
-            onChange={set('is_final')}
-          />
+          {canConfirmCompletion && (
+            <Checkbox
+              label="Final as-built 360° image"
+              description="Needed (with every phase at 100% and an actual completion date) for the project to count as Completed."
+              checked={Boolean(form.is_final)}
+              onChange={set('is_final')}
+            />
+          )}
         </form>
       )}
     </Modal>

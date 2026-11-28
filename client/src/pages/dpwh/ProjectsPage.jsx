@@ -15,6 +15,7 @@ import { useApi } from '../../hooks/useApi.js';
 import { useDebounce } from '../../hooks/useDebounce.js';
 import { useReference } from '../../hooks/useReference.js';
 import { PROJECT_TYPES } from '../../lib/constants.js';
+import { CONTRACTOR_NO_PROJECTS, projectPermissions } from '../../lib/contractor.js';
 import { date, pesoCompact } from '../../lib/format.js';
 
 const KEYS = ['municipality_id', 'barangay_id', 'agency_id', 'contractor_id', 'status', 'type'];
@@ -23,10 +24,11 @@ const KEYS = ['municipality_id', 'barangay_id', 'agency_id', 'contractor_id', 's
  * WEEK 1 — Project list (Tracy Ann Milaflores, front-end).
  * Shows each project's budget, contract amount, implementing office, contractor
  * and duration, with search, filters, sorting and pagination (GET /api/projects).
+ * 029: a contractor account sees "My projects", its own company's projects only (RLS), without the PACC chip.
  */
 export default function ProjectsPage() {
-  const { hasRole } = useAuth();
-  const canEdit = hasRole('dpwh_personnel'); // only DPWH Personnel register projects (027)
+  const { role, profile } = useAuth();
+  const { canEdit, showPacc, isContractor: contractor } = projectPermissions(role); // only DPWH Personnel register projects (027)
   const [params, setParams] = useSearchParams();
   const { ref } = useReference();
   const [search, setSearch] = useState(params.get('search') || '');
@@ -47,9 +49,13 @@ export default function ProjectsPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Project Management"
-        title="Infrastructure projects"
-        description="Registered projects with their implementing office, contractor, approved budget, contract amount and duration."
+        eyebrow={contractor ? 'My projects' : 'Project Management'}
+        title={contractor ? profile?.contractor?.name || 'Your company’s projects' : 'Infrastructure projects'}
+        description={
+          contractor
+            ? 'Your company’s projects. Open one to submit a progress report or upload 360° photos.'
+            : 'Registered projects with their implementing office, contractor, approved budget, contract amount and duration.'
+        }
         actions={canEdit && <Button icon={Plus} to="/app/projects/new">Register project</Button>}
       />
       <div className="space-y-4">
@@ -90,14 +96,22 @@ export default function ProjectsPage() {
             {showFilters ? 'Hide filters' : `Filters${Object.keys(filters).length ? ` (${Object.keys(filters).length})` : ''}`}
           </button>
           <div className={`mt-4 border-t border-slate-100 pt-4 ${showFilters ? '' : 'hidden md:block'}`}>
-            <ProjectFilters reference={ref} filters={filters} onChange={(f) => setQuery({ ...f, search, sort })} />
+            <ProjectFilters reference={ref} filters={filters} onChange={(f) => setQuery({ ...f, search, sort })} showContractor={!contractor} />
           </div>
         </Card>
 
         {loading && !data && <PageLoader label="Loading projects…" withHeader={false} />}
         {error && <ErrorState error={error} onRetry={reload} />}
         {data && data.data.length === 0 && (
-          <EmptyState title="No projects found" description="Try a different search or clear the filters." action={canEdit ? <Button icon={Plus} to="/app/projects/new">Register a project</Button> : null} />
+          <EmptyState
+            title="No projects found"
+            description={
+              contractor && !Object.keys(filters).length && !debounced
+                ? CONTRACTOR_NO_PROJECTS
+                : 'Try a different search or clear the filters.'
+            }
+            action={canEdit ? <Button icon={Plus} to="/app/projects/new">Register a project</Button> : null}
+          />
         )}
 
         {data && data.data.length > 0 && (
@@ -141,7 +155,7 @@ export default function ProjectsPage() {
                         <span className="mt-0.5 block text-xs text-slate-500">{p.target_completion_date ? `until ${date(p.target_completion_date)}` : 'No target date'}</span>
                       </td>
                       <td className="px-4 py-3">
-                        <div className="flex flex-wrap gap-1"><FlagBadge flag={p.current_flag} size="sm" /><StatusBadge status={p.status} /><PaccCaseChip status={p.pacc_case_status} size="sm" /></div>
+                        <div className="flex flex-wrap gap-1"><FlagBadge flag={p.current_flag} size="sm" /><StatusBadge status={p.status} />{showPacc && <PaccCaseChip status={p.pacc_case_status} size="sm" />}</div>
                         {Number(p.phase_count) > 0 ? <ProgressBar value={p.overall_progress} size="sm" className="mt-2" /> : <span className="mt-1 block text-[11px] text-slate-400">No phases yet</span>}
                       </td>
                       <td className="px-4 py-3 text-right">
@@ -162,7 +176,7 @@ export default function ProjectsPage() {
                       <p className="font-semibold text-slate-900">{p.name}</p>
                       <div className="flex shrink-0 gap-1"><FlagBadge flag={p.current_flag} size="sm" /><StatusBadge status={p.status} /></div>
                     </div>
-                    {p.pacc_case_status && <PaccCaseChip status={p.pacc_case_status} size="sm" />}
+                    {showPacc && p.pacc_case_status && <PaccCaseChip status={p.pacc_case_status} size="sm" />}
                     <p className="text-xs text-slate-500"><span className="font-mono">{p.project_code}</span> · {p.municipality_name} · {p.duration_days ? `${p.duration_days} days` : 'no duration'}</p>
                     <p className="text-xs text-slate-600">{p.contractor_name || 'Not yet awarded'} · ABC {pesoCompact(p.approved_budget)} · Contract {pesoCompact(p.contract_amount)}</p>
                     {Number(p.phase_count) > 0 && <ProgressBar value={p.overall_progress} size="sm" />}

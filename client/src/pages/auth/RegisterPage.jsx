@@ -1,11 +1,13 @@
-import { ClipboardCheck, HardHat, MailCheck, UserPlus } from 'lucide-react';
+import { Building2, ClipboardCheck, HardHat, MailCheck, UserPlus } from 'lucide-react';
 import { useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import Button from '../../components/common/Button.jsx';
 import { Alert } from '../../components/common/Feedback.jsx';
 import { Field, Input, Select, PasswordInput } from '../../components/common/Form.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
+import { useApi } from '../../hooks/useApi.js';
 import { useReference } from '../../hooks/useReference.js';
+import { isContractor } from '../../lib/contractor.js';
 import AuthShell from './AuthShell.jsx';
 import PhotoPicker from '../../components/common/PhotoPicker.jsx';
 import { savePendingAvatar } from '../../lib/pendingAvatar.js';
@@ -13,11 +15,13 @@ import { savePendingAvatar } from '../../lib/pendingAvatar.js';
 const ACCESS = [
   { value: 'dpwh_personnel', label: 'DPWH Personnel', icon: HardHat, hint: 'Register projects and submit progress. Needs administrator approval.' },
   { value: 'auditor', label: 'Auditor', icon: ClipboardCheck, hint: 'Review project records. Needs administrator approval.' },
+  // 029: a contractor company's representative reports progress and uploads photos on its company's projects only.
+  { value: 'contractor', label: 'Contractor representative', icon: Building2, hint: "Report progress and upload photos on your company's projects. Needs administrator approval." },
 ];
 
 /**
  * WEEK 1 — Register page (Jonalyn Pagilagan, front-end).
- * Only DPWH Personnel and Auditors register (the public portal needs no account). Every
+ * DPWH Personnel, Auditors and (029) contractor representatives register (the public portal needs no account). Every
  * registration is a request: the account has no role and can only browse the public portal
  * until the System Administrator approves it. The database never grants a role from the
  * sign-up form (trigger handle_new_user, migration 017).
@@ -25,7 +29,10 @@ const ACCESS = [
 export default function RegisterPage() {
   const { signUp, isAuthenticated } = useAuth();
   const { ref } = useReference();
-  const [form, setForm] = useState({ full_name: '', email: '', requested_role: 'dpwh_personnel', agency_id: '', position: '', password: '', confirm: '' });
+  const [form, setForm] = useState({ full_name: '', email: '', requested_role: 'dpwh_personnel', agency_id: '', position: '', contractor_id: '', contractor_license: '', password: '', confirm: '' });
+  const contractor = isContractor(form.requested_role);
+  // Active contractor companies, id and name only (GET /reference/contractors, open to everyone).
+  const companies = useApi('/reference/contractors', undefined, { enabled: contractor, select: (r) => r.data });
   const [error, setError] = useState(null);
   const [done, setDone] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -48,6 +55,8 @@ export default function RegisterPage() {
         requested_role: form.requested_role,
         agency_id: form.agency_id,
         position: form.position.trim(),
+        contractor_id: form.contractor_id,
+        contractor_license: form.contractor_license,
       });
       // Kept on this device; uploaded automatically the first time the person signs in.
       if (photo && res.userId) await savePendingAvatar(res.userId, photo);
@@ -62,8 +71,8 @@ export default function RegisterPage() {
   return (
     <AuthShell
       wide
-      title="Request a staff account"
-      subtitle="For DPWH personnel and auditors. Browsing the public portal needs no account. Your access starts once the System Administrator approves it."
+      title="Request an account"
+      subtitle="For DPWH personnel, auditors and contractor representatives. Browsing the public portal needs no account. Your access starts once the System Administrator approves it."
     >
       {done ? (
         <div className="animate-scale-in rounded-lg border border-emerald-200 bg-emerald-50 p-5 text-sm text-emerald-900">
@@ -85,7 +94,7 @@ export default function RegisterPage() {
           </Field>
           <fieldset className="sm:col-span-2">
             <legend className="mb-2 text-sm font-medium text-slate-700">Account type <span className="text-red-600">*</span></legend>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2" role="radiogroup">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3" role="radiogroup">
               {ACCESS.map(({ value, label, icon: Icon, hint }) => {
                 const active = form.requested_role === value;
                 return (
@@ -105,20 +114,40 @@ export default function RegisterPage() {
               })}
             </div>
           </fieldset>
-          <Field label="Office" required>
-            {(a) => (
-              <Select {...a} value={form.agency_id} onChange={set('agency_id')} required>
-                <option value="">Select your office</option>
-                {ref?.agencies.map((x) => (
-                  <option key={x.id} value={x.id}>
-                    {x.name}
-                  </option>
-                ))}
-              </Select>
-            )}
-          </Field>
+          {contractor ? (
+            <>
+              <Field label="Contractor company" required hint="The company you represent. Not listed? Ask the DPWH office to register it first." error={companies.error ? 'The company list could not be loaded. Try again later.' : undefined}>
+                {(a) => (
+                  <Select {...a} value={form.contractor_id} onChange={set('contractor_id')} required disabled={companies.loading}>
+                    <option value="">{companies.loading ? 'Loading companies…' : 'Select your company'}</option>
+                    {(companies.data || []).map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </Field>
+              <Field label="Company's PCAB licence number" required hint="The System Administrator checks it against the company's record.">
+                {(a) => <Input {...a} value={form.contractor_license} onChange={set('contractor_license')} required maxLength={50} autoComplete="off" />}
+              </Field>
+            </>
+          ) : (
+            <Field label="Office" required>
+              {(a) => (
+                <Select {...a} value={form.agency_id} onChange={set('agency_id')} required>
+                  <option value="">Select your office</option>
+                  {ref?.agencies.map((x) => (
+                    <option key={x.id} value={x.id}>
+                      {x.name}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
+          )}
           <Field label="Position / designation">
-            {(a) => <Input {...a} value={form.position} onChange={set('position')} placeholder="e.g. Project Engineer II" maxLength={120} />}
+            {(a) => <Input {...a} value={form.position} onChange={set('position')} placeholder={contractor ? 'e.g. Project Manager' : 'e.g. Project Engineer II'} maxLength={120} />}
           </Field>
           <div className="sm:col-span-2 rounded-lg border border-slate-200 bg-slate-50/60 p-4">
             <p className="mb-3 text-sm font-medium text-slate-700">Profile photo <span className="font-normal text-slate-500">(optional)</span></p>

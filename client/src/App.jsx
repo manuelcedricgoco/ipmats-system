@@ -1,6 +1,9 @@
 import { lazy, Suspense } from 'react';
 import { Navigate, Route, Routes, useParams } from 'react-router-dom';
 import { PageLoader } from './components/common/Feedback.jsx';
+import { useAuth } from './context/AuthContext.jsx';
+import { STAFF_ROLES, WORKSPACE_ROLES } from './lib/constants.js';
+import { isContractor } from './lib/contractor.js';
 import AppLayout from './components/layout/AppLayout.jsx';
 import PaccLayout from './components/layout/PaccLayout.jsx';
 import PublicLayout from './components/layout/PublicLayout.jsx';
@@ -44,6 +47,8 @@ const AgenciesPage = lazy(() => import('./pages/dpwh/AgenciesPage.jsx'));
 const UsersPage = lazy(() => import('./pages/admin/UsersPage.jsx'));
 const DeletionRequestsPage = lazy(() => import('./pages/admin/DeletionRequestsPage.jsx'));
 const AccountPage = lazy(() => import('./pages/shared/AccountPage.jsx'));
+// Contractor accounts (029): own company's projects only
+const ContractorDashboardPage = lazy(() => import('./pages/contractor/ContractorDashboardPage.jsx'));
 // PACC portal (Presidential Anti-Corruption Commission)
 const PaccInboxPage = lazy(() => import('./pages/pacc/PaccInboxPage.jsx'));
 const PaccProjectPage = lazy(() => import('./pages/pacc/PaccProjectPage.jsx'));
@@ -52,7 +57,7 @@ const PaccCasePage = lazy(() => import('./pages/pacc/PaccCasePage.jsx'));
 const PaccMembersPage = lazy(() => import('./pages/pacc/PaccMembersPage.jsx'));
 const PaccActivityPage = lazy(() => import('./pages/pacc/PaccActivityPage.jsx'));
 
-const STAFF = ['admin', 'dpwh_personnel', 'auditor'];
+const STAFF = STAFF_ROLES;
 // Only DPWH Personnel register and edit projects (027); the Admin keeps the deletes.
 const EDITORS = ['dpwh_personnel'];
 
@@ -81,14 +86,12 @@ export default function App() {
         <Route path="/account-pending" element={<AccountPendingPage />} />
         <Route path="/set-password" element={<SetPasswordPage />} />
 
-        <Route path="/app" element={<ProtectedRoute roles={STAFF} />}>
+        {/* Staff workspace; contractor accounts (029) use it too, on the pages lib/contractor.js canOpenWorkspacePath allows. */}
+        <Route path="/app" element={<ProtectedRoute roles={WORKSPACE_ROLES} />}>
           <Route element={<AppLayout />}>
-            <Route index element={<DashboardPage />} />
+            <Route index element={<WorkspaceHome />} />
+            {/* Open to contractors: the project list and page (own company's projects only) and My account */}
             <Route path="projects" element={<ProjectsPage />} />
-            <Route element={<ProtectedRoute roles={EDITORS} />}>
-              <Route path="projects/new" element={<ProjectFormPage />} />
-              <Route path="projects/:id/edit" element={<ProjectFormPage />} />
-            </Route>
             <Route path="projects/:id" element={<ProjectLayout />}>
               <Route index element={<OverviewTab />} />
               <Route path="progress" element={<ProgressTab />} />
@@ -97,21 +100,28 @@ export default function App() {
               <Route path="flags" element={<FlagsTab />} />
               <Route path="documents" element={<DocumentsTab />} />
             </Route>
-            <Route path="map" element={<MapPage />} />
-            <Route path="audit" element={<AuditPage />} />
-            <Route path="reports" element={<ReportsPage />} />
-            <Route path="progress" element={<ProgressPage />} />
-            <Route path="finance" element={<FinancePage />} />
-            <Route path="contractors" element={<ContractorsPage />} />
-            <Route path="agencies" element={<AgenciesPage />} />
             <Route path="account" element={<AccountPage />} />
-            <Route element={<ProtectedRoute roles={['admin', 'auditor']} />}>
-              <Route path="activity" element={<ActivityLogPage />} />
-            </Route>
-            <Route element={<ProtectedRoute roles={['admin']} />}>
-              <Route path="users" element={<UsersPage />} />
-              <Route path="deletion-requests" element={<DeletionRequestsPage />} />
-              <Route path="settings" element={<SettingsPage />} />
+            {/* Staff only: a contractor opening these goes back to its dashboard */}
+            <Route element={<ProtectedRoute roles={STAFF} />}>
+              <Route element={<ProtectedRoute roles={EDITORS} />}>
+                <Route path="projects/new" element={<ProjectFormPage />} />
+                <Route path="projects/:id/edit" element={<ProjectFormPage />} />
+              </Route>
+              <Route path="map" element={<MapPage />} />
+              <Route path="audit" element={<AuditPage />} />
+              <Route path="reports" element={<ReportsPage />} />
+              <Route path="progress" element={<ProgressPage />} />
+              <Route path="finance" element={<FinancePage />} />
+              <Route path="contractors" element={<ContractorsPage />} />
+              <Route path="agencies" element={<AgenciesPage />} />
+              <Route element={<ProtectedRoute roles={['admin', 'auditor']} />}>
+                <Route path="activity" element={<ActivityLogPage />} />
+              </Route>
+              <Route element={<ProtectedRoute roles={['admin']} />}>
+                <Route path="users" element={<UsersPage />} />
+                <Route path="deletion-requests" element={<DeletionRequestsPage />} />
+                <Route path="settings" element={<SettingsPage />} />
+              </Route>
             </Route>
             <Route path="*" element={<NotFoundPage homeTo="/app" homeLabel="Back to the dashboard" />} />
           </Route>
@@ -134,6 +144,12 @@ export default function App() {
       </Routes>
     </Suspense>
   );
+}
+
+/** /app opens the staff dashboard, or a contractor's own dashboard (its company's projects). */
+function WorkspaceHome() {
+  const { role } = useAuth();
+  return isContractor(role) ? <ContractorDashboardPage /> : <DashboardPage />;
 }
 
 /** Old project addresses (/projects/:id, /portal/projects/:id) → the project's drawer on the map */

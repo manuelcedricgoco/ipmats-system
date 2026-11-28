@@ -10,6 +10,7 @@ import { addDays } from '../services/completion.js';
 import { canUseApproval } from './deletionRequestsController.js';
 import { pagination } from '../utils/pagination.js';
 import { changedFields, logActivity } from '../services/activityLog.js';
+import { withoutPaccFields } from '../services/contractorAccess.js';
 import { reevaluate } from '../services/projectEvaluation.js';
 import { assertValid, checkContractAmountChange, isLocationChange } from '../services/validationRules.js';
 import { OUTSIDE_PROVINCE_MESSAGE, isWithinOccidentalMindoro } from '../utils/geo.js';
@@ -22,8 +23,8 @@ const LIST_COLUMNS =
   // Week 2
   'overall_progress, phase_count, revised_contract_amount, total_disbursed, remaining_balance, ' +
   // Week 3
-  'current_flag, flag_review_status, planned_progress, image_count, ' +
-  // 027: status of a non-closed PACC case (staff only; never the case itself)
+  'current_flag, flag_review_status, planned_progress, image_count, latest_inspection_date, ' +
+  // 027: status of a non-closed PACC case (staff only; never the case itself, and stripped for contractors)
   'pacc_case_status';
 const FILTERABLE_STATUSES = new Set(['not_started', 'ongoing', 'delayed', 'completed']);
 
@@ -52,13 +53,13 @@ export async function listProjects(req, res) {
   q = applyProjectFilters(q, req.query).order(sort, { ascending }).range(from, to);
   const { data, count, error } = await q;
   unwrap({ data, error });
-  res.json({ data, page, pageSize, total: count ?? 0 });
+  res.json({ data: data.map((row) => withoutPaccFields(row, req.user)), page, pageSize, total: count ?? 0 });
 }
 
 export async function getProject(req, res) {
   const project = unwrap(await req.db.from('v_project_summary').select('*').eq('id', req.params.id).maybeSingle());
   if (!project) throw notFound('Project not found');
-  res.json({ data: project });
+  res.json({ data: withoutPaccFields(project, req.user) });
 }
 
 /** Dashboard numbers (counts and totals of the projects the user can see). */

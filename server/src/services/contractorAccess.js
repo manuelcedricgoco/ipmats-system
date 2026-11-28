@@ -1,0 +1,65 @@
+/**
+ * Contractor accounts (migration 029): a contractor company's representatives read their own
+ * company's projects (RLS: private.contractor_company()) and report progress and upload 360°
+ * photos on them. These helpers are the API side of those rules.
+ */
+import { HttpError, forbidden } from '../utils/httpError.js';
+
+export const CONTRACTOR_PROJECT_MESSAGE = "You can only update your company's projects.";
+export const CONTRACTOR_COMPANY_MESSAGE = 'Choose the contractor company for this account.';
+
+/**
+ * A contractor account may write to a project only when the project belongs to the account's
+ * company and that company is active. `project` is { contractor_id, contractor: { is_active } }
+ * (or null when it does not exist). Other roles are not checked here (their route guard decides).
+ */
+export function assertContractorOwnsProject(project, user) {
+  if (user?.role !== 'contractor') return;
+  const company = user.profile?.contractor_id;
+  if (!project || !company || project.contractor_id !== company || project.contractor?.is_active !== true) {
+    throw forbidden(CONTRACTOR_PROJECT_MESSAGE);
+  }
+}
+
+export const COMPLETION_BY_PERSONNEL_MESSAGE = "Only DPWH Personnel can confirm a project's completion.";
+
+/**
+ * Contractors report work but do not complete a project: DPWH Personnel confirm completion. A
+ * project counts as completed with every phase at 100%, an actual completion date and a final
+ * (as-built) 360° photo, so a contractor may send neither the date (progress report) nor the
+ * final mark (photo upload). Throws 403 with the field; other roles are not checked here.
+ */
+export function assertContractorDoesNotComplete(body, user) {
+  if (user?.role !== 'contractor') return;
+  const field = body?.actual_completion_date ? 'actual_completion_date' : body?.is_final === true ? 'is_final' : null;
+  if (field) throw new HttpError(403, COMPLETION_BY_PERSONNEL_MESSAGE, [{ field, message: COMPLETION_BY_PERSONNEL_MESSAGE }]);
+}
+
+/**
+ * Contractors never receive PACC data: drop every pacc_* field (027: pacc_case_status) from a
+ * project row sent to a contractor account. Rows for other roles are returned unchanged.
+ */
+export function withoutPaccFields(row, user) {
+  if (user?.role !== 'contractor' || !row) return row;
+  return Object.fromEntries(Object.entries(row).filter(([key]) => !key.startsWith('pacc_')));
+}
+
+/** Keys of a photo's validation record that name other projects (their ids). */
+const OTHER_PROJECT_KEYS = ['reused_in_projects', 'near_duplicate_in_projects'];
+
+/**
+ * A photo's validation details as a contractor may see them: without the ids of the other
+ * projects where the same or a near-identical photo was found (they may be other companies'
+ * projects). The warnings text and the reused_elsewhere flag stay. Other roles: unchanged.
+ */
+export function contractorSafeValidation(validation, user) {
+  if (user?.role !== 'contractor' || !validation || typeof validation !== 'object') return validation;
+  return Object.fromEntries(Object.entries(validation).filter(([key]) => !OTHER_PROJECT_KEYS.includes(key)));
+}
+
+/** "12 345" and "12345" are the same licence: compared without case or spaces. null when either is missing. */
+export function licenceMatches(typed, onFile) {
+  const norm = (v) => String(v ?? '').replace(/\s+/g, '').toLowerCase();
+  if (!norm(typed) || !norm(onFile)) return null;
+  return norm(typed) === norm(onFile);
+}

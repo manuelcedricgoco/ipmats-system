@@ -24,6 +24,17 @@ export async function getReference(req, res) {
   res.json({ data: { municipalities, barangays, agencies, contractors } });
 }
 
+/**
+ * Active contractor companies, id and name only, for the "Contractor representative" option of
+ * the Register page (029). Open to everyone, like the rest of /reference; anon could already read
+ * contractor names (016). Licence numbers and contact details are not included.
+ */
+export async function signupContractors(_req, res) {
+  const rows = adminClient ? unwrap(await adminClient.from('contractors').select('id, name').eq('is_active', true).order('name')) : [];
+  res.set('Cache-Control', 'private, max-age=60');
+  res.json({ data: rows });
+}
+
 export async function createAgency(req, res) {
   const row = unwrap(await adminClient.from('agencies').insert(req.body).select('*').single());
   await logActivity(req, { action: 'agency.create', entityType: 'agency', entityId: row.id, summary: `Added implementing office "${row.name}" (${row.code})` });

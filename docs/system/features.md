@@ -7,9 +7,11 @@ who uses it, what it does, and what it touches. API routes are relative to `/api
 - Tables and columns: [database.md](database.md)
 - Step-by-step flows: [workflows.md](workflows.md)
 
-The app has three parts:
+The app has four parts:
 - **Public portal** (`/`, `/projects`, `/map`, `/report-status`): open to everyone, no account. Top navigation bar.
 - **Staff workspace** (`/app/...`): for signed-in, approved Admins, DPWH Personnel and Auditors. Left sidebar.
+- **Contractor workspace** (also `/app/...`, 029): for signed-in, approved contractor representatives, on their own
+  company's projects only. Its own short sidebar. See [Contractor workspace](#contractor-workspace) below.
 - **PACC portal** (`/pacc/...`): for signed-in PACC accounts only (Presidential Anti-Corruption Commission). Left
   sidebar, the same look as the staff workspace. See [PACC portal](#pacc-portal) below.
 
@@ -153,20 +155,30 @@ Anyone can also report a problem on a project to PACC, anonymously and with phot
 - **In the UI:** "Sign in" (top right), the Register page (`/register`), the Awaiting approval page
   (`/account-pending`).
 - **Why:** staff need accounts. Objective 1 asks for secure login and registration.
-- **Who:** DPWH personnel and auditors register. Anyone with an account signs in.
+- **Who:** DPWH personnel, auditors and (029) contractor representatives register. Anyone with an account signs in.
 - **What it does:**
-  - **Register:** asks for name, email, password, the role requested (DPWH Personnel or Auditor), office,
-    position, and an optional photo. It creates a request, not a staff account (see
+  - **Register:** asks for name, email, password, the account type (DPWH Personnel, Auditor or Contractor
+    representative), position, and an optional photo. Staff choose their office. A contractor representative
+    chooses the company instead (from the active companies, `GET /reference/contractors`, names only) and types
+    the company's PCAB licence number; the System Administrator compares it with the company's record. Every
+    registration creates a request, not an account with access (see
     [registration and approval](roles-and-permissions.md#registration-and-approval)).
+    - The request is sent as sign-up metadata that the `handle_new_user` trigger reads: `requested_role`, and for
+      a contractor `requested_contractor_id` and `requested_contractor_license` (no office). A company that does
+      not exist makes the request invalid (declined with a note to choose the company again).
     - The photo is kept on the device (IndexedDB) and uploaded at the first sign-in **after the account is
       approved**. Pending and declined accounts cannot upload a profile photo.
-  - **Sign in:** shows a 5-second entry screen, then opens the staff dashboard. Accounts without a role go to the
-    public portal instead. Suspended accounts see a suspension message.
-  - **Awaiting approval:** shows the status of the request, or the reason it was declined.
+  - **Sign in:** shows a 5-second entry screen, then opens the staff dashboard (a contractor's own dashboard for a
+    contractor account). Accounts without a role go to the public portal instead. Suspended accounts see a
+    suspension message.
+  - **Awaiting approval:** shows the status of the request (with the requested company for a contractor), or the
+    reason it was declined.
 - **Touches:**
   - Pages: `pages/auth/LoginPage.jsx`, `RegisterPage.jsx`, `AccountPendingPage.jsx`, `context/AuthContext.jsx`.
-  - Supabase Auth (sign-up, sign-in), and `GET /me`, `POST /me/avatar`, `GET /reference` (office list).
-  - Data: `profiles` (created by the `handle_new_user` trigger), `agencies`, bucket `avatars`.
+  - Supabase Auth (sign-up, sign-in), and `GET /me`, `POST /me/avatar`, `GET /reference` (office list),
+    `GET /reference/contractors` (company list). The sign-up metadata is built by `lib/contractor.js`
+    `signUpMetadata()`.
+  - Data: `profiles` (created by the `handle_new_user` trigger), `agencies`, `contractors`, bucket `avatars`.
 
 ---
 
@@ -242,14 +254,15 @@ Sidebar items appear only for the roles that can use them. "All staff" = Admin, 
   - API: `GET/POST /projects`, `GET/PATCH/DELETE /projects/:id`, `GET /reference`,
     `GET /projects/:id/deletion-request`, `POST /projects/:id/deletion-requests`,
     `POST /deletion-requests/:requestId/cancel`.
-  - Data: `projects` (incl. `pacc_case_status`), `v_project_summary`, `project_deletion_requests`,
+  - Data: `projects`, `project_pacc_status` (029; was `projects.pacc_case_status`), `v_project_summary`, `project_deletion_requests`,
     `municipalities`, `barangays`, `agencies`, `contractors`.
   - The place search uses the public OpenStreetMap Nominatim service.
 
 ### Progress Monitoring
 - **In the UI:** "Progress Monitoring" (`/app/progress`) and the project tab "Phases & progress".
 - **Why:** Objective 3 — track progress phase by phase instead of a single number someone types in.
-- **Who:** all staff view. Personnel set up phases and submit progress (027: not the Admin).
+- **Who:** all staff view. Personnel set up phases and submit progress (027: not the Admin). The project's
+  contractor also submits progress, without the completion date ([Contractor workspace](#contractor-workspace)).
 - **What it does:**
   - **Progress Monitoring list:** every project's completion bar, with a status filter and sorting.
   - **Set up phases:** a template for the project type is filled in, with dates spread over the contract.
@@ -288,6 +301,7 @@ Sidebar items appear only for the roles that can use them. "All staff" = Admin, 
 - **Who:**
   - All staff view.
   - Personnel upload, caption and mark a photo as final (027: not the Admin).
+  - The project's contractor uploads too (029), never as final as-built ([Contractor workspace](#contractor-workspace)).
   - Admin deletes.
 - **What it does:**
   - **Upload:** JPEG, PNG or WebP, up to 30 MB, with an inspection date. The server:
@@ -306,11 +320,11 @@ Sidebar items appear only for the roles that can use them. "All staff" = Admin, 
     - stores a smaller copy if the file is large.
   - **Limits:** each person can make at most 20 file-carrying requests per 10 minutes (360° photo and document
     uploads, profile photos, flag reviews, and creating or editing audit findings).
-  - **Public at once:** a photo uploaded by DPWH personnel appears on the public portal right away. Nobody
+  - **Public at once:** a photo uploaded by DPWH personnel or the project's contractor appears on the public portal right away. Nobody
     approves or hides photos (migration 022); an Admin can delete a wrong upload.
   - **Final photo:** a photo marked **final** (as-built) is one of the requirements for a project to count as completed.
   - **Offline:** with no connection, a photo is kept on the device (IndexedDB). The top bar shows waiting uploads
-    (Personnel only), and they are sent automatically when the connection returns. Each photo is listed and sent
+    (Personnel and contractors, the accounts that upload photos), and they are sent automatically when the connection returns. Each photo is listed and sent
     only for the account that queued it; another account signed in on the same browser never sends it.
 - **Touches:**
   - Pages and components: `project/ImagesTab.jsx`, `components/common/OfflineUploads.jsx`, `lib/offlineUploads.js`.
@@ -421,10 +435,16 @@ Sidebar items appear only for the roles that can use them. "All staff" = Admin, 
 - **Who:** Admin only.
 - **What it does:**
   - **Requests:** approve an access request (choosing the role, office and position) or decline it with a note.
-  - **Accounts:** create an account directly, or edit its name, role, office and position.
+    - **Contractor requests (029):** the list shows the requested company and warns when the licence does not
+      match. The approve dialog shows the requested company, the licence typed at sign-up, the licence on file
+      and whether they match (`requested_contractor_license_matches`), and asks the Admin to confirm the company
+      or choose another. The Contractor role always needs a company.
+  - **Accounts:** create an account directly, or edit its name, role, office and position. The role list has
+    Contractor next to the staff roles; choosing it shows a required company select (from the contractor list,
+    inactive companies marked). The list shows a contractor account's company under its role.
   - **Suspend:** with a reason; it blocks sign-in and every API call. Lift the suspension later.
   - **Delete:** only accounts with no records in the system.
-  - **Find accounts:** search, and filter by role, status and approval.
+  - **Find accounts:** search, and filter by role (Contractor included), status and approval.
   - **PACC accounts are not here:** the list does not show them, and the API refuses to create an account with the PACC
     role, or to approve, decline, edit, suspend, reactivate or delete a PACC account ("PACC accounts are managed by
     PACC."). PACC manages its own
@@ -496,6 +516,60 @@ Sidebar items appear only for the roles that can use them. "All staff" = Admin, 
 
 ---
 
+## Contractor workspace
+
+Contractor accounts (migrations 028, 029) let a contractor company's representative report progress and upload 360°
+photos for **their own company's projects only**. They work in `/app`, with their own sidebar. Everything else in
+`/app` sends them back to their dashboard (`lib/contractor.js` `canOpenWorkspacePath`, used by `ProtectedRoute`).
+That is a convenience only: RLS (`private.contractor_company()`) and the API (`PROJECT_VIEWERS`,
+`PROJECT_REPORTERS` + `requireOwnProject`) are what keep other companies' projects and the staff pages closed.
+
+- **Who:** an active, approved `contractor` account whose company is active. Pending, declined, suspended or
+  deactivated accounts cannot open `/app`. A contractor of an **inactive company** can sign in but sees no
+  projects at all (RLS returns nothing), and the dashboard says so.
+- **Sidebar:** Dashboard, My projects, My account. The top bar shows "Contractor · <company>" and the waiting
+  offline uploads. The account menu calls the area "Contractor workspace".
+- **Never shown:** other companies' projects, the staff dashboards and charts, the map, Progress and Financial
+  Monitoring, Flags & Audit, reports (including the project audit-report PDF), contractors, offices, users,
+  settings, activity logs, deletion requests, and anything PACC (no PACC case chip).
+
+### Dashboard (contractor)
+- **In the UI:** "Dashboard" (`/app` for a contractor account).
+- **What it does:** counters (projects, behind schedule, Yellow or Red flag, no 360° photo in 30 days) and one row
+  per project: flag, status, completion against the plan ("planned X % · N pts behind"), target completion date,
+  latest photo date, and shortcuts to the Phases & progress and 360° images tabs. With no projects, it says that no
+  projects of the company are shown (or that the company is marked inactive) and to contact the DPWH District
+  Engineering Office if they expected some.
+- **Touches:** `pages/contractor/ContractorDashboardPage.jsx`, `lib/contractor.js`
+  (`contractorDashboardSummary`, `contractorEmptyMessage`); `GET /projects` (`planned_progress`,
+  `latest_inspection_date`), `GET /me` (`contractor`).
+
+### My projects
+- **In the UI:** "My projects" (`/app/projects` for a contractor account), titled with the company name.
+- **What it does:** the project list with search, sorting and the filters (no contractor filter, no "Register
+  project"). Opens the project page.
+- **Project page tabs** (`lib/contractor.js` `projectPermissions`):
+  - **Overview:** read only.
+  - **Phases & progress:** view, and "Submit progress update". No phase-plan editing. When every phase reaches
+    100 % the form says that DPWH Personnel confirm the completion date; it has no completion-date field (the API
+    answers 403 "Only DPWH Personnel can confirm a project's completion." to a contractor that sends one).
+  - **360° images:** view and "Upload 360° image" (with the same checks and offline queue as Personnel, and a
+    caption). No "Final as-built" checkbox, no "Mark as final", no delete.
+  - **Finance:** view only (what DPWH obligated and disbursed).
+  - **Flag & audit:** the flag, its reasons, the auditor decisions, findings and history, view only (no review,
+    findings or audit-report PDF).
+  - **Documents:** view and download only.
+- **Labels for staff:** progress reports and photos submitted by a contractor show "by <name> (Contractor)"
+  (`submitted_by_role`, `uploaded_by_role`).
+- **Touches:** `pages/dpwh/ProjectsPage.jsx`, `project/ProjectLayout.jsx` and its tabs; the project read routes,
+  `POST /projects/:id/progress` and `POST /projects/:id/images`.
+
+### My account (contractor)
+- Same as the staff [My account](#my-account), and it shows the company the account represents (changed by the
+  System Administrator only).
+
+---
+
 ## PACC portal
 
 The PACC (Presidential Anti-Corruption Commission) portal receives projects with serious problems and anonymous
@@ -549,7 +623,7 @@ abolished in 2022, so this is a modelled role.
     database trigger). Nothing else about the case is public.
   - **DPWH staff always see the status:** Admin, Personnel and Auditor see "Under PACC investigation" or "Case
     filed" on the staff project page and list while the case is open, whatever the switch says
-    (`projects.pacc_case_status`, migration 027). The switch controls only the public portal; the case page says so.
+    (`v_project_summary.pacc_case_status`, migration 027; stored in `project_pacc_status` since 029). The switch controls only the public portal; the case page says so.
 - **Touches:** `pages/pacc/PaccCasesPage.jsx`, `PaccCasePage.jsx`; `GET /pacc/cases`, `GET/PATCH /pacc/cases/:caseId`,
   `POST /pacc/cases/:caseId/notes`, `POST /pacc/cases/:caseId/documents`; `pacc_cases`, `pacc_case_notes`,
   `pacc_case_documents`, `projects.pacc_public_status`.

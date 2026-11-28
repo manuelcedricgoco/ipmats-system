@@ -14,7 +14,12 @@ export default function UserMenu({ dark = false }) {
   if (!profile) return null;
   // The signed-in area of this account (/app for staff, /pacc for PACC); none while waiting for approval.
   const home = isPending ? null : homePathForRole(profile.role);
-  const area = home === '/pacc' ? { label: 'PACC portal', Icon: ShieldAlert } : home === '/app' ? { label: 'Staff workspace', Icon: LayoutDashboard } : null;
+  const area =
+    home === '/pacc'
+      ? { label: 'PACC portal', Icon: ShieldAlert }
+      : home === '/app'
+        ? { label: profile.role === 'contractor' ? 'Contractor workspace' : 'Staff workspace', Icon: LayoutDashboard }
+        : null;
   const roleLabel = isPending ? (profile.approval_status === 'rejected' ? 'Access declined' : 'Awaiting approval') : ROLE_LABELS[profile.role];
 
   return (

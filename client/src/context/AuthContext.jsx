@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { invalidateReference } from '../hooks/useReference.js';
 import { ACCOUNT_SUSPENDED_EVENT, api } from '../lib/api.js';
 import { STAFF_ROLES, isSuspensionError, suspensionNotice } from '../lib/constants.js';
+import { isContractor, signUpMetadata } from '../lib/contractor.js';
 import { supabase } from '../lib/supabaseClient.js';
 import { friendlyAuthError } from '../lib/imageFile.js';
 import { shouldUploadPendingPhoto, takePendingAvatar } from '../lib/pendingAvatar.js';
@@ -114,13 +115,16 @@ export function AuthProvider({ children }) {
     [],
   );
 
-  /** Staff access request: the account starts with no staff access until an admin approves it. */
-  const signUp = useCallback(async ({ email, password, full_name, requested_role, agency_id, position }) => {
+  /**
+   * Access request (staff, or a contractor company's representative, 029): the account starts with no role until
+   * an admin approves it. The metadata keys are the ones public.handle_new_user() reads (lib/contractor.js).
+   */
+  const signUp = useCallback(async ({ email, password, ...form }) => {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        data: { full_name, requested_role, agency_id: agency_id ? String(agency_id) : null, position: position || null },
+        data: signUpMetadata(form),
         emailRedirectTo: `${window.location.origin}/login`,
       },
     });
@@ -150,6 +154,8 @@ export function AuthProvider({ children }) {
       clearSignOutNotice: () => setSignOutNotice(null),
       isAuthenticated: Boolean(session && profile),
       isStaff: STAFF_ROLES.includes(role),
+      // 029: a contractor company's representative (own company's projects only; not staff)
+      isContractor: isContractor(role),
       isPending: ['pending', 'rejected'].includes(profile?.approval_status),
       hasRole: (...roles) => roles.flat().includes(role),
       signIn,

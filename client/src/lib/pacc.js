@@ -3,7 +3,7 @@
  * Hiding PACC screens from other roles is a convenience only: the API (requireRole('pacc')) and RLS
  * are what keep reports and cases readable by PACC alone.
  */
-import { STAFF_ROLES } from './constants.js';
+import { WORKSPACE_ROLES } from './constants.js';
 
 /** Why a project is in the PACC inbox (server: services/citizenReports.js referralReasons). */
 export const REFERRAL_LABELS = {
@@ -91,9 +91,9 @@ export function nextCaseStatuses(status) {
 
 export const isClosedCaseStatus = (status) => status === 'resolved' || status === 'dismissed';
 
-/** Where a signed-in account belongs: PACC → /pacc, staff → /app, anyone else → the public portal. */
+/** Where a signed-in account belongs: PACC → /pacc, staff and contractors → /app, anyone else → the public portal. */
 export function homePathForRole(role) {
   if (role === 'pacc') return '/pacc';
-  if (STAFF_ROLES.includes(role)) return '/app';
+  if (WORKSPACE_ROLES.includes(role)) return '/app';
   return '/';
 }

@@ -136,6 +136,8 @@ function DetailsCard({ profile, onSaved }) {
           </Field>
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-slate-600 sm:col-span-2">
             <span>Role: <strong className="text-slate-900">{ROLE_LABELS[profile.role] || '—'}</strong></span>
+            {/* 029: the company a contractor account represents (changed by the System Administrator only) */}
+            {profile.contractor && <span>Company: <strong className="text-slate-900">{profile.contractor.name}</strong></span>}
             {profile.created_at && <span>Member since {dateTime(profile.created_at)}</span>}
           </div>
           <div className="sm:col-span-2">

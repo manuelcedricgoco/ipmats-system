@@ -11,6 +11,7 @@ import PaccCaseChip from '../../../components/projects/PaccCaseChip.jsx';
 import { useAuth } from '../../../context/AuthContext.jsx';
 import { useApi } from '../../../hooks/useApi.js';
 import { PROJECT_TYPES } from '../../../lib/constants.js';
+import { projectPermissions } from '../../../lib/contractor.js';
 
 const TABS = [
   { to: '', label: 'Overview', end: true },
@@ -24,10 +25,11 @@ const TABS = [
 /** Project page frame: header, tabs, and the selected tab (Overview / Phases & progress / Finance). */
 export default function ProjectLayout() {
   const { id } = useParams();
-  const { hasRole } = useAuth();
-  // Only DPWH Personnel create and edit project data (027); the Admin keeps the deletes.
-  const canEdit = hasRole('dpwh_personnel');
-  const canDelete = hasRole('admin');
+  const { role } = useAuth();
+  // Only DPWH Personnel create and edit project data (027); the Admin keeps the deletes. DPWH Personnel and
+  // contractors (029, own company's projects only) report progress and upload photos; only Personnel confirm completion.
+  const perms = projectPermissions(role);
+  const { canEdit, canDelete, canReport, showPacc } = perms;
   const { data: p, loading, error, reload } = useApi(`/projects/${id}`, undefined, { select: (r) => r.data });
   // The project's latest deletion request: Personnel ask / cancel / use an approval; the Admin sees a pending one.
   // Wrapped, so `null` means "not loaded (yet), or the request failed" and a project with no request still reads as
@@ -48,7 +50,7 @@ export default function ProjectLayout() {
   return (
     <>
       <Link to="/app/projects" className="inline-flex items-center gap-1 text-sm font-medium text-slate-600 hover:text-brand-700">
-        <ArrowLeft className="h-4 w-4" aria-hidden /> All projects
+        <ArrowLeft className="h-4 w-4" aria-hidden /> {perms.isContractor ? 'My projects' : 'All projects'}
       </Link>
       <div className="mt-3">
         <PageHeader
@@ -65,9 +67,10 @@ export default function ProjectLayout() {
       <div className="-mt-3 mb-5 flex flex-wrap items-center gap-x-4 gap-y-2">
         <FlagBadge flag={p.current_flag} />
         <StatusBadge status={p.status} />
-        <PaccCaseChip status={p.pacc_case_status} />
+        {/* Staff only: contractors never see PACC data (the API strips it as well) */}
+        {showPacc && <PaccCaseChip status={p.pacc_case_status} />}
         <Pill>{PROJECT_TYPES[p.project_type]}</Pill>
-        {!canEdit && !canDelete && <Pill className="bg-slate-800 text-white">Read-only</Pill>}
+        {!canEdit && !canDelete && !canReport && <Pill className="bg-slate-800 text-white">Read-only</Pill>}
         <ProgressBar value={p.overall_progress} size="sm" className="w-full max-w-[12rem]" />
       </div>
       <DeletionRequestNotice request={deletion.data?.request} />
@@ -97,7 +100,7 @@ export default function ProjectLayout() {
       </div>
 
       {/* each tab gets the project and a reload function */}
-      <Outlet context={{ project: p, reloadProject: reload, canEdit, canDelete }} />
+      <Outlet context={{ project: p, reloadProject: reload, ...perms }} />
     </>
   );
 }

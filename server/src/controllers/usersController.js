@@ -1,5 +1,6 @@
 import { adminClient } from '../config/supabase.js';
 import { logActivity } from '../services/activityLog.js';
+import { CONTRACTOR_COMPANY_MESSAGE, licenceMatches } from '../services/contractorAccess.js';
 import { logPacc } from '../services/paccActivity.js';
 import { HttpError, badRequest, conflict, forbidden, notFound, unwrap } from '../utils/httpError.js';
 import { avatarUrl, removeAvatarFile, setAvatar, uploadAvatar } from '../services/avatars.js';
@@ -11,9 +12,34 @@ export function assertNotPaccAccount(target) {
   if (target?.role === 'pacc') throw forbidden('PACC accounts are managed by PACC.');
 }
 
+async function loadCompany(id) {
+  return unwrap(await adminClient.from('contractors').select('id, name, pcab_license_no, is_active').eq('id', id).maybeSingle());
+}
+
+/**
+ * The company a contractor account will represent (029): it must be given and must exist.
+ * 400 "Choose the contractor company for this account." when it is missing.
+ */
+export async function resolveContractorCompany(contractorId, load = loadCompany) {
+  if (!contractorId) throw badRequest(CONTRACTOR_COMPANY_MESSAGE, [{ field: 'contractor_id', message: CONTRACTOR_COMPANY_MESSAGE }]);
+  const company = await load(contractorId);
+  if (!company) {
+    throw badRequest('The selected contractor company does not exist.', [{ field: 'contractor_id', message: 'Choose a contractor company from the list.' }]);
+  }
+  return company;
+}
+
+/** The company behind a contractor account, or the one asked for at sign-up, as { id, name, is_active }. */
+async function companySummary(id) {
+  if (!id || !adminClient) return null;
+  const c = await loadCompany(id);
+  return c ? { id: c.id, name: c.name, is_active: c.is_active } : null;
+}
+
 export async function me(req, res) {
   const { avatar_path, ...profile } = req.user.profile;
-  res.json({ data: { ...profile, avatar_url: await avatarUrl(avatar_path) } });
+  const [contractor, requested_contractor] = await Promise.all([companySummary(profile.contractor_id), companySummary(profile.requested_contractor_id)]);
+  res.json({ data: { ...profile, contractor, requested_contractor, avatar_url: await avatarUrl(avatar_path) } });
 }
 
 export async function uploadMyAvatar(req, res) {
@@ -49,7 +75,13 @@ export async function listUsers(req, res) {
   const { page, pageSize, from, to } = pagination(req.query, { maxSize: 200 });
   let q = adminClient
     .from('profiles')
-    .select('*, agency:agencies(code, name)', { count: 'exact' })
+    .select(
+      '*, agency:agencies(code, name), ' +
+        // 029: the company of a contractor account, and the one asked for at sign-up (with its licence, to compare)
+        'contractor:contractors!profiles_contractor_id_fkey(id, name, is_active), ' +
+        'requested_contractor:contractors!profiles_requested_contractor_id_fkey(id, name, pcab_license_no, is_active)',
+      { count: 'exact' },
+    )
     .or('role.is.null,role.neq.pacc') // PACC accounts are not the Administrator's to list (further .or() filters are ANDed)
     .order('created_at', { ascending: false });
   if (req.query.role) q = q.eq('role', req.query.role);
@@ -69,13 +101,20 @@ export async function listUsers(req, res) {
     : new Map();
   const rows = data.map((u) => {
     const s = suspenders.get(u.suspended_by);
-    return { ...u, suspender: s ? { full_name: s.full_name, email: s.email } : null };
+    return {
+      ...u,
+      suspender: s ? { full_name: s.full_name, email: s.email } : null,
+      // Does the licence typed at sign-up match the requested company's? (null: nothing to compare)
+      requested_contractor_license_matches: licenceMatches(u.requested_contractor_license, u.requested_contractor?.pcab_license_no),
+    };
   });
   res.json({ data: rows, page, pageSize, total: count ?? 0 });
 }
 
 export async function createUser(req, res) {
   const { email, password, full_name, role, agency_id, position } = req.body;
+  // Checked before the Auth user exists, so a wrong company never leaves a half-made account.
+  const company = role === 'contractor' ? await resolveContractorCompany(req.body.contractor_id) : null;
   const { data, error } = await adminClient.auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { full_name } });
   if (error) throw badRequest(error.message);
   // The on_auth_user_created trigger creates the profile without a role; an account made by the
@@ -88,6 +127,7 @@ export async function createUser(req, res) {
         role,
         agency_id: agency_id ?? null,
         position: position ?? null,
+        contractor_id: company?.id ?? null,
         approval_status: 'approved',
         reviewed_by: req.user.id,
         reviewed_at: new Date().toISOString(),
@@ -97,19 +137,28 @@ export async function createUser(req, res) {
       .select('*')
       .single(),
   );
-  await logActivity(req, { action: 'user.create', entityType: 'user', entityId: profile.id, summary: `Created account ${email} (${role})` });
+  await logActivity(req, {
+    action: 'user.create',
+    entityType: 'user',
+    entityId: profile.id,
+    summary: `Created account ${email} (${role}${company ? `, ${company.name}` : ''})`,
+    ...(company && { details: { contractor_id: company.id } }),
+  });
   res.status(201).json({ data: profile });
 }
 
 export async function updateUser(req, res) {
   const { userId } = req.params;
-  const target = unwrap(await adminClient.from('profiles').select('id, role, is_active, email').eq('id', userId).maybeSingle());
+  const target = unwrap(
+    await adminClient.from('profiles').select('id, role, is_active, email, contractor_id, requested_contractor_id').eq('id', userId).maybeSingle(),
+  );
   if (!target) throw notFound('User not found');
   assertNotPaccAccount(target);
   if (userId === req.user.id && (req.body.role && req.body.role !== 'admin')) throw badRequest('You cannot remove your own administrator role.');
   if (userId === req.user.id && req.body.is_active === false) throw badRequest('You cannot deactivate your own account.');
 
   const patch = { ...req.body };
+  const company = await contractorPatch(patch, target);
   // Granting a staff role resolves any pending access request.
   if (patch.role) Object.assign(patch, { approval_status: 'approved', reviewed_by: req.user.id, reviewed_at: new Date().toISOString() });
   // Reactivating an account also clears a suspension (normally done with POST /users/:id/unsuspend).
@@ -123,6 +172,7 @@ export async function updateUser(req, res) {
   }
   const what = [
     req.body.role && req.body.role !== target.role ? `role ${target.role ?? 'none'} → ${req.body.role}` : null,
+    company && company.id !== target.contractor_id ? `company → ${company.name}` : null,
     req.body.is_active !== undefined && req.body.is_active !== target.is_active ? (req.body.is_active ? 'reactivated' : 'deactivated') : null,
   ].filter(Boolean);
   await logActivity(req, {
@@ -135,18 +185,44 @@ export async function updateUser(req, res) {
   res.json({ data: row });
 }
 
-/** Approve a staff access request: grant the (possibly adjusted) role. */
+/**
+ * The company part of an account edit (029). The account's role after the edit decides: a
+ * contractor keeps (or gets) a company that exists, from the request, else its current company,
+ * else the one asked for at sign-up; any other role has none. Returns the company, if checked.
+ */
+export async function contractorPatch(patch, target, resolve = resolveContractorCompany) {
+  const nextRole = patch.role ?? target.role;
+  if (nextRole !== 'contractor') {
+    delete patch.contractor_id;
+    if (patch.role && target.contractor_id) patch.contractor_id = null;
+    return null;
+  }
+  if (patch.role === undefined && patch.contractor_id === undefined) return null;
+  const company = await resolve(patch.contractor_id !== undefined ? patch.contractor_id : target.contractor_id ?? target.requested_contractor_id);
+  patch.contractor_id = company.id;
+  return company;
+}
+
+/** Approve an access request: grant the (possibly adjusted) role; a contractor account also gets its company. */
 export async function approveUser(req, res) {
   const { userId } = req.params;
-  const target = unwrap(await adminClient.from('profiles').select('id, email, role, approval_status, requested_role').eq('id', userId).maybeSingle());
+  const target = unwrap(
+    await adminClient.from('profiles').select('id, email, role, approval_status, requested_role, requested_contractor_id').eq('id', userId).maybeSingle(),
+  );
   if (!target) throw notFound('User not found');
   assertNotPaccAccount(target);
   if (target.approval_status === 'approved') throw badRequest('This account is already approved.');
+  // The Admin confirms the company asked for at sign-up, or chooses another.
+  const company =
+    req.body.role === 'contractor'
+      ? await resolveContractorCompany(req.body.contractor_id !== undefined ? req.body.contractor_id : target.requested_contractor_id)
+      : null;
   const row = unwrap(
     await adminClient
       .from('profiles')
       .update({
         role: req.body.role,
+        contractor_id: company?.id ?? null,
         ...(req.body.agency_id !== undefined ? { agency_id: req.body.agency_id } : {}),
         ...(req.body.position !== undefined ? { position: req.body.position } : {}),
         approval_status: 'approved',
@@ -159,7 +235,13 @@ export async function approveUser(req, res) {
       .select('*')
       .single(),
   );
-  await logActivity(req, { action: 'user.approve', entityType: 'user', entityId: userId, summary: `Approved staff access for ${target.email} as ${req.body.role}` });
+  await logActivity(req, {
+    action: 'user.approve',
+    entityType: 'user',
+    entityId: userId,
+    summary: company ? `Approved contractor access for ${target.email} (${company.name})` : `Approved staff access for ${target.email} as ${req.body.role}`,
+    ...(company && { details: { contractor_id: company.id, requested_contractor_id: target.requested_contractor_id ?? null } }),
+  });
   res.json({ data: row });
 }
 

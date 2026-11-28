@@ -13,6 +13,7 @@
  */
 import { adminClient } from '../config/supabase.js';
 import { changedFields, logActivity, projectCode } from '../services/activityLog.js';
+import { fillMissingNames } from '../services/profileNames.js';
 import { signedUrls } from '../services/storage.js';
 import { badRequest, forbidden, notFound, unwrap } from '../utils/httpError.js';
 import { storeEvidence } from './flagsController.js';
@@ -23,7 +24,7 @@ const SELECT =
 
 async function present(rows) {
   const urls = await signedUrls('audit-evidence', rows.map((r) => r.evidence_path));
-  return rows.map(({ project, phase, auditor, assignee, ...r }) => ({
+  const out = rows.map(({ project, phase, auditor, assignee, ...r }) => ({
     ...r,
     project_code: project?.project_code,
     project_name: project?.name,
@@ -33,6 +34,10 @@ async function present(rows) {
     assigned_to_position: assignee?.position ?? null,
     evidence_url: urls[r.evidence_path] ?? null,
   }));
+  return fillMissingNames(out, [
+    { id: 'auditor_id', name: 'auditor_name' },
+    { id: 'assigned_to', name: 'assigned_to_name', position: 'assigned_to_position' },
+  ]);
 }
 
 export async function listFindings(req, res) {

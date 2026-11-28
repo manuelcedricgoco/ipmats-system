@@ -35,7 +35,8 @@ export async function authenticate(req, _res, next) {
 
     const { data: profile, error: pErr } = await db
       .from('profiles')
-      .select('id, email, full_name, role, agency_id, position, is_active, approval_status, requested_role, requested_at, review_note, avatar_path, suspended_at')
+      // contractor_id (029): the company a contractor account represents (checked by requireOwnProject)
+      .select('id, email, full_name, role, agency_id, position, is_active, approval_status, requested_role, requested_at, review_note, avatar_path, suspended_at, contractor_id, requested_contractor_id')
       .eq('id', data.user.id)
       .single();
     if (pErr || !profile) throw unauthorized('No profile found for this account.');

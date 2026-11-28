@@ -8,6 +8,7 @@
 import { randomUUID } from 'node:crypto';
 import { adminClient } from '../config/supabase.js';
 import { runFlagCheck } from '../jobs/dailyFlagCheck.js';
+import { fillMissingNames } from '../services/profileNames.js';
 import { signedUrls } from '../services/storage.js';
 import { badRequest, notFound, unwrap } from '../utils/httpError.js';
 import { logActivity } from '../services/activityLog.js';
@@ -53,7 +54,10 @@ export async function flagHistory(req, res) {
   res.json({
     data: {
       history,
-      reviews: reviews.map(({ auditor, ...r }) => ({ ...r, auditor_name: auditor?.full_name ?? null, evidence_url: urls[r.evidence_path] ?? null })),
+      reviews: await fillMissingNames(
+        reviews.map(({ auditor, ...r }) => ({ ...r, auditor_name: auditor?.full_name ?? null, evidence_url: urls[r.evidence_path] ?? null })),
+        [{ id: 'auditor_id', name: 'auditor_name' }],
+      ),
     },
   });
 }
