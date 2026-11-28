@@ -5,7 +5,9 @@
  *                                                 the project's phases, recent progress, finance, 360° photos and
  *                                                 documents, read-only; finance liquidation (031): each
  *                                                 disbursement / expense with its receipts (signed links) and
- *                                                 liquidation, and the project's liquidation summary
+ *                                                 liquidation, and the project's liquidation summary; bidding (032):
+ *                                                 the rounds with their ranked bids, read-only (same shape as
+ *                                                 GET /projects/:id/bidding, every action false)
  *   POST /pacc/reports/:reportId/close            close one citizen report with an outcome
  *   POST /pacc/projects/:id/reports/close-all     close every open report of a project with one outcome
  *   GET  /pacc/cases                              every case, newest first
@@ -25,6 +27,7 @@ import { verificationState } from '../services/completionVerification.js';
 import { finalizeCompletionIfReady, loadVerifications } from './completionController.js';
 import { loadReportPhotos, withActivities } from './phasesController.js';
 import { DOCUMENT_BUCKET, TYPE_LABELS as DOCUMENT_TYPE_LABELS } from './documentsController.js';
+import { biddingForViewer } from './biddingController.js';
 import { loadReceipts, receiptsForViewer } from './financeController.js';
 import { BUCKET as PANORAMA_BUCKET } from './imagesController.js';
 import { removeAvatarFile } from '../services/avatars.js';
@@ -129,7 +132,7 @@ export async function projectView(req, res) {
     }
   }
 
-  const [reportRows, history, reviews, findings, cases, phases, progress, financial, imageRows, documentRows, activities, verifications, receiptRows] = await Promise.all([
+  const [reportRows, history, reviews, findings, cases, phases, progress, financial, imageRows, documentRows, activities, verifications, receiptRows, bidding] = await Promise.all([
     req.db
       .from('citizen_reports')
       .select('id, category, description, status, outcome, case_id, submitted_on')
@@ -170,6 +173,8 @@ export async function projectView(req, res) {
     loadVerifications(req.db, id),
     // 031: the project's receipts (RLS "receipts: pacc read"); PACC never uploads, reviews or deletes them.
     loadReceipts(req.db, id),
+    // 032: the project's bidding rounds and bids (RLS "bidding rounds / bids: pacc read"), read-only.
+    biddingForViewer(req.db, project, req.user),
   ]);
 
   const files = await inChunks(
@@ -210,6 +215,7 @@ export async function projectView(req, res) {
       })),
       finance_summary: financeSummary,
       liquidation: projectLiquidation(financial, receiptRows, financeSummary.revised_contract_amount),
+      bidding,
       images: imageRows.map(({ phase, uploader, storage_path, ...r }) => ({
         ...r,
         phase_name: phase?.name ?? null,

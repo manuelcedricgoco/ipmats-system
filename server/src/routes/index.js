@@ -3,6 +3,7 @@ import { adminClient } from '../config/supabase.js';
 import admin from './admin.js';
 import audit from './audit.js';
 import agencies from './agencies.js';
+import bidding from './bidding.js';
 import contractors from './contractors.js';
 import deletionRequests from './deletionRequests.js';
 import documents from './documents.js';
@@ -32,6 +33,7 @@ api.use('/', reports);
 api.use('/', documents);
 api.use('/', system);
 api.use('/', deletionRequests); // 027: /projects/:id/deletion-requests, /deletion-requests
+api.use('/', bidding); // 032: /projects/:id/bidding, /bidding/rounds/:roundId, /bidding/bids/:bidId
 api.use('/pacc', pacc); // PACC portal: pacc role only
 api.use('/projects', projects);
 api.use('/contractors', contractors);
