@@ -19,6 +19,7 @@ import { logActivity, projectCode } from '../services/activityLog.js';
 import { loadHashedImages, reevaluate } from '../services/projectEvaluation.js';
 import { getFlagRules } from '../services/settings.js';
 import { contractorSafeValidation } from '../services/contractorAccess.js';
+import { assertNotLocked } from '../services/completionVerification.js';
 import { fillMissingNames } from '../services/profileNames.js';
 import { signedUrls } from '../services/storage.js';
 import { badRequest, notFound, unwrap } from '../utils/httpError.js';
@@ -52,9 +53,14 @@ export async function compressPanorama(buffer, mimetype, width) {
 }
 
 async function getProject(id) {
-  const p = unwrap(await adminClient.from('projects').select('id, latitude, longitude, notice_to_proceed').eq('id', id).maybeSingle());
+  const p = unwrap(await adminClient.from('projects').select('id, latitude, longitude, notice_to_proceed, completion_verified_at').eq('id', id).maybeSingle());
   if (!p) throw notFound('Project not found');
   return p;
+}
+
+/** 030: a verified project's 360° photos can no longer change (checked again here after requireUnlockedProject). */
+async function assertPhotosEditable(projectId) {
+  assertNotLocked(unwrap(await adminClient.from('projects').select('id, completion_verified_at').eq('id', projectId).maybeSingle()));
 }
 
 export async function listImages(req, res) {
@@ -83,6 +89,7 @@ export async function uploadImage(req, res) {
   const format = assertImageFormat(req.file.buffer);
   const { id } = req.params;
   const project = await getProject(id);
+  assertNotLocked(project);
   const body = req.body;
   if (body.inspection_date > new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10)) {
     throw badRequest('The inspection date cannot be in the future.');
@@ -171,6 +178,7 @@ export async function uploadImage(req, res) {
 export async function updateImage(req, res) {
   const img = unwrap(await adminClient.from('site_images').select('id, project_id').eq('id', req.params.imageId).eq('project_id', req.params.id).maybeSingle());
   if (!img) throw notFound('Image not found');
+  await assertPhotosEditable(img.project_id);
   const row = unwrap(await adminClient.from('site_images').update(req.body).eq('id', img.id).select('*').single());
   const evaluation = req.body.is_final !== undefined ? await reevaluate(img.project_id, 'image_update', req.user.id) : null;
   await logActivity(req, {
@@ -186,6 +194,7 @@ export async function updateImage(req, res) {
 export async function deleteImage(req, res) {
   const img = unwrap(await adminClient.from('site_images').select('id, project_id, storage_path').eq('id', req.params.imageId).eq('project_id', req.params.id).maybeSingle());
   if (!img) throw notFound('Image not found');
+  await assertPhotosEditable(img.project_id);
   unwrap(await adminClient.from('site_images').delete().eq('id', img.id));
   await adminClient.storage.from(BUCKET).remove([img.storage_path]);
   await reevaluate(img.project_id, 'image_deleted', req.user.id);

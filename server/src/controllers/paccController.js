@@ -20,7 +20,7 @@ import { adminClient } from '../config/supabase.js';
 import { canTransition, isClosedCaseStatus, referralReasons } from '../services/citizenReports.js';
 import { completionLabel, summarizeFinance } from '../services/completion.js';
 import { verificationState } from '../services/completionVerification.js';
-import { loadVerifications } from './completionController.js';
+import { finalizeCompletionIfReady, loadVerifications } from './completionController.js';
 import { loadReportPhotos, withActivities } from './phasesController.js';
 import { DOCUMENT_BUCKET, TYPE_LABELS as DOCUMENT_TYPE_LABELS } from './documentsController.js';
 import { BUCKET as PANORAMA_BUCKET } from './imagesController.js';
@@ -474,7 +474,20 @@ export async function updateCase(req, res) {
       : `Updated the PACC case on ${cs.project_code}: ${describeCaseChanges(patch)}.`,
     details: { changed: Object.keys(patch).filter((k) => k !== 'closed_at' && k !== 'contractor_name'), from_status: cs.status, to_status: patch.status ?? cs.status, ...(patch.show_public !== undefined && { show_public: patch.show_public }) },
   });
+  // 030: a completion verified by both sides while the case was open becomes verified now.
+  if (closing && cs.project_id) await completeVerificationAfterCaseClose(cs.project_id);
   res.json({ data: rows[0] });
+}
+
+/** After a PACC case closes, verify the project's completion if both sides already verified it. Never fails the case change. */
+export async function completeVerificationAfterCaseClose(projectId, finalize = finalizeCompletionIfReady) {
+  try {
+    // No actor: the flag-history row of this evaluation names no PACC member (contractors read it).
+    return await finalize(projectId, { actorId: null });
+  } catch (err) {
+    console.error('[pacc] completion verification after case close failed', err.message);
+    return null;
+  }
 }
 
 export async function addCaseNote(req, res) {

@@ -405,7 +405,8 @@ describe('verification routes', () => {
   it('logs: Auditor → activity_logs, PACC → pacc_activity, and a neutral "Completion verified" line', () => {
     const src = readFileSync(new URL('../controllers/completionController.js', import.meta.url), 'utf8');
     assert.match(src, /if \(role === 'pacc'\) await logPacc\(req, entry\);\s+else await logActivity\(req, entry\);/);
-    assert.match(src, /await logActivity\(null, \{\s+action: 'completion\.verified',/);
+    assert.match(src, /await log\(null, \{\s+action: 'completion\.verified',/);
+    assert.match(src, /log = logActivity/);
     assert.match(src, /summary: `Completion verified: /);
     assert.match(src, /\.is\('completion_verified_at', null\)/);
   });
@@ -659,5 +660,146 @@ describe('migration 030', () => {
   it('a private bucket for the reference photos (10 MB, JPEG / PNG / WebP), no storage policies', () => {
     assert.match(code, /values \('progress-photos', 'progress-photos', false, 10485760, array\['image\/jpeg', 'image\/png', 'image\/webp'\]\)\s+on conflict \(id\) do update/);
     assert.doesNotMatch(code, /storage\.objects/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Review fixes: final verification waits for an open PACC case; no PACC member in flag history
+// ---------------------------------------------------------------------------
+/** A stand-in for the service-role client: `handler(table, ops)` answers each query; every call is recorded. */
+function fakeDb(handler) {
+  const calls = [];
+  return {
+    calls,
+    from(table) {
+      const q = { table, ops: [] };
+      calls.push(q);
+      const run = () => Promise.resolve({ data: handler(table, q.ops), error: null });
+      const builder = new Proxy({}, {
+        get(_t, prop) {
+          if (prop === 'then') return (ok, fail) => run().then(ok, fail);
+          if (prop === 'maybeSingle' || prop === 'single') return async () => ({ data: [].concat(handler(table, q.ops) ?? [])[0] ?? null, error: null });
+          return (...args) => (q.ops.push([prop, ...args]), builder);
+        },
+      });
+      return builder;
+    },
+  };
+}
+
+describe('finalizeCompletionIfReady', () => {
+  const PROJECT = { id: ID, project_code: '26OM0001', status: 'completed', completed_at: '2026-11-20T00:00:00Z', completion_verified_at: null };
+  const BOTH = [
+    { id: 'a', verifier_role: 'auditor', decision: 'verified', created_at: '2026-11-21T00:00:00Z' },
+    { id: 'p', verifier_role: 'pacc', decision: 'verified', created_at: '2026-11-22T00:00:00Z', verified_by: null, verifier_name: 'PACC' },
+  ];
+  const setup = ({ rows = BOTH, openCases = [], project = PROJECT } = {}) => {
+    let verifiedAt = null;
+    const db = fakeDb((table, ops) => {
+      if (table === 'projects' && ops.some(([op]) => op === 'update')) {
+        verifiedAt = ops.find(([op]) => op === 'update')[1].completion_verified_at;
+        return [{ ...project, completion_verified_at: verifiedAt }];
+      }
+      if (table === 'projects') return [{ ...project, completion_verified_at: verifiedAt ?? project.completion_verified_at }];
+      if (table === 'completion_verifications') return rows;
+      if (table === 'pacc_cases') return openCases;
+      return [];
+    });
+    const evaluations = [];
+    const logs = [];
+    const deps = { db, reevaluateFn: async (...a) => evaluations.push(a), log: async (req, entry) => logs.push([req, entry]) };
+    return { db, deps, evaluations, logs };
+  };
+  let finalize;
+  let pacc;
+  before(async () => {
+    ({ finalizeCompletionIfReady: finalize } = await import('../controllers/completionController.js'));
+    pacc = await import('../controllers/paccController.js');
+  });
+
+  it('both verified and no open PACC case: verified, 100%, re-evaluated with the given actor, neutral log', async () => {
+    const { db, deps, evaluations, logs } = setup();
+    const out = await finalize(ID, { actorId: null, ...deps });
+    assert.equal(out.verified, true);
+    assert.ok(out.project.completion_verified_at);
+    const update = db.calls.find((c) => c.table === 'projects' && c.ops.some(([op]) => op === 'update'));
+    assert.equal(update.ops.find(([op]) => op === 'update')[1].overall_progress, 100);
+    assert.ok(update.ops.some(([op, col, v]) => op === 'is' && col === 'completion_verified_at' && v === null));
+    assert.deepEqual(evaluations, [[ID, 'completion_verified', null]]);
+    assert.equal(logs.length, 1);
+    assert.equal(logs[0][0], null);
+    assert.match(logs[0][1].summary, /^Completion verified: 26OM0001/);
+  });
+
+  it('an open PACC case: not verified yet, nothing written, whoever verified last', async () => {
+    const { db, deps, evaluations, logs } = setup({ openCases: [{ id: 'c1' }] });
+    const out = await finalize(ID, { actorId: 'auditor-id', ...deps });
+    assert.deepEqual([out.verified, out.waitingForCase], [false, true]);
+    assert.equal(db.calls.some((c) => c.ops.some(([op]) => op === 'update')), false);
+    assert.deepEqual([evaluations.length, logs.length], [0, 0]);
+    const cases = db.calls.find((c) => c.table === 'pacc_cases');
+    assert.ok(cases.ops.some(([op, col, v]) => op === 'in' && col === 'status' && v.join() === 'under_investigation,case_filed'));
+  });
+
+  it('not both verified, not Completed, or already verified: nothing happens', async () => {
+    for (const opts of [{ rows: [BOTH[0]] }, { project: { ...PROJECT, status: 'ongoing' } }, { project: { ...PROJECT, completion_verified_at: '2026-11-23T00:00:00Z' } }]) {
+      const { db, deps, evaluations } = setup(opts);
+      const out = await finalize(ID, deps);
+      assert.deepEqual([out.verified, out.waitingForCase], [false, false]);
+      assert.equal(db.calls.some((c) => c.ops.some(([op]) => op === 'update')), false);
+      assert.equal(evaluations.length, 0);
+    }
+  });
+
+  it('closing the PACC case re-checks, with no actor; a failure never breaks the case change', async () => {
+    const seen = [];
+    await pacc.completeVerificationAfterCaseClose(ID, async (id, opts) => seen.push([id, opts]));
+    assert.deepEqual(seen, [[ID, { actorId: null }]]);
+    assert.equal(await pacc.completeVerificationAfterCaseClose(ID, async () => { throw new Error('db down'); }), null);
+    const src = readFileSync(new URL('../controllers/paccController.js', import.meta.url), 'utf8');
+    assert.match(src, /if \(closing && cs\.project_id\) await completeVerificationAfterCaseClose\(cs\.project_id\);\s+res\.json\(\{ data: rows\[0\] \}\);/);
+  });
+
+  it('a PACC decision is never the flag-history actor; the response explains the wait', async () => {
+    const { AWAITING_PACC_CASE_MESSAGE } = await import('../controllers/completionController.js');
+    assert.equal(AWAITING_PACC_CASE_MESSAGE, 'Recorded. The project becomes verified once its PACC case is closed.');
+    const src = readFileSync(new URL('../controllers/completionController.js', import.meta.url), 'utf8');
+    assert.match(src, /finalizeCompletionIfReady\(id, \{ actorId: role === 'pacc' \? null : req\.user\.id \}\)/);
+    assert.match(src, /outcome\.waitingForCase && \{ awaiting_pacc_case: true, message: AWAITING_PACC_CASE_MESSAGE \}/);
+    assert.doesNotMatch(src, /reevaluate\(id, 'completion_verified', req\.user\.id\)/);
+  });
+});
+
+describe('percentages are stored to 2 decimals', () => {
+  it('weights and accomplishments are rounded before the range check', () => {
+    const plan = phasesReplace.parse({ phases: [{ sequence_no: 1, name: 'Earthworks', weight: '33.333', activities: [{ name: 'Excavation', weight: 66.666 }] }] });
+    assert.equal(plan.phases[0].weight, 33.33);
+    assert.equal(plan.phases[0].activities[0].weight, 66.67);
+    assert.equal(phasesReplace.safeParse({ phases: [{ sequence_no: 1, name: 'Earthworks', weight: 0.004 }] }).success, false);
+    const report = progressSubmit.parse({ report_date: '2026-11-15', description: 'Excavated 120 m of the canal.', phases: [{ phase_id: ID, accomplishment: '55.555', activities: [{ activity_id: A1, accomplishment: 100.004 }] }] });
+    assert.equal(report.phases[0].accomplishment, 55.56);
+    assert.equal(report.phases[0].activities[0].accomplishment, 100);
+    assert.equal(progressSubmit.safeParse({ report_date: '2026-11-15', description: 'Excavated 120 m of the canal.', phases: [{ phase_id: ID, accomplishment: 100.01 }] }).success, false);
+  });
+});
+
+describe('the 360° photo controller re-checks the lock', () => {
+  it('in upload, caption / final and delete', () => {
+    const src = readFileSync(new URL('../controllers/imagesController.js', import.meta.url), 'utf8');
+    assert.match(src, /const project = await getProject\(id\);\s+assertNotLocked\(project\);/);
+    assert.equal(src.match(/await assertPhotosEditable\(img\.project_id\);/g).length, 2);
+  });
+});
+
+describe('the week 2 seed', () => {
+  it('stores no overall progress above 99% (no sample completion is verified)', () => {
+    const sql = readFileSync(new URL('../../../database/seed/seed_week2.sql', import.meta.url), 'utf8');
+    const updates = sql.match(/update public\.projects p set overall_progress = v\.o from \(values (.*?)\) v\(code, o\)/)[1];
+    const values = [...updates.matchAll(/\('(\w+)',([\d.]+)\)/g)].map((m) => [m[1], Number(m[2])]);
+    assert.ok(values.length >= 16);
+    assert.ok(values.every(([, v]) => v <= 99), JSON.stringify(values.filter(([, v]) => v > 99)));
+    for (const code of ['25OM0101', '25OM0214', '25OM0405']) assert.deepEqual(values.find(([c]) => c === code), [code, 99]);
+    const reports = [...sql.matchAll(/^\('(\w+)','\d{4}-\d{2}-\d{2}',([\d.]+),'\{/gm)].map((m) => Number(m[2]));
+    assert.ok(reports.length > 20 && reports.every((v) => v <= 99));
   });
 });

@@ -13,6 +13,8 @@ const nullable = (schema) => z.preprocess((v) => (v === '' || v === 'null' ? nul
 export const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD');
 const money = z.coerce.number().finite().min(0).max(1e13);
 const text = (max) => z.string().trim().max(max);
+/** A percentage stored as numeric(5,2): rounded to 2 decimals before the range check, so the database never refuses or drifts. */
+const pct2 = (schema) => z.coerce.number().finite().transform((v) => Math.round((v + Number.EPSILON) * 100) / 100).pipe(schema);
 const createStatusField = z.preprocess(
   (v) => (v === undefined || v === '' ? undefined : ['not_started', 'ongoing'].includes(v) ? v : 'auto'),
   z.enum(['auto', 'not_started', 'ongoing']).optional(),
@@ -147,7 +149,7 @@ export const phasesReplace = z.object({
         id: z.string().uuid().optional(),
         sequence_no: z.coerce.number().int().min(1).max(50),
         name: text(160).min(2),
-        weight: z.coerce.number().positive().max(100),
+        weight: pct2(z.number().positive().max(100)),
         planned_start: nullable(isoDate),
         planned_end: nullable(isoDate),
         remarks: nullable(text(1000)),
@@ -158,7 +160,7 @@ export const phasesReplace = z.object({
             z.object({
               id: z.string().uuid().optional(),
               name: text(120).min(2, 'Give each sub-activity a name (at least 2 characters).'),
-              weight: z.coerce.number().positive('A sub-activity weight is above 0%.').max(100, 'A sub-activity weight is at most 100%.'),
+              weight: pct2(z.number().positive('A sub-activity weight is above 0%.').max(100, 'A sub-activity weight is at most 100%.')),
             }),
           )
           .max(20, 'At most 20 sub-activities per phase')
@@ -169,7 +171,7 @@ export const phasesReplace = z.object({
     .max(20, 'At most 20 phases'),
 });
 
-const accomplishment = z.coerce.number().min(0, 'Accomplishment is 0–100%').max(100, 'Accomplishment is 0–100%');
+const accomplishment = pct2(z.number().min(0, 'Accomplishment is 0–100%').max(100, 'Accomplishment is 0–100%'));
 /**
  * Progress report. Sent as multipart/form-data (030): this object as a JSON string in the field
  * "payload" (middleware/upload.js parseJsonPayload), with 1–5 reference photos in "photos".

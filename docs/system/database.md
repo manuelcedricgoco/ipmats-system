@@ -10,10 +10,10 @@ Where the two differ, the live schema wins.
 
 ## Overview
 
-- **24 tables** in the `public` schema (6 of them for the PACC portal, 024; `project_pacc_status` from 029), plus one helper table in the `private` schema.
+- **27 tables** in the `public` schema (6 of them for the PACC portal, 024; `project_deletion_requests` from 027; `project_pacc_status` from 029; `phase_activities`, `progress_photos` and `completion_verifications` from 030), plus one helper table in the `private` schema.
 - **2 views** that join projects with their place, office, contractor and totals.
 - **7 enum types** and several text columns limited by `CHECK` rules.
-- **6 private storage buckets** for files (photos, evidence, documents, citizen report proof, PACC case documents).
+- **7 private storage buckets** for files (photos, evidence, documents, profile photos, citizen report proof, PACC case documents, progress report reference photos).
 - Row Level Security (RLS) is **on for every table**. All policies only allow reading. Every insert, update and
   delete is done by the Node.js API with the service-role key, after the API has checked the user's role.
 
@@ -281,8 +281,9 @@ Every Auditor and PACC decision on a project's completion (030). Append-only (`p
 | created_at | timestamptz | no | now() | When it was decided |
 
 A decision counts only when it was made after `projects.completed_at`. The current decision of each side is
-its latest counting one; when both are `verified`, the API sets `projects.completion_verified_at` and the
-overall progress becomes 100 %.
+its latest counting one; when both are `verified` and the project has no open PACC case, the API sets
+`projects.completion_verified_at` and the overall progress becomes 100 %. With an open case the decision is
+recorded and the project is verified when the case is closed.
 
 ### financial_records
 Money events of a project.
