@@ -803,3 +803,38 @@ describe('the week 2 seed', () => {
     assert.ok(reports.length > 20 && reports.every((v) => v <= 99));
   });
 });
+
+// ---------------------------------------------------------------------------
+// Whole-branch review: a contractor never learns of a PACC case from the verification state
+// ---------------------------------------------------------------------------
+describe('completion verification for a contractor', () => {
+  const PROJECT = { id: ID, project_code: '26OM0001', status: 'completed', completed_at: '2026-11-20T00:00:00Z', completion_verified_at: null };
+  const BOTH = [
+    { id: 'a', verifier_role: 'auditor', decision: 'verified', verifier_name: 'Ana', created_at: '2026-11-21T00:00:00Z' },
+    { id: 'p', verifier_role: 'pacc', decision: 'verified', verified_by: null, verifier_name: 'PACC', created_at: '2026-11-22T00:00:00Z' },
+  ];
+  let stateForViewer;
+  let getCompletionVerification;
+  before(async () => {
+    ({ stateForViewer } = await import('../services/completionVerification.js'));
+    ({ getCompletionVerification } = await import('../controllers/completionController.js'));
+  });
+
+  it('strips every PACC-case field for a contractor; staff and PACC get them unchanged', () => {
+    const state = verificationState(PROJECT, BOTH, { pacc_case_open: true, awaiting_pacc_case: true, message: 'Recorded. The project becomes verified once its PACC case is closed.' });
+    const out = stateForViewer(state, 'contractor');
+    for (const key of ['pacc_case_open', 'awaiting_pacc_case', 'message']) assert.equal(key in out, false, key);
+    assert.match(JSON.stringify(out), /^(?!.*PACC case).*$/s);
+    assert.equal(out.label, COMPLETED_AWAITING_LABEL);
+    for (const role of ['auditor', 'dpwh_personnel', 'admin', 'pacc']) assert.equal(stateForViewer(state, role), state);
+  });
+
+  it('GET /projects/:id/completion-verification answers a contractor with no PACC-case field', async () => {
+    const db = fakeDb((table) => (table === 'projects' ? [PROJECT] : table === 'completion_verifications' ? BOTH : []));
+    let body;
+    await getCompletionVerification({ params: { id: ID }, db, user: { id: 'c1', role: 'contractor' } }, { json: (b) => (body = b) });
+    for (const key of ['pacc_case_open', 'awaiting_pacc_case', 'message']) assert.equal(key in body.data, false, key);
+    assert.equal(db.calls.some((c) => c.table === 'pacc_cases'), false); // it never even looks at the cases
+    assert.equal(body.data.is_verified, false);
+  });
+});

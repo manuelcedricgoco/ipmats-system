@@ -41,6 +41,15 @@ export function weightedProgress(rows = []) {
   return total > 0 ? rows.reduce((s, r) => s + Number(r.weight || 0) * clamp(r.accomplishment), 0) / total : 0;
 }
 
+/** Highest overall progress shown until the Auditor and PACC have both verified the completion (API officialProgress). */
+export const UNVERIFIED_PROGRESS_CAP = 99;
+
+/** The overall % that will be stored and shown: at most 99 until verified (2 decimals). */
+export const officialProgress = (computed, verifiedAt) => {
+  const v = round2(clamp(computed));
+  return verifiedAt ? v : Math.min(v, UNVERIFIED_PROGRESS_CAP);
+};
+
 /** Running total of a phase's sub-activity weights (2 decimals). */
 export const activityWeightTotal = (activities = []) => round2(activities.reduce((s, a) => s + Number(a.weight || 0), 0));
 
@@ -162,8 +171,12 @@ export const DECISION_TEXT = { verified: 'Verified', not_yet: 'Not yet' };
  * What the completion verification card shows and allows.
  * `actor`: 'auditor' on the staff Flag & audit tab for an Auditor, 'pacc' on the PACC project page; anyone else
  * reads only. phase: 'not_completed' | 'awaiting' | 'awaiting_case' (both verified, a PACC case is open) | 'verified'.
+ * `showPacc`: staff and PACC only. Anyone else (a contractor, possibly the investigated party) never learns that a
+ * PACC case is open: 'awaiting_case' becomes the neutral 'finalizing'.
  */
-export function verificationCard(state, actor = null) {
+export const FINALIZING_TEXT = 'Both sides verified; the verification is being finalised.';
+
+export function verificationCard(state, actor = null, { showPacc = false } = {}) {
   const s = state || {};
   const role = actor === 'auditor' || actor === 'pacc' ? actor : null;
   const completed = Boolean(s.is_completed);
@@ -173,10 +186,10 @@ export function verificationCard(state, actor = null) {
     return { role: r, title: SIDE_TITLES[r], decision: d?.decision ?? null, text: d ? DECISION_TEXT[d.decision] || d.decision : 'No decision yet', note: d?.note ?? null, by: d?.verifier_name ?? null, at: d?.created_at ?? null };
   });
   const waitingFor = sides.filter((x) => x.decision !== 'verified').map((x) => x.title);
-  const phase = verified ? 'verified' : !completed ? 'not_completed' : waitingFor.length ? 'awaiting' : 'awaiting_case';
+  const phase = verified ? 'verified' : !completed ? 'not_completed' : waitingFor.length ? 'awaiting' : showPacc ? 'awaiting_case' : 'finalizing';
   const canAct = Boolean(role) && completed && !verified;
   let verifyBlockedReason = null;
-  if (canAct && role === 'pacc' && s.pacc_case_open) verifyBlockedReason = PACC_OPEN_CASE_MESSAGE;
+  if (canAct && role === 'pacc' && showPacc && s.pacc_case_open) verifyBlockedReason = PACC_OPEN_CASE_MESSAGE;
   else if (canAct && s[role]?.decision === 'verified') verifyBlockedReason = `Already verified by ${role === 'pacc' ? 'PACC' : 'the Auditor'}.`;
   return {
     phase,

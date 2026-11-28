@@ -121,7 +121,7 @@ export default function PaccProjectPage() {
           </Card>
         </div>
 
-        {data.completion_verification && <CompletionVerificationCard state={data.completion_verification} actor="pacc" onDecide={decideCompletion} />}
+        {data.completion_verification && <CompletionVerificationCard state={data.completion_verification} actor="pacc" showPacc onDecide={decideCompletion} />}
 
         <Card className="overflow-hidden">
           <CardHeader

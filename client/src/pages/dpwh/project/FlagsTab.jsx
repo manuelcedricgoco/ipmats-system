@@ -126,7 +126,7 @@ export default function FlagsTab() {
       {verification.error ? (
         <ErrorState error={verification.error} onRetry={verification.reload} title="Completion verification did not load" />
       ) : (
-        verification.data && <CompletionVerificationCard state={verification.data} actor={hasRole('auditor') ? 'auditor' : null} onDecide={decideCompletion} />
+        verification.data && <CompletionVerificationCard state={verification.data} actor={hasRole('auditor') ? 'auditor' : null} showPacc={isStaff} onDecide={decideCompletion} />
       )}
 
       <Card className="overflow-hidden">

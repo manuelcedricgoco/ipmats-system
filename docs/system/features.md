@@ -242,7 +242,8 @@ Sidebar items appear only for the roles that can use them. "All staff" = Admin, 
       drawer (`StatusBadge` with `completion_verified_at`). The status at a past flag check stays "Completed".
     - **Progress locked:** once verified, the header shows "Progress locked" and the Phases & progress and 360°
       images tabs hide their editing buttons with the message "This project's completion was verified; its
-      progress and photos can no longer change." Finance records and documents can still be added.
+      progress and photos can no longer change." Finance records and documents can still be added. On the Edit
+      form the actual completion date is disabled, with the same message (other fields stay editable).
   - **Project page tabs:** Overview, Phases & progress, Finance, 360° images, Flag & audit, Documents (described
     below). Auditors see a "Read-only" label. The editing buttons of every tab (phases, progress, adding finance
     records, photo upload and mark final, document upload) are shown to Personnel only; the Admin keeps the
@@ -288,7 +289,7 @@ Sidebar items appear only for the roles that can use them. "All staff" = Admin, 
     sub-activities under it.
   - **Submit progress update:** enter each phase's accomplishment, or, for a phase with sub-activities, each
     sub-activity's % (the phase's % is shown computed, read only). The new overall percentage is shown before
-    saving. Lowering a figure (phase or sub-activity) needs a written reason. Every report also needs:
+    saving, at most 99 % until the completion is verified (the computed figure is named under it). Lowering a figure (phase or sub-activity) needs a written reason. Every report also needs:
     - a **description of the work done**, 10–2000 characters, with a counter;
     - **1–5 reference photos** (JPEG, PNG or WebP, up to 10 MB each), with previews before sending ("Attach 1 to 5
       reference photos."). The server checks the actual bytes. They are stored in the private `progress-photos`
@@ -436,7 +437,10 @@ Sidebar items appear only for the roles that can use them. "All staff" = Admin, 
     before verifying completion."; Not yet stays allowed.
   - When both have verified, the project becomes 100 %, "Completed – verified", and its progress, phase plan and
     360° photos are locked. If a PACC case is open at that moment, the decision is recorded and the server's
-    message is shown: "Recorded. The project becomes verified once its PACC case is closed."
+    message is shown: "Recorded. The project becomes verified once its PACC case is closed." Staff and PACC see
+    that the project waits for the PACC case. The project's contractor never learns that a case is open: its card
+    says "Both sides verified; the verification is being finalised.", and the API strips every PACC-case field
+    from its `GET /projects/:id/completion-verification` answer (`stateForViewer`).
   - Before the project is Completed the card says that verification opens once it is.
 - **Touches:** `components/progress/CompletionVerificationCard.jsx`, `lib/progress.js` (`verificationCard`),
   `project/FlagsTab.jsx`, `pages/pacc/PaccProjectPage.jsx`; `GET/POST /projects/:id/completion-verification`,

@@ -22,6 +22,7 @@ import {
   activityWeightTotal,
   activityWeightsOk,
   formRowProgress,
+  officialProgress,
   phasePlanPayload,
   phasePlanReady,
   progressDecreased,
@@ -323,8 +324,10 @@ export function ProgressModal({ open, onClose, project, phases, lastReport, canC
   }, [open, phases, project]);
 
   const shown = rows.map((r) => ({ ...r, accomplishment: formRowProgress(r) }));
-  const overall = weightedProgress(shown);
-  const previous = weightedProgress(rows.map((r) => ({ ...r, accomplishment: r.previous })));
+  const computed = weightedProgress(shown);
+  // What will be stored and shown: at most 99% until the Auditor and PACC verify (030).
+  const overall = officialProgress(computed, project.completion_verified_at);
+  const previous = officialProgress(weightedProgress(rows.map((r) => ({ ...r, accomplishment: r.previous }))), project.completion_verified_at);
   const all100 = shown.length > 0 && shown.every((r) => Number(r.accomplishment) >= 100);
   const decreased = progressDecreased(rows);
   const problem = progressFormProblem({ description, files });
@@ -390,7 +393,9 @@ export function ProgressModal({ open, onClose, project, phases, lastReport, canC
                 {overall.toFixed(2)}%
                 {overall !== previous && <span className={`ml-2 text-sm ${overall > previous ? 'text-emerald-700' : 'text-red-700'}`}>{overall > previous ? '+' : ''}{(overall - previous).toFixed(2)}</span>}
               </p>
-              {all100 && <p className="text-[11px] text-brand-700">Shown as 99% until the Auditor and PACC verify the completion.</p>}
+              {overall < computed && (
+                <p className="text-[11px] text-brand-700">Computed {computed.toFixed(2)}%; shown as 99% until the Auditor and PACC verify the completion.</p>
+              )}
             </div>
           </div>
         </div>

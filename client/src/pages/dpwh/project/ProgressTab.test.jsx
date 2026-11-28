@@ -72,7 +72,8 @@ describe('progress form at 100% (030)', () => {
     const html = renderToStaticMarkup(<ProgressModal open onClose={() => {}} project={project} phases={done} onSaved={() => {}} canConfirmCompletion={false} />);
     expect(html).toContain('DPWH Personnel confirm the actual completion date');
     expect(html).not.toContain('Actual completion date');
-    expect(html).toContain('Shown as 99% until the Auditor and PACC verify the completion.');
+    expect(html).toContain('Computed 100.00%; shown as 99% until the Auditor and PACC verify the completion.');
+    expect(html).toMatch(/text-xl font-bold tabular-nums text-brand-900">99.00%/);
   });
   it('DPWH Personnel get the completion date', () => {
     const html = renderToStaticMarkup(<ProgressModal open onClose={() => {}} project={project} phases={done} onSaved={() => {}} canConfirmCompletion />);

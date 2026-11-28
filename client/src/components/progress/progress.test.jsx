@@ -35,7 +35,7 @@ describe('Completion verification card (030)', () => {
     expect(b.every((x) => !/ disabled=""/.test(x.attrs))).toBe(true);
   });
   it('PACC with an open case: Verify disabled with the reason, Not yet allowed', () => {
-    const html = renderToStaticMarkup(<CompletionVerificationCard state={{ ...base, pacc_case_open: true }} actor="pacc" onDecide={noop} />);
+    const html = renderToStaticMarkup(<CompletionVerificationCard state={{ ...base, pacc_case_open: true }} actor="pacc" showPacc onDecide={noop} />);
     const [notYet, verify] = buttons(html);
     expect(notYet.attrs).not.toMatch(/ disabled=""/);
     expect(verify.attrs).toMatch(/ disabled=""/);
@@ -46,6 +46,13 @@ describe('Completion verification card (030)', () => {
     const old = { id: 'v1', verifier_role: 'auditor', decision: 'verified', note: null, verifier_name: 'Ana Auditor', created_at: '2026-11-20T02:00:00Z', counts: false };
     const html = renderToStaticMarkup(<CompletionVerificationCard state={{ ...base, pacc, history: [pacc, old] }} onDecide={noop} />);
     for (const t of ['Auditor', 'PACC', 'No decision yet', 'Not yet', 'Drainage unfinished', 'Ana Auditor', 'no longer counts']) expect(html).toContain(t);
+  });
+  it('both verified, waiting: staff see the PACC case; a contractor sees neutral text only', () => {
+    const both = { ...base, auditor: { id: 'a', verifier_role: 'auditor', decision: 'verified', created_at: '2026-11-28T01:00:00Z' }, pacc: { id: 'p', verifier_role: 'pacc', decision: 'verified', verifier_name: 'PACC', created_at: '2026-11-28T02:00:00Z' } };
+    expect(renderToStaticMarkup(<CompletionVerificationCard state={both} showPacc onDecide={noop} />)).toContain('once its PACC case is closed');
+    const html = renderToStaticMarkup(<CompletionVerificationCard state={both} onDecide={noop} />);
+    expect(html).toContain('Both sides verified; the verification is being finalised.');
+    expect(html).not.toMatch(/PACC case/);
   });
   it('verified: the lock message, no buttons', () => {
     const html = renderToStaticMarkup(<CompletionVerificationCard state={{ ...base, is_verified: true, completion_verified_at: '2026-11-28T03:00:00Z', label: 'Completed – verified' }} actor="auditor" onDecide={noop} />);

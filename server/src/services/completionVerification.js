@@ -75,6 +75,20 @@ export function verifierIdentity(role, user) {
   return { verified_by: user?.id ?? null, verifier_name: user?.profile?.full_name || user?.email || null };
 }
 
+/** Fields that say something about a PACC case; a contractor (possibly the investigated party) never gets them. */
+export const PACC_CASE_FIELDS = Object.freeze(['pacc_case_open', 'awaiting_pacc_case', 'message']);
+
+/**
+ * The verification state for the caller: a contractor gets it without any field that reveals a PACC case
+ * (staff and PACC get it unchanged). The client also shows a contractor neutral text while the project waits.
+ */
+export function stateForViewer(state, role) {
+  if (role !== 'contractor') return state;
+  const out = { ...state };
+  for (const key of PACC_CASE_FIELDS) delete out[key];
+  return out;
+}
+
 /** One verification as the API returns it (PACC rows already name no member). */
 function publicRow(row, completedAt) {
   const pacc = row.verifier_role === 'pacc';

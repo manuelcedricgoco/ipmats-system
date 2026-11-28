@@ -2,7 +2,7 @@
 
 The database is PostgreSQL 17, hosted by Supabase (project **IPMATS**). This page was written from the live
 database on 22 November 2026, not only from the migration files, and updated on 25 November 2026 for migrations
-019 and 020. The PACC parts (migrations 023–026) and the project deletion requests (027), all applied 27 November 2026, are written from the migration files, as are the contractor accounts (028, applied 27 November 2026; 029, applied 28 November 2026) and the progress rules (030: sub-activities, reference photos, verified 100%; applied by the project controller before the API of that PR is deployed).
+019 and 020. The PACC parts (migrations 023–026) and the project deletion requests (027), all applied 27 November 2026, are written from the migration files, as are the contractor accounts (028, applied 27 November 2026; 029, applied 28 November 2026) and the progress rules (030: sub-activities, reference photos, verified 100%; applied by the project controller at merge time, immediately before the API of that PR is deployed).
 Where the two differ, the live schema wins.
 
 - What each table is used for in the app: [features.md](features.md)
@@ -775,9 +775,10 @@ moves the staff-visible PACC case status from `projects.pacc_case_status` to the
 the older API (PRs #13/#14) fails between applying 029 and deploying #15 on `GET /projects/:id/deletion-request`
 (every project page for DPWH Personnel and the Admin) and `GET /deletion-requests` (the Admin's sidebar badge and
 page). Deploy #15 right after 029.
-030 (progress rules) is new: the project controller applies it **before** the API of the progress-rules PR is
-deployed (that API reads every new table and column, so it fails without 030). 030 is additive, so the API before it
-keeps working once it is applied.
+030 (progress rules) is new: the project controller applies it **at merge time, immediately before** the API of the
+progress-rules PR is deployed (that API reads every new table and column, so it fails without 030). Do not apply it
+early: the API before it re-writes overall progress up to 100% (uncapped), never sets `completed_at`, and the data
+updates of 030 change `projects.updated_at`. Deploy order: 030 → the API → the client.
 
 Rules the project follows:
 - An applied migration is never edited or deleted. A mistake is undone by a new migration (013 → 014, 006 → 016).

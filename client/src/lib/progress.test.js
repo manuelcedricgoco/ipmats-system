@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   COMPLETED_AWAITING_LABEL,
   COMPLETED_VERIFIED_LABEL,
+  FINALIZING_TEXT,
   MAX_REFERENCE_PHOTOS,
   REFERENCE_PHOTOS_MESSAGE,
   VERIFIED_LOCK_MESSAGE,
@@ -11,6 +12,7 @@ import {
   addReferencePhotos,
   completionLabel,
   isLocked,
+  officialProgress,
   phasePlanPayload,
   phasePlanReady,
   phaseProgress,
@@ -173,6 +175,12 @@ describe('completion labels and lock (030)', () => {
     expect(statusLabel('completed', '2026-11-28')).toBe(COMPLETED_VERIFIED_LABEL);
     expect(statusLabel('ongoing', null)).toBe('On-going');
   });
+  it('the overall shown is at most 99 until verified', () => {
+    expect(officialProgress(100, null)).toBe(99);
+    expect(officialProgress(99.5, null)).toBe(99);
+    expect(officialProgress(64.444, null)).toBe(64.44);
+    expect(officialProgress(100, '2026-11-28T00:00:00Z')).toBe(100);
+  });
   it('a verified project is locked', () => {
     expect(isLocked({ completion_verified_at: '2026-11-28T00:00:00Z' })).toBe(true);
     expect(isLocked({ completion_verified_at: null })).toBe(false);
@@ -204,9 +212,9 @@ describe('completion verification card (030)', () => {
     expect(verificationCard(base, null).sides.map((s) => s.text)).toEqual(['No decision yet', 'No decision yet']);
   });
   it('PACC cannot verify while a PACC case is open; "Not yet" stays allowed', () => {
-    const c = verificationCard({ ...base, pacc_case_open: true }, 'pacc');
+    const c = verificationCard({ ...base, pacc_case_open: true }, 'pacc', { showPacc: true });
     expect(c).toMatchObject({ canAct: true, canVerify: false, canNotYet: true, verifyBlockedReason: 'Close the PACC case before verifying completion.' });
-    expect(verificationCard({ ...base, pacc_case_open: true }, 'auditor').canVerify).toBe(true);
+    expect(verificationCard({ ...base, pacc_case_open: true }, 'auditor', { showPacc: true }).canVerify).toBe(true);
   });
   it('no repeated Verify by the side that already verified', () => {
     const c = verificationCard({ ...base, auditor: row('auditor', 'verified') }, 'auditor');
@@ -220,10 +228,16 @@ describe('completion verification card (030)', () => {
     const done = verificationCard({ ...base, is_verified: true, completion_verified_at: '2026-11-28T02:00:00Z', label: COMPLETED_VERIFIED_LABEL }, 'pacc');
     expect(done).toMatchObject({ canAct: false, phase: 'verified' });
   });
-  it('both verified but not yet 100%: waiting for the PACC case to close', () => {
-    const c = verificationCard({ ...base, auditor: row('auditor', 'verified'), pacc: row('pacc', 'verified') }, null);
+  it('both verified but not yet 100%: staff and PACC see it waits for the PACC case', () => {
+    const c = verificationCard({ ...base, auditor: row('auditor', 'verified'), pacc: row('pacc', 'verified') }, null, { showPacc: true });
     expect(c.phase).toBe('awaiting_case');
     expect(c.waitingFor).toEqual([]);
+  });
+  it('a contractor (no showPacc) never learns of a PACC case: neutral "finalizing"', () => {
+    const c = verificationCard({ ...base, auditor: row('auditor', 'verified'), pacc: row('pacc', 'verified'), pacc_case_open: true }, null);
+    expect(c.phase).toBe('finalizing');
+    expect(c.verifyBlockedReason).toBeNull();
+    expect(FINALIZING_TEXT).toBe('Both sides verified; the verification is being finalised.');
   });
   it('copes with no state yet', () => {
     expect(verificationCard(null, 'auditor')).toMatchObject({ canAct: false, phase: 'not_completed', history: [] });

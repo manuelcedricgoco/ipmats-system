@@ -7,7 +7,7 @@ import ConfirmDialog from '../common/ConfirmDialog.jsx';
 import { Alert } from '../common/Feedback.jsx';
 import { Field, Textarea } from '../common/Form.jsx';
 import { dateTime } from '../../lib/format.js';
-import { DECISION_TEXT, NOT_YET_NOTE_MAX, NOT_YET_NOTE_MIN, VERIFIED_LOCK_MESSAGE, verificationCard } from '../../lib/progress.js';
+import { DECISION_TEXT, FINALIZING_TEXT, NOT_YET_NOTE_MAX, NOT_YET_NOTE_MIN, VERIFIED_LOCK_MESSAGE, verificationCard } from '../../lib/progress.js';
 
 const DECISION_CLS = { verified: 'bg-emerald-50 text-emerald-800', not_yet: 'bg-amber-50 text-amber-800' };
 const ROLE_TITLE = { auditor: 'Auditor', pacc: 'PACC' };
@@ -17,9 +17,10 @@ const ROLE_TITLE = { auditor: 'Auditor', pacc: 'PACC' };
  * awaiting verification") until both the Auditor and PACC verify it; then 100% ("Completed – verified") and its
  * progress and photos are locked. `actor`: 'auditor' (Flag & audit tab, Auditor) or 'pacc' (PACC project page)
  * may decide; everyone else reads. `onDecide(decision, note)` posts and returns the new state.
+ * `showPacc`: staff and PACC; a contractor never sees that a PACC case is open (neutral text instead).
  */
-export default function CompletionVerificationCard({ state, actor = null, onDecide }) {
-  const card = verificationCard(state, actor);
+export default function CompletionVerificationCard({ state, actor = null, showPacc = false, onDecide }) {
+  const card = verificationCard(state, actor, { showPacc });
   const [asking, setAsking] = useState(null); // 'verified' | 'not_yet'
   const [note, setNote] = useState('');
   const close = () => {
@@ -129,6 +130,14 @@ function Summary({ card }) {
       <p className="flex items-start gap-2 text-slate-600">
         <Clock className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" aria-hidden />
         Verification opens once the project is Completed (every phase at 100%, an actual completion date and a final as-built 360° photo).
+      </p>
+    );
+  }
+  if (card.phase === 'finalizing') {
+    return (
+      <p className="flex items-start gap-2 text-slate-700">
+        <Clock className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" aria-hidden />
+        <span><strong className="font-semibold">Completed – awaiting verification.</strong> {FINALIZING_TEXT}</span>
       </p>
     );
   }

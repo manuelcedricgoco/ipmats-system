@@ -14,7 +14,7 @@
  */
 import { adminClient } from '../config/supabase.js';
 import { logActivity, projectCode } from '../services/activityLog.js';
-import { assertCanVerify, currentVerifications, isFullyVerified, verificationState, verifierIdentity } from '../services/completionVerification.js';
+import { assertCanVerify, currentVerifications, isFullyVerified, stateForViewer, verificationState, verifierIdentity } from '../services/completionVerification.js';
 import { logPacc } from '../services/paccActivity.js';
 import { reevaluate } from '../services/projectEvaluation.js';
 import { notFound, unwrap } from '../utils/httpError.js';
@@ -34,7 +34,8 @@ export async function getCompletionVerification(req, res) {
   const project = unwrap(await req.db.from('projects').select(PROJECT_COLS).eq('id', req.params.id).maybeSingle());
   if (!project) throw notFound('Project not found');
   const rows = await loadVerifications(req.db, project.id);
-  res.json({ data: verificationState(project, rows) });
+  // A contractor never learns from this route that a PACC case is open.
+  res.json({ data: stateForViewer(verificationState(project, rows), req.user?.role) });
 }
 
 async function recordVerification(req, res, role) {
