@@ -191,8 +191,8 @@ There are three layers. Only the last two actually protect data.
 `client/src/routes/ProtectedRoute.jsx` and `App.jsx`:
 - `/app/**`: signed-in staff (admin, DPWH personnel, auditor) and contractor accounts (029). Others go to `/login`,
   or to `/` if they have no role.
-- Contractor accounts (029): only `/app` (their own dashboard), `/app/projects`, the project page and its six tabs,
-  and `/app/account`. Any other `/app` page, including ones added later, sends them to `/app`
+- Contractor accounts (029): only `/app` (their own dashboard), `/app/projects`, the project page and its seven tabs
+  (the Bidding tab, 032, read only), and `/app/account`. Any other `/app` page, including ones added later, sends them to `/app`
   (`lib/contractor.js` `canOpenWorkspacePath`, checked by `ProtectedRoute`); the staff pages are also inside a
   staff-only route. On the project page they see "Submit progress update", "Upload 360° image" and (031) "Upload
   receipt" on their own company's disbursements and expenses (shown from the API's

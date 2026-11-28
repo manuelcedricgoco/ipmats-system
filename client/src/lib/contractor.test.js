@@ -55,6 +55,7 @@ describe('canOpenWorkspacePath', () => {
     '/app/projects/abc/finance',
     '/app/projects/abc/flags',
     '/app/projects/abc/documents',
+    '/app/projects/abc/bidding', // 032: read only
   ];
   const staffOnly = [
     '/app/projects/new',

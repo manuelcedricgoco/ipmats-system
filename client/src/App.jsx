@@ -37,6 +37,8 @@ const ImagesTab = lazy(() => import('./pages/dpwh/project/ImagesTab.jsx'));
 const FlagsTab = lazy(() => import('./pages/dpwh/project/FlagsTab.jsx'));
 // Gap fixes (concept document): documents, activity logs, flag-rule settings
 const DocumentsTab = lazy(() => import('./pages/dpwh/project/DocumentsTab.jsx'));
+// Bidding of the contract (032): rounds, bids, award
+const BiddingTab = lazy(() => import('./pages/dpwh/project/BiddingTab.jsx'));
 const ActivityLogPage = lazy(() => import('./pages/admin/ActivityLogPage.jsx'));
 const SettingsPage = lazy(() => import('./pages/admin/SettingsPage.jsx'));
 const MapPage = lazy(() => import('./pages/shared/MapPage.jsx'));
@@ -94,6 +96,7 @@ export default function App() {
             <Route path="projects" element={<ProjectsPage />} />
             <Route path="projects/:id" element={<ProjectLayout />}>
               <Route index element={<OverviewTab />} />
+              <Route path="bidding" element={<BiddingTab />} />
               <Route path="progress" element={<ProgressTab />} />
               <Route path="finance" element={<FinanceTab />} />
               <Route path="images" element={<ImagesTab />} />
