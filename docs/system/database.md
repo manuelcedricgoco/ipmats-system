@@ -2,7 +2,7 @@
 
 The database is PostgreSQL 17, hosted by Supabase (project **IPMATS**). This page was written from the live
 database on 22 November 2026, not only from the migration files, and updated on 25 November 2026 for migrations
-019 and 020. The PACC parts (migrations 023–026) and the project deletion requests (027), all applied 27 November 2026, are written from the migration files, as are the contractor accounts (028, applied 27 November 2026; 029, applied 28 November 2026) and the progress rules (030: sub-activities, reference photos, verified 100%; applied by the project controller at merge time, immediately before the API of that PR is deployed), and finance liquidation (031: receipts of disbursements and expenses; additive, applied 28 November 2026, before the merge).
+019 and 020. The PACC parts (migrations 023–026) and the project deletion requests (027), all applied 27 November 2026, are written from the migration files, as are the contractor accounts (028, applied 27 November 2026; 029, applied 28 November 2026) and the progress rules (030: sub-activities, reference photos, verified 100%; applied 28 November 2026 at the merge of PR #16, immediately before its API was deployed), and finance liquidation (031: receipts of disbursements and expenses; additive, applied 28 November 2026, before its merge).
 Where the two differ, the live schema wins.
 
 - What each table is used for in the app: [features.md](features.md)
@@ -802,9 +802,9 @@ write files. It hands out signed links that expire (1 hour by default, `SIGNED_U
 ## Migrations
 
 The migration files are in `database/migrations/`. They are numbered and run in number order, `001` to `031`.
-The live database's migration history lists 001–029 as applied, in that order (019 and 020 on 25 November
+The live database's migration history lists 001–031 as applied, in that order (019 and 020 on 25 November
 2026; 021 and 022 on 27 November 2026, each before the matching API was deployed; 023, 024, 025 and 026 on 27 November
-2026 for the PACC portal; 027 on 27 November 2026 for project deletion requests and the staff-visible PACC case status; 028, the `contractor` role value, on its own on 27 November 2026; 029, contractor accounts, on 28 November 2026). On a fresh database, 023 must be applied on its own before 024, because a new enum value
+2026 for the PACC portal; 027 on 27 November 2026 for project deletion requests and the staff-visible PACC case status; 028, the `contractor` role value, on its own on 27 November 2026; 029, contractor accounts, on 28 November 2026; 030, progress rules, on 28 November 2026 at merge time (PR #16); 031, finance liquidation, on 28 November 2026 before its merge). On a fresh database, 023 must be applied on its own before 024, because a new enum value
 must be committed before it can be used, and 025 must be applied after 024 and before the API that closes cases is
 deployed. Apply 026 after 025 and before deploying the API that writes `pacc_cases.contractor_name`
 (without it, opening or editing a case fails). Apply 027 after 026 and before deploying
@@ -815,12 +815,12 @@ moves the staff-visible PACC case status from `projects.pacc_case_status` to the
 the older API (PRs #13/#14) fails between applying 029 and deploying #15 on `GET /projects/:id/deletion-request`
 (every project page for DPWH Personnel and the Admin) and `GET /deletion-requests` (the Admin's sidebar badge and
 page). Deploy #15 right after 029.
-030 (progress rules) is new: the project controller applies it **at merge time, immediately before** the API of the
-progress-rules PR is deployed (that API reads every new table and column, so it fails without 030). Do not apply it
+030 (progress rules) was applied **at merge time, immediately before** the API of the
+progress-rules PR was deployed (that API reads every new table and column, so it fails without 030). On another database, do not apply it
 early: the API before it re-writes overall progress up to 100% (uncapped), never sets `completed_at`, and the data
 updates of 030 change `projects.updated_at`. Deploy order: 030 → the API → the client.
 031 (finance liquidation) is additive: the API before it never reads `finance_receipts` or the `finance-receipts`
-bucket, so it was applied **before the merge** (to the IPMATS project on 28 November 2026); the finance-liquidation API needs it (every finance
+bucket, so it was applied **before its merge** (to the IPMATS project on 28 November 2026); the finance-liquidation API needs it (every finance
 page reads the receipts). Deploy order: 031 → the API → the client.
 
 Rules the project follows:

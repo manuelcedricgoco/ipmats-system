@@ -15,10 +15,12 @@ export const isRealDate = (v) => {
   const d = new Date(`${v}T00:00:00Z`);
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v;
 };
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+// The real-date check runs only on a value of the right shape, so a malformed one gets a single message.
 export const isoDate = z
   .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD')
-  .refine(isRealDate, 'Enter a real date (YYYY-MM-DD).');
+  .regex(DATE_PATTERN, 'Use YYYY-MM-DD')
+  .refine((v) => !DATE_PATTERN.test(v) || isRealDate(v), 'Enter a real date (YYYY-MM-DD).');
 const money = z.coerce.number().finite().min(0).max(1e13);
 const text = (max) => z.string().trim().max(max);
 /** A percentage stored as numeric(5,2): rounded to 2 decimals before the range check, so the database never refuses or drifts. */

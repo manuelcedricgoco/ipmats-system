@@ -57,7 +57,10 @@ class Query {
     if (this.op === 'delete') this.store[this.table] = rows.filter((r) => !hit.includes(r));
     return hit.map((r) => ({ ...r }));
   }
-  then(ok, fail) { return Promise.resolve({ data: this.run(), error: null }).then(ok, fail); }
+  then(ok, fail) {
+    if (this.store.failReadsOf === this.table && this.op === 'select') return Promise.resolve({ data: null, error: { code: 'XX000', message: 'read failed' } }).then(ok, fail);
+    return Promise.resolve({ data: this.run(), error: null }).then(ok, fail);
+  }
   async maybeSingle() { return { data: this.run()[0] ?? null, error: null }; }
   async single() { const d = this.run(); return d.length === 1 ? { data: d[0], error: null } : { data: null, error: { code: 'PGRST116', message: 'not one row' } }; }
 }
@@ -305,5 +308,38 @@ describe('what each side reads', () => {
     assert.equal(res.body.data.find((r) => r.id === P2).liquidated_amount, 0);
     assert.equal(res.body.totals.liquidated_amount, 300);
     assert.equal(res.body.totals.liquidated_pct, 60);
+  });
+});
+
+describe('deleting a project', () => {
+  const approve = () => {
+    store.project_deletion_requests = [{ id: 'req-1', project_id: P1, requested_by: 'per-id', status: 'approved', approval_expires_at: new Date(Date.now() + 86400000).toISOString(), used_at: null }];
+    store.pacc_cases = [];
+  };
+  it('removes the project\'s receipt files after the delete', async () => {
+    await as('personnel').upload(P1, D1);
+    approve();
+    const res = await request(app).delete(`/api/projects/${P1}`).set('x-as', 'personnel');
+    assert.equal(res.status, 204, JSON.stringify(res.body));
+    assert.equal(store.project_deletion_requests[0].status, 'used');
+    assert.equal(files.removed.length, 1);
+    assert.match(files.removed[0], new RegExp(`^finance-receipts:${P1}/`));
+  });
+  it('a failed read of the receipt files deletes nothing and keeps the approval', async () => {
+    await as('personnel').upload(P1, D1);
+    approve();
+    store.failReadsOf = 'finance_receipts';
+    const errors = console.error;
+    console.error = () => {};
+    let res;
+    try {
+      res = await request(app).delete(`/api/projects/${P1}`).set('x-as', 'personnel');
+    } finally {
+      console.error = errors;
+    }
+    assert.equal(res.status, 500);
+    assert.equal(store.project_deletion_requests[0].status, 'approved');
+    assert.equal(store.project_deletion_requests[0].used_at, null);
+    assert.ok(store.projects.some((p) => p.id === P1), 'the project is still there');
   });
 });

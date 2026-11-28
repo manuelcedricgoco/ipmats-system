@@ -53,5 +53,6 @@ describe('Upload receipt dialog', () => {
     expect(html).toContain('Before uploading, cover personal information such as names of private persons, TIN and home addresses. Accepted receipts are shown to the public.');
     for (const t of ['Receipt file', 'PDF, JPEG, PNG or WebP, up to 15 MB.', 'Amount (PHP)', 'Receipt date', 'Description', 'type="file"']) expect(html).toContain(t);
     expect(html).toContain('accept=".pdf,.jpg,.jpeg,.png,.webp');
+    expect(html).toContain('Shown to the public once the receipt is accepted.');
   });
 });

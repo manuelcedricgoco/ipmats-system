@@ -3,11 +3,13 @@ import {
   PRIVACY_REMINDER,
   RECEIPT_MAX_BYTES,
   acceptsReceipts,
+  DESCRIPTION_PUBLIC_HINT,
   checkReceiptForm,
   checkReturnNote,
   isPdf,
   liquidationNote,
   liquidationStatusMeta,
+  receiptFileType,
   receiptFormData,
   receiptStatusMeta,
   receiptUploader,
@@ -118,5 +120,33 @@ describe('misc', () => {
   it('tells a PDF from an image', () => {
     expect(isPdf('application/pdf')).toBe(true);
     expect(isPdf('image/png')).toBe(false);
+  });
+});
+
+describe('a file the browser gives no type', () => {
+  const named = (name, type = '') => new File(['%PDF-1.7'], name, { type });
+  it('takes the type its extension names', () => {
+    expect(receiptFileType(named('or.pdf'))).toBe('application/pdf');
+    expect(receiptFileType(named('OR.JPG'))).toBe('image/jpeg');
+    expect(receiptFileType(named('or.jpeg'))).toBe('image/jpeg');
+    expect(receiptFileType(named('or.png'))).toBe('image/png');
+    expect(receiptFileType(named('or.webp'))).toBe('image/webp');
+    expect(receiptFileType(named('or.gif'))).toBe('');
+    expect(receiptFileType(named('or'))).toBe('');
+    expect(receiptFileType(named('or.pdf', 'image/gif'))).toBe('');
+    expect(receiptFileType(null)).toBe('');
+  });
+  it('is accepted by the form and sent with that type', () => {
+    const ok = { amount: '10', receipt_date: '2026-11-20' };
+    expect(checkReceiptForm({ ...ok, file: named('scan.pdf') }, '2026-11-28')).toEqual({});
+    expect(checkReceiptForm({ ...ok, file: named('scan.txt') }, '2026-11-28').file).toBe('Attach a PDF, JPEG, PNG or WebP file.');
+    const sent = receiptFormData(ok, named('scan.pdf')).get('file');
+    expect(sent.type).toBe('application/pdf');
+    expect(sent.name).toBe('scan.pdf');
+    const typed = named('photo.png', 'image/png');
+    expect(receiptFormData(ok, typed).get('file')).toBe(typed);
+  });
+  it('the description hint is exact', () => {
+    expect(DESCRIPTION_PUBLIC_HINT).toBe('Shown to the public once the receipt is accepted.');
   });
 });

@@ -16,6 +16,23 @@ export const RECEIPT_MIME_TYPES = ['application/pdf', 'image/jpeg', 'image/png',
 export const RECEIPT_ACCEPT = '.pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp';
 export const RECEIPT_RECORD_TYPES = ['disbursement', 'expense'];
 
+const TYPE_BY_EXTENSION = { pdf: 'application/pdf', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' };
+
+/**
+ * The receipt file's type: the browser's, or, when the browser gives none (some phones and file managers), the
+ * one its extension names (.pdf, .jpg, .jpeg, .png, .webp). '' when neither is a receipt type. The API checks the
+ * file's actual bytes either way.
+ */
+export function receiptFileType(file) {
+  if (!file) return '';
+  if (file.type) return RECEIPT_MIME_TYPES.includes(file.type) ? file.type : '';
+  const ext = String(file.name || '').split('.').pop().toLowerCase();
+  return TYPE_BY_EXTENSION[ext] || '';
+}
+
+/** Shown under the description field of the upload dialog. */
+export const DESCRIPTION_PUBLIC_HINT = 'Shown to the public once the receipt is accepted.';
+
 // The API's messages, so the dialog says the same thing before and after sending.
 export const RECEIPT_FILE_MESSAGE = 'Attach a PDF, JPEG, PNG or WebP file.';
 export const RECEIPT_SIZE_MESSAGE = 'The receipt file can be at most 15 MB.';
@@ -61,7 +78,7 @@ export const receiptUploader = (r) => byLabel(r?.uploaded_by_name, r?.uploaded_b
  */
 export function checkReceiptForm({ file, amount, receipt_date: receiptDate, description }, today) {
   const errors = {};
-  if (!file || !RECEIPT_MIME_TYPES.includes(file.type)) errors.file = RECEIPT_FILE_MESSAGE;
+  if (!receiptFileType(file)) errors.file = RECEIPT_FILE_MESSAGE;
   else if (file.size > RECEIPT_MAX_BYTES) errors.file = RECEIPT_SIZE_MESSAGE;
   const text = String(amount ?? '').trim();
   const n = Number(text);
@@ -76,7 +93,9 @@ export function checkReceiptForm({ file, amount, receipt_date: receiptDate, desc
 /** multipart/form-data for POST /projects/:id/finance/:recordId/receipts. */
 export function receiptFormData({ amount, receipt_date: receiptDate, description }, file) {
   const fd = new FormData();
-  fd.append('file', file);
+  // A file the browser gave no type is sent with the type its extension names (the API refuses a part without one).
+  const type = receiptFileType(file);
+  fd.append('file', file && !file.type && type ? new File([file], file.name, { type }) : file);
   fd.append('amount', String(amount).trim());
   fd.append('receipt_date', receiptDate);
   const text = String(description ?? '').trim();

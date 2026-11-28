@@ -240,11 +240,6 @@ export async function updateProject(req, res) {
   res.json({ data: { id, evaluation } });
 }
 
-/**
- * The Admin deletes directly. DPWH Personnel need their own approved, unexpired, unused deletion
- * request for the project (027); it is marked used right before the delete. Every phase, report,
- * finance record, photo and document of the project goes with it; PACC cases survive (024).
- */
 /** Remove finance-receipt files (best effort: a failure is logged, the delete already happened). */
 export async function removeReceiptFiles(paths, storage = adminClient?.storage) {
   for (let i = 0; i < paths.length; i += 1000) {
@@ -257,6 +252,11 @@ export async function removeReceiptFiles(paths, storage = adminClient?.storage) 
   }
 }
 
+/**
+ * The Admin deletes directly. DPWH Personnel need their own approved, unexpired, unused deletion
+ * request for the project (027); it is marked used right before the delete. Every phase, report,
+ * finance record, photo and document of the project goes with it; PACC cases survive (024).
+ */
 export async function deleteProject(req, res) {
   const project = await getProjectOrThrow(req.params.id, 'id, project_code, name');
   const now = new Date();
@@ -279,6 +279,10 @@ export async function deleteProject(req, res) {
     await adminClient.from('pacc_cases').select('id, status').eq('project_id', project.id).in('status', OPEN_CASE_STATUSES).limit(1).maybeSingle(),
   );
 
+  // 031: the project's finance receipts go with it (cascade); their files are removed after the delete (best effort).
+  // Read before the approval is marked used, so a failed read never uses up the approval.
+  const receiptFiles = (await readAllPages(() => adminClient.from('finance_receipts').select('id, storage_path').eq('project_id', project.id))).map((r) => r.storage_path);
+
   let openRequests = [];
   if (approval) {
     // Single use: the status guard lets only one of two simultaneous deletes through.
@@ -298,9 +302,6 @@ export async function deleteProject(req, res) {
       await adminClient.from('project_deletion_requests').select('id, status, decision_note').eq('project_id', project.id).in('status', ['pending', 'approved']),
     );
   }
-
-  // 031: the project's finance receipts go with it (cascade); their files are removed after the delete (best effort).
-  const receiptFiles = (await readAllPages(() => adminClient.from('finance_receipts').select('id, storage_path').eq('project_id', project.id))).map((r) => r.storage_path);
 
   try {
     // PACC keeps its case (project_id becomes NULL); tell PACC who deleted the project, before it goes.

@@ -624,6 +624,9 @@ describe('dates and descriptions', () => {
     }
     assert.equal(financialRecord.safeParse({ record_type: 'expense', amount: 5, record_date: '2026-02-30' }).success, false);
     for (const ok of ['2028-02-29', '2026-12-31', '2026-01-01']) assert.equal(isoDate.safeParse(ok).success, true, ok);
+    // one message each: a malformed value only gets the pattern message, an impossible one only the real-date message
+    assert.deepEqual(isoDate.safeParse('02/11/2026').error.issues.map((i) => i.message), ['Use YYYY-MM-DD']);
+    assert.deepEqual(isoDate.safeParse('2026-02-31').error.issues.map((i) => i.message), ['Enter a real date (YYYY-MM-DD).']);
   });
   it('a description of only spaces is stored as null', () => {
     for (const blank of ['   ', '', '\t \n']) assert.equal(receiptUpload.parse({ amount: '5', receipt_date: '2026-11-02', description: blank }).description, null);
@@ -637,9 +640,11 @@ describe('receipt files are removed with their record or project', () => {
     const src = readFileSync(new URL('../controllers/projectsController.js', import.meta.url), 'utf8');
     const fn = src.slice(src.indexOf('export async function deleteProject'));
     const read = fn.indexOf(".from('finance_receipts').select('id, storage_path').eq('project_id', project.id)");
+    const markUsed = fn.indexOf(".update({ status: 'used'");
     const del = fn.indexOf(".from('projects').delete()");
     const remove = fn.indexOf('await removeReceiptFiles(receiptFiles);');
-    assert.ok(read > 0 && read < del && del < remove, `${read} ${del} ${remove}`);
+    assert.ok(read > 0 && markUsed > 0 && read < markUsed, 'the files are read before the approval is marked used (a failed read keeps the approval)');
+    assert.ok(read < del && del < remove, `${read} ${del} ${remove}`);
     const fin = readFileSync(new URL('../controllers/financeController.js', import.meta.url), 'utf8');
     assert.match(fin.slice(fin.indexOf('export async function deleteFinancialRecord')), /await removeReceiptFiles\(receiptFiles\);/);
   });

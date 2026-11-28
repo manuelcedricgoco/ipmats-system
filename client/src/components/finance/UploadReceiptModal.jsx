@@ -7,7 +7,7 @@ import Modal from '../common/Modal.jsx';
 import { api } from '../../lib/api.js';
 import { RECORD_TYPES } from '../../lib/constants.js';
 import { peso, todayIso } from '../../lib/format.js';
-import { PRIVACY_REMINDER, RECEIPT_ACCEPT, checkReceiptForm, receiptFormData } from '../../lib/liquidation.js';
+import { DESCRIPTION_PUBLIC_HINT, PRIVACY_REMINDER, RECEIPT_ACCEPT, checkReceiptForm, receiptFormData } from '../../lib/liquidation.js';
 
 const EMPTY = { amount: '', receipt_date: '', description: '' };
 
@@ -92,7 +92,12 @@ export default function UploadReceiptModal({ open, onClose, projectId, record, o
           {(a) => <Input {...a} type="date" value={form.receipt_date} max={todayIso()} onChange={set('receipt_date')} />}
         </Field>
         <Field label="Description" hint="Optional: what the receipt is for (at most 500 characters)." error={errors.description} className="sm:col-span-2">
-          {(a) => <Textarea {...a} value={form.description} onChange={set('description')} rows={2} maxLength={500} placeholder="e.g. Cement, 40 bags" />}
+          {(a) => (
+            <>
+              <Textarea {...a} value={form.description} onChange={set('description')} rows={2} maxLength={500} placeholder="e.g. Cement, 40 bags" />
+              <p className="mt-1 text-xs text-slate-500">{DESCRIPTION_PUBLIC_HINT}</p>
+            </>
+          )}
         </Field>
       </form>
     </Modal>
