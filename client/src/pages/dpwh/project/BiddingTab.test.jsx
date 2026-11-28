@@ -37,8 +37,21 @@ describe('Bidding tab', () => {
     outlet.current = { project: { id: 'p1', approved_budget: 1000000 }, reloadProject: () => {} };
     apiData.current = { '/projects/p1/bidding': view({ permissions: { can_manage: true, can_open_round: true, open_round_message: null } }) };
     const html = render(<BiddingTab />);
-    expect(html).toContain('Not yet awarded');
-    expect(buttons(html)).toContain('Open a bidding round');
+    expect(html).toContain('Not yet awarded. Record the bidding here');
+    expect(buttons(html).filter((b) => b === 'Open a bidding round')).toHaveLength(1); // in the empty state only
+  });
+  it('readers are not told to record the bidding', () => {
+    apiData.current = { '/projects/p1/bidding': view() };
+    const html = render(<BiddingTab />);
+    expect(html).toContain('Not yet awarded.');
+    expect(html).not.toContain('Record the bidding here');
+  });
+  it('a project with a contractor and earlier rounds keeps them on record', () => {
+    const failed = { ...evaluated, status: 'failed', failure_reason: 'No bid passed the check', actions: OFF };
+    apiData.current = { '/projects/p1/bidding': view({ rounds: [failed], project: { ...view().project, contractor_id: 'c9' }, permissions: { can_manage: true, can_open_round: false, open_round_message: 'This project already has a contractor.' } }) };
+    const html = render(<BiddingTab />);
+    expect(html).toContain('The earlier rounds stay on record below.');
+    expect(html).not.toContain('no bidding is recorded here');
   });
   it('Personnel: an evaluated round offers Award, eligibility and failure of bidding', () => {
     apiData.current = { '/projects/p1/bidding': view({ rounds: [evaluated], permissions: { can_manage: true, can_open_round: false, open_round_message: 'This project already has a bidding round in progress.' } }) };
@@ -66,6 +79,13 @@ describe('Project form after a bidding award', () => {
     apiData.current = { '/projects/p1': project, '/projects/p1/bidding': view({ project: { ...view().project, contractor_id: 'c1', contract_amount: 950000, awarded: true, contract_locked: true } }) };
     const html = render(<ProjectFormPage />);
     expect(html.split('The contractor and contract amount were set by the bidding award.').length - 1).toBe(2);
+    expect(html).toMatch(/Contract amount \(PHP\)<\/label><input[^>]*readonly=""/);
+    expect(html).toMatch(/Contractor<\/label><div[^>]*><button[^>]*disabled=""/);
+  });
+  it('keeps both fields read-only while the bidding is loading', () => {
+    apiData.current = { '/projects/p1': project };
+    const html = render(<ProjectFormPage />);
+    expect(html).toContain('Checking whether the contract was awarded through bidding');
     expect(html).toMatch(/Contract amount \(PHP\)<\/label><input[^>]*readonly=""/);
     expect(html).toMatch(/Contractor<\/label><div[^>]*><button[^>]*disabled=""/);
   });

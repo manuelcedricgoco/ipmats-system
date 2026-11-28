@@ -78,7 +78,7 @@ Anyone can also report a problem on a project to PACC, anonymously and with phot
     - **Bidding** (032, `components/public/PublicBidding.jsx`, `GET /public/projects/:id/bidding`): the abstract
       of bids, newest round first. Each round shows its number, status, opening date and ABC; an **open** round
       shows "Bidding open" and "The bids are shown once they are evaluated." (the API sends no bids for it). Once a
-      round is evaluated: every bidder with its amount, eligibility (and the reason a bid failed), rank and the
+      round is no longer open (evaluated, awarded or failed): every bidder with its amount, eligibility (and the reason a bid failed), rank and the
       "Winner"; a failed round shows the reason for the failure of bidding, an awarded one its award date. No ids,
       round notes or names of DEO staff are sent. "No bidding is recorded for this project." when there is none
       (for example a project registered with its contractor). If the call fails, the rest of the drawer still

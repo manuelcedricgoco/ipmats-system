@@ -7,9 +7,10 @@ import { date, pesoWhole } from '../../lib/format.js';
 
 /**
  * PUBLIC PORTAL — the abstract of bids (032), newest round first (GET /public/projects/:id/bidding). Every round's
- * number, status, opening date and ABC; once a round is evaluated, every bidder with its amount, eligibility (and
- * the reason a bid failed), rank and the winner; the reason for a failure of bidding. An open round shows only
- * that bidding is open: the API sends no bids for it. The API sends no ids, staff notes or anyone's identity.
+ * number, status, opening date and ABC; once a round is no longer open (evaluated, awarded or failed), every
+ * bidder with its amount, eligibility (and the reason a bid failed), rank and the winner; the reason for a failure
+ * of bidding. An open round shows only that bidding is open: the API sends no bids for it. The API sends no ids,
+ * round notes or names of DEO staff.
  */
 export function PublicBiddingView({ data }) {
   const rounds = [...(data?.rounds || [])].reverse();

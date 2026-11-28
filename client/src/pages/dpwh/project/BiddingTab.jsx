@@ -92,15 +92,20 @@ export default function BiddingTab() {
   } else if (inProgress) {
     summary = `Round ${inProgress.round_no} is ${inProgress.status === 'open' ? 'open' : 'evaluated and waiting for the award'}. The award sets the project's contractor and contract amount.`;
   } else if (bidding.project?.contractor_id) {
-    summary = `${perms.open_round_message || 'This project already has a contractor.'} It was registered with its contractor, so no bidding is recorded here.`;
-  } else {
+    summary = bidding.rounds.length
+      ? 'This project already has a contractor, so no new bidding round can be opened. The earlier rounds stay on record below.'
+      : `${perms.open_round_message || 'This project already has a contractor.'} It was registered with its contractor, so no bidding is recorded here.`;
+  } else if (perms.can_manage) {
     summary = 'Not yet awarded. Record the bidding here: the award to the lowest passed bid sets the project\'s contractor and contract amount.';
+  } else {
+    summary = 'Not yet awarded. The award to the lowest passed bid sets the project\'s contractor and contract amount.';
   }
 
   return (
     <div className="space-y-6">
       <Card>
-        <CardHeader title="Bidding of the contract" description={summary} actions={openButton} />
+        {/* With no round yet, the button is in the empty state below (once on the page). */}
+        <CardHeader title="Bidding of the contract" description={summary} actions={bidding.rounds.length > 0 && openButton} />
       </Card>
 
       <BiddingRounds
@@ -177,7 +182,14 @@ export default function BiddingTab() {
         confirmVariant="primary"
         confirmIcon={Award}
         onConfirm={async () => {
-          await write(() => api.post(`/bidding/rounds/${r.id}/award`, dialog.bid ? { bid_id: dialog.bid.id } : {}), 'Contract awarded. The project\'s contractor and contract amount are set.');
+          try {
+            await write(() => api.post(`/bidding/rounds/${r.id}/award`, dialog.bid ? { bid_id: dialog.bid.id } : {}), 'Contract awarded. The project\'s contractor and contract amount are set.');
+          } catch (e) {
+            // Whatever went wrong, show the round and the project as they are now (the error stays in the dialog).
+            reload();
+            reloadProject();
+            throw e;
+          }
           reloadProject(); // the header and Overview show the new contractor
         }}
       >
@@ -312,8 +324,10 @@ function BidModal({ open, round, bid, onClose, onSave }) {
           {(a) => <Input {...a} type="number" inputMode="decimal" min="0.01" step="0.01" value={form.amount} onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))} required invalid={above} />}
         </Field>
         {above && (
-          <Alert tone="warning">
-            This bid is above the ABC ({peso(round.abc)}). It can be recorded, but it cannot pass: {ABOVE_ABC_MESSAGE}
+          <Alert tone={bid?.eligibility === 'passed' ? 'error' : 'warning'}>
+            {bid?.eligibility === 'passed'
+              ? `This bid passed, and a bid above the ABC (${peso(round.abc)}) cannot stay passed, so this amount will be refused. Lower it, or first set the bid's eligibility to failed with the reason.`
+              : `This bid is above the ABC (${peso(round.abc)}). It can be recorded, but it cannot pass: ${ABOVE_ABC_MESSAGE}`}
           </Alert>
         )}
       </form>
