@@ -75,7 +75,7 @@ export default function ContractorsPage() {
                     {detail.loading ? <p className="text-sm text-slate-500">Loading projects…</p> : detail.data?.projects.length ? (
                       <ul className="space-y-2">
                         {detail.data.projects.map((p) => (
-                          <li key={p.id}><Link to={`/app/projects/${p.id}`} className="block rounded-md bg-white px-3 py-2 text-sm ring-1 ring-slate-200 hover:ring-brand-400"><span className="font-mono text-xs text-brand-700">{p.project_code}</span> {p.name}<span className="mt-1 block"><StatusBadge status={p.status} /></span></Link></li>
+                          <li key={p.id}><Link to={`/app/projects/${p.id}`} className="block rounded-md bg-white px-3 py-2 text-sm ring-1 ring-slate-200 hover:ring-brand-400"><span className="font-mono text-xs text-brand-700">{p.project_code}</span> {p.name}<span className="mt-1 block"><StatusBadge status={p.status} verifiedAt={p.completion_verified_at} /></span></Link></li>
                         ))}
                       </ul>
                     ) : <p className="text-sm text-slate-500">No assigned projects.</p>}
@@ -127,7 +127,7 @@ export default function ContractorsPage() {
                           {detail.loading ? <p className="text-sm text-slate-500">Loading projects…</p> : detail.data?.projects.length ? (
                             <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                               {detail.data.projects.map((p) => (
-                                <li key={p.id}><Link to={`/app/projects/${p.id}`} className="flex items-center justify-between gap-2 rounded-md bg-white px-3 py-2 text-sm ring-1 ring-slate-200 hover:ring-brand-400"><span className="truncate"><span className="font-mono text-xs text-brand-700">{p.project_code}</span> {p.name}</span><StatusBadge status={p.status} /></Link></li>
+                                <li key={p.id}><Link to={`/app/projects/${p.id}`} className="flex items-center justify-between gap-2 rounded-md bg-white px-3 py-2 text-sm ring-1 ring-slate-200 hover:ring-brand-400"><span className="truncate"><span className="font-mono text-xs text-brand-700">{p.project_code}</span> {p.name}</span><StatusBadge status={p.status} verifiedAt={p.completion_verified_at} /></Link></li>
                               ))}
                             </ul>
                           ) : <p className="text-sm text-slate-500">No assigned projects.</p>}

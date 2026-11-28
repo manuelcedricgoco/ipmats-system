@@ -155,7 +155,7 @@ export default function ProjectDrawer({ projectId, onClose, onRecenter }) {
             <div className="px-4 py-3">
               <div className="flex items-center justify-between gap-3">
                 <span className="flex flex-wrap items-center gap-1.5">
-                  <StatusBadge status={p.status} />
+                  <StatusBadge status={p.status} verifiedAt={p.completion_verified_at} />
                   <FlagBadge flag={p.public_flag} long size="sm" emptyLabel="Flag under review" />
                   {PUBLIC_CASE_STATUS_LABELS[p.pacc_public_status] && (
                     <Pill className="bg-brand-50 text-brand-800 ring-1 ring-inset ring-brand-200">

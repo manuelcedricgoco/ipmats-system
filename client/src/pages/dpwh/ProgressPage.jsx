@@ -55,7 +55,7 @@ export default function ProgressPage() {
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-semibold text-slate-900">{p.name}</p>
                     <p className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                      <span className="font-mono">{p.project_code}</span>· {p.municipality_name} · target {date(p.target_completion_date)} <FlagBadge flag={p.current_flag} size="sm" /> <StatusBadge status={p.status} />
+                      <span className="font-mono">{p.project_code}</span>· {p.municipality_name} · target {date(p.target_completion_date)} <FlagBadge flag={p.current_flag} size="sm" /> <StatusBadge status={p.status} verifiedAt={p.completion_verified_at} />
                     </p>
                   </div>
                   <div className="w-full sm:w-64">

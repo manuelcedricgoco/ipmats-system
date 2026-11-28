@@ -12,6 +12,7 @@ import { useAuth } from '../../../context/AuthContext.jsx';
 import { useApi } from '../../../hooks/useApi.js';
 import { PROJECT_TYPES } from '../../../lib/constants.js';
 import { projectPermissions } from '../../../lib/contractor.js';
+import { isLocked } from '../../../lib/progress.js';
 
 const TABS = [
   { to: '', label: 'Overview', end: true },
@@ -66,12 +67,13 @@ export default function ProjectLayout() {
       </div>
       <div className="-mt-3 mb-5 flex flex-wrap items-center gap-x-4 gap-y-2">
         <FlagBadge flag={p.current_flag} />
-        <StatusBadge status={p.status} />
+        <StatusBadge status={p.status} verifiedAt={p.completion_verified_at} />
         {/* Staff only: contractors never see PACC data (the API strips it as well) */}
         {showPacc && <PaccCaseChip status={p.pacc_case_status} />}
         <Pill>{PROJECT_TYPES[p.project_type]}</Pill>
         {!canEdit && !canDelete && !canReport && <Pill className="bg-slate-800 text-white">Read-only</Pill>}
         <ProgressBar value={p.overall_progress} size="sm" className="w-full max-w-[12rem]" />
+        {isLocked(p) && <Pill className="bg-emerald-700 text-white">Progress locked</Pill>}
       </div>
       <DeletionRequestNotice request={deletion.data?.request} />
 
@@ -99,8 +101,9 @@ export default function ProjectLayout() {
       <span className="pointer-events-none absolute inset-y-0 right-0 w-10 bg-gradient-to-l from-slate-50 to-transparent md:hidden" aria-hidden />
       </div>
 
-      {/* each tab gets the project and a reload function */}
-      <Outlet context={{ project: p, reloadProject: reload, ...perms }} />
+      {/* each tab gets the project and a reload function. locked (030): the completion was verified, so progress,
+          the phase plan and 360° photos can no longer change (finance and documents still can). */}
+      <Outlet context={{ project: p, reloadProject: reload, ...perms, locked: isLocked(p) }} />
     </>
   );
 }

@@ -1,8 +1,10 @@
+import { Fragment } from 'react';
 import { ExternalLink, FileText, ImageOff } from 'lucide-react';
 import Button from '../common/Button.jsx';
 import { Pill } from '../common/Badges.jsx';
 import { Card, CardBody, CardHeader, DetailList } from '../common/Card.jsx';
 import ProgressBar from '../common/ProgressBar.jsx';
+import ReportPhotos from '../progress/ReportPhotos.jsx';
 import { RECORD_TYPE_CLS, RECORD_TYPES } from '../../lib/constants.js';
 import { date, dateTime, pct, peso } from '../../lib/format.js';
 
@@ -30,11 +32,21 @@ export default function ProjectRecords({ project: p, phases, progress, finance, 
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {phases.map((ph) => (
-                    <tr key={ph.id}>
-                      <td className="px-4 py-2.5 text-slate-900">{ph.sequence_no}. {ph.name}</td>
-                      <td className="px-4 py-2.5 text-right tabular-nums">{pct(ph.weight, 1)}</td>
-                      <td className="px-4 py-2.5"><ProgressBar value={ph.accomplishment} size="sm" /></td>
-                    </tr>
+                    <Fragment key={ph.id}>
+                      <tr>
+                        <td className="px-4 py-2.5 text-slate-900">{ph.sequence_no}. {ph.name}</td>
+                        <td className="px-4 py-2.5 text-right tabular-nums">{pct(ph.weight, 1)}</td>
+                        <td className="px-4 py-2.5"><ProgressBar value={ph.accomplishment} size="sm" /></td>
+                      </tr>
+                      {/* 030: sub-activities explain the phase's % */}
+                      {(ph.activities || []).map((a) => (
+                        <tr key={a.id} className="bg-slate-50/60 text-xs">
+                          <td className="py-2 pl-8 pr-4 text-slate-700">{a.name}</td>
+                          <td className="px-4 py-2 text-right tabular-nums text-slate-500">{pct(a.weight, 1)} of phase</td>
+                          <td className="px-4 py-2"><ProgressBar value={a.accomplishment} size="sm" /></td>
+                        </tr>
+                      ))}
+                    </Fragment>
                   ))}
                 </tbody>
               </table>
@@ -43,7 +55,7 @@ export default function ProjectRecords({ project: p, phases, progress, finance, 
         </Card>
 
         <Card className="overflow-hidden">
-          <CardHeader title="Progress reports" description="Most recent 50, newest first" />
+          <CardHeader title="Progress reports" description={`Most recent 50, newest first, with the work done and the reference photos. ${LINKS_NOTE}`} />
           {progress.length === 0 ? (
             <p className="px-5 py-6 text-sm text-slate-500">No progress reports yet.</p>
           ) : (
@@ -55,7 +67,9 @@ export default function ProjectRecords({ project: p, phases, progress, finance, 
                     <Pill>{pct(u.overall_progress, 1)} done</Pill>
                     <span className="text-xs text-slate-500">by {u.submitted_by_name || '—'}</span>
                   </p>
-                  {u.remarks && <p className="mt-1 whitespace-pre-line break-words text-slate-700">{u.remarks}</p>}
+                  {u.description && <p className="mt-1 whitespace-pre-line break-words text-slate-800">{u.description}</p>}
+                  {u.remarks && <p className="mt-1 whitespace-pre-line break-words text-slate-600">{u.remarks}</p>}
+                  <ReportPhotos photos={u.photos || []} className="mt-2" />
                 </li>
               ))}
             </ul>

@@ -55,7 +55,7 @@ export default function ContractorDashboardPage() {
                       </p>
                       <div className="mt-2 flex flex-wrap items-center gap-1.5">
                         <FlagBadge flag={p.current_flag} size="sm" />
-                        <StatusBadge status={p.status} />
+                        <StatusBadge status={p.status} verifiedAt={p.completion_verified_at} />
                       </div>
                     </div>
                     <div className="w-full lg:w-64">

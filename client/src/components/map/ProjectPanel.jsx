@@ -48,7 +48,7 @@ export default function ProjectPanel({ projectId, onClose }) {
             <div className="space-y-4 px-4 pb-5">
               <div className="flex flex-wrap items-center gap-2">
                 <FlagBadge flag={p.flag} long emptyLabel="Not evaluated" />
-                <StatusBadge status={p.status} />
+                <StatusBadge status={p.status} verifiedAt={p.completion_verified_at} />
                 <span className="text-xs text-slate-500">{PROJECT_TYPES[p.project_type]}</span>
               </div>
               <ProgressBar value={p.overall_progress} planned={p.planned_progress} status={p.status} />

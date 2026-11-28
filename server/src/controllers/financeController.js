@@ -95,7 +95,7 @@ export async function deleteFinancialRecord(req, res) {
 export async function financeOverview(req, res) {
   let q = req.db
     .from('v_project_summary')
-    .select('id, project_code, name, municipality_name, agency_name, contractor_name, status, approved_budget, contract_amount, variation_orders, revised_contract_amount, total_obligated, total_disbursed, total_expenses, remaining_balance, overall_progress');
+    .select('id, project_code, name, municipality_name, agency_name, contractor_name, status, approved_budget, contract_amount, variation_orders, revised_contract_amount, total_obligated, total_disbursed, total_expenses, remaining_balance, overall_progress, completion_verified_at');
   q = applyProjectFilters(q, req.query).order('project_code');
   const rows = unwrap(await q).map((r) => {
     const revised = Number(r.revised_contract_amount);

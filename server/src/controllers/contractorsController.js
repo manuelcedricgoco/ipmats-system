@@ -24,7 +24,7 @@ export async function getContractor(req, res) {
   const projects = unwrap(
     await req.db
       .from('v_project_summary')
-      .select('id, project_code, name, municipality_name, contract_amount, duration_days, status')
+      .select('id, project_code, name, municipality_name, contract_amount, duration_days, status, completion_verified_at')
       .eq('contractor_id', c.id)
       .order('project_code'),
   );

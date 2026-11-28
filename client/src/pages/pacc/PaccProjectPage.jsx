@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import FlagReasons from '../../components/audit/FlagReasons.jsx';
 import OpenCaseModal from '../../components/pacc/OpenCaseModal.jsx';
 import ProjectRecords from '../../components/pacc/ProjectRecords.jsx';
+import CompletionVerificationCard from '../../components/progress/CompletionVerificationCard.jsx';
 import { FlagBadge, Pill, StatusBadge } from '../../components/common/Badges.jsx';
 import Button from '../../components/common/Button.jsx';
 import { Card, CardBody, CardHeader, DetailList, PageHeader } from '../../components/common/Card.jsx';
@@ -48,6 +49,13 @@ export default function PaccProjectPage() {
   const openReports = reports.filter((r) => r.status !== 'closed');
   const openCase = cases.find((c) => !isClosedCaseStatus(c.status));
 
+  // 030: PACC verifies the completion here (not while a PACC case is open; "Not yet" stays allowed).
+  const decideCompletion = async (decision, note) => {
+    const res = await api.post(`/pacc/projects/${p.id}/completion-verification`, { decision, ...(note ? { note } : {}) });
+    toast.success(res.data?.message || (res.data?.is_verified ? 'Completion verified. The project is now 100% and locked.' : decision === 'verified' ? 'Completion verified by PACC.' : '"Not yet" recorded.'));
+    reload();
+  };
+
   const confirmClose = async (outcome) => {
     if (closing.all) {
       const res = await api.post(`/pacc/projects/${p.id}/reports/close-all`, { outcome });
@@ -83,7 +91,7 @@ export default function PaccProjectPage() {
             <CardBody>
               <DetailList
                 items={[
-                  ['Status', <StatusBadge key="s" status={p.status} />],
+                  ['Status', <StatusBadge key="s" status={p.status} verifiedAt={p.completion_verified_at} />],
                   ['Type', PROJECT_TYPES[p.project_type] || titleCase(p.project_type)],
                   ['Implementing office', p.agency_name],
                   ['Contractor', p.contractor_name || 'No contractor'],
@@ -112,6 +120,8 @@ export default function PaccProjectPage() {
             </CardBody>
           </Card>
         </div>
+
+        {data.completion_verification && <CompletionVerificationCard state={data.completion_verification} actor="pacc" onDecide={decideCompletion} />}
 
         <Card className="overflow-hidden">
           <CardHeader

@@ -81,7 +81,7 @@ export default function ProjectCardGrid({ onOpen, showSearch = false, pageSize =
                     <div className="flex items-start justify-between gap-2">
                       <span className="font-mono text-xs text-brand-700">{p.project_code} · {PROJECT_TYPES[p.project_type] || p.project_type}</span>
                       <span className="flex flex-col items-end gap-1">
-                        <StatusBadge status={p.status} />
+                        <StatusBadge status={p.status} verifiedAt={p.completion_verified_at} />
                         <FlagBadge flag={p.public_flag} size="sm" emptyLabel="Under review" />
                       </span>
                     </div>

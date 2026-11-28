@@ -6,6 +6,7 @@ import FindingModal from '../../../components/audit/FindingModal.jsx';
 import FlagReasons from '../../../components/audit/FlagReasons.jsx';
 import ReviewFlagModal from '../../../components/audit/ReviewFlagModal.jsx';
 import { FlagBadge, Pill, StatusBadge } from '../../../components/common/Badges.jsx';
+import CompletionVerificationCard from '../../../components/progress/CompletionVerificationCard.jsx';
 import Button from '../../../components/common/Button.jsx';
 import { Card, CardBody, CardHeader } from '../../../components/common/Card.jsx';
 import { ErrorState, PageLoader } from '../../../components/common/Feedback.jsx';
@@ -29,6 +30,8 @@ export default function FlagsTab() {
   const flags = useApi(`/projects/${project.id}/flags`, undefined, { select: (r) => r.data });
   const findings = useApi(`/projects/${project.id}/findings`, undefined, { select: (r) => r.data });
   const phases = useApi(`/projects/${project.id}/phases`, undefined, { select: (r) => r.data.phases });
+  // 030: completion verification. Only the Auditor decides here (PACC on its own project page); everyone else reads.
+  const verification = useApi(`/projects/${project.id}/completion-verification`, undefined, { select: (r) => r.data });
   const [reviewing, setReviewing] = useState(false);
   const [editing, setEditing] = useState(null); // {} = new finding
   const [downloading, setDownloading] = useState(false);
@@ -61,6 +64,13 @@ export default function FlagsTab() {
     findings.reload();
     reloadProject();
   };
+  const decideCompletion = async (decision, note) => {
+    const res = await api.post(`/projects/${project.id}/completion-verification`, { decision, ...(note ? { note } : {}) });
+    toast.success(res.data?.message || (res.data?.is_verified ? 'Completion verified. The project is now 100% and locked.' : decision === 'verified' ? 'Completion verified by the Auditor.' : '"Not yet" recorded.'));
+    verification.reload();
+    flags.reload();
+    reloadProject();
+  };
   const downloadReport = async () => {
     setDownloading(true);
     try {
@@ -90,7 +100,7 @@ export default function FlagsTab() {
           <CardBody className="space-y-4">
             <div className="flex flex-wrap items-center gap-3">
               <FlagBadge flag={project.current_flag} long />
-              <StatusBadge status={project.status} />
+              <StatusBadge status={project.status} verifiedAt={project.completion_verified_at} />
               <Pill>{REVIEW_STATUS[project.flag_review_status]}</Pill>
               {project.current_flag !== project.auto_flag && project.auto_flag && <span className="text-xs text-slate-500">Automatic flag: {titleCase(project.auto_flag)}</span>}
             </div>
@@ -112,6 +122,12 @@ export default function FlagsTab() {
           </CardBody>
         </Card>
       </div>
+
+      {verification.error ? (
+        <ErrorState error={verification.error} onRetry={verification.reload} title="Completion verification did not load" />
+      ) : (
+        verification.data && <CompletionVerificationCard state={verification.data} actor={hasRole('auditor') ? 'auditor' : null} onDecide={decideCompletion} />
+      )}
 
       <Card className="overflow-hidden">
         <CardHeader title="Auditor decisions" description="Every confirm or override, with the reason (cannot be edited or deleted)" />

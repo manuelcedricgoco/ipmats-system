@@ -29,7 +29,7 @@ export async function flagQueue(req, res) {
     .from('v_project_summary')
     .select(
       'id, project_code, name, municipality_name, contractor_name, agency_name, status, completion_status, overall_progress, planned_progress, financial_progress, ' +
-        'current_flag, auto_flag, auto_flag_reasons, auto_flag_evaluated_at, flag_review_status, audit_status, image_count, latest_inspection_date',
+        'current_flag, auto_flag, auto_flag_reasons, auto_flag_evaluated_at, flag_review_status, audit_status, image_count, latest_inspection_date, completion_verified_at',
     );
   q = applyProjectFilters(q, req.query);
   if (req.query.flag) q = q.eq('current_flag', req.query.flag);
