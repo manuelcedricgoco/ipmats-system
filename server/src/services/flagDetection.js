@@ -15,7 +15,7 @@
  *          photo GPS or date doubtful, payments somewhat ahead, missing completion requirements
  *   GREEN  on track (or completed with every requirement met)
  */
-import { computePlannedProgress, daysBetween, detectCompletion, round2, toDate } from './completion.js';
+import { computePlannedProgress, daysBetween, detectCompletion, officialProgress, round2, toDate } from './completion.js';
 import { haversineMeters } from '../utils/geo.js';
 
 export const DEFAULT_RULES = Object.freeze({
@@ -72,12 +72,15 @@ export function evaluateProject({
 
   // ---------------------------------------------------------------- completion
   const completion = detectCompletion({ project, phases, images });
-  const overallProgress = completion.overallProgress;
   const isCompleted = completion.isCompleted;
+  // Progress rules (030): the shown progress stays at most 99% until the Auditor and PACC have
+  // verified the completion; a verification counts only while the project is still Completed.
+  const verified = Boolean(project.completion_verified_at) && isCompleted && !manualStatus;
+  const overallProgress = officialProgress(completion.overallProgress, verified ? project.completion_verified_at : null);
 
   if (isCompleted) {
     add('completion', 'green', 'COMPLETED', 'All phases are 100% accomplished, completion date recorded and final 360° image on file.');
-  } else if (overallProgress >= 100 || completion.hasCompletionDate) {
+  } else if (completion.overallProgress >= 100 || completion.hasCompletionDate) {
     add(
       'completion',
       'yellow',

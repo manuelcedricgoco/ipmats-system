@@ -1,7 +1,11 @@
-/** WEEK 3 — Flags and audit findings (Objective 5). View: staff (a project's flags and findings also contractor accounts, own company's projects) · Review / findings: Auditor, Admin · Corrective action: assigned DPWH personnel */
+/**
+ * WEEK 3 — Flags and audit findings (Objective 5). View: staff (a project's flags and findings also contractor accounts, own company's projects) · Review / findings: Auditor, Admin · Corrective action: assigned DPWH personnel
+ * 030 — Completion verification: view staff and contractor accounts (own projects) · verify / "Not yet": Auditor only (PACC verifies under /pacc)
+ */
 import { Router } from 'express';
 import * as f from '../controllers/flagsController.js';
 import * as a from '../controllers/findingsController.js';
+import * as cv from '../controllers/completionController.js';
 import { requireAuth } from '../middleware/auth.js';
 import { PROJECT_VIEWERS, requireRole, requireWriteAccess, ROLES, STAFF } from '../middleware/role.js';
 import { uploadLimiter } from '../middleware/rateLimits.js';
@@ -31,4 +35,7 @@ r.patch('/findings/:findingId/public', requireAuth, auditors, requireWriteAccess
 r.get('/projects/:id/findings', requireAuth, viewers, h(a.listFindings));
 r.post('/projects/:id/findings', requireAuth, auditors, uploadLimiter, requireWriteAccess, uploadEvidence, validate(s.findingCreate), h(a.createFinding));
 r.patch('/findings/:findingId', requireAuth, auditors, uploadLimiter, requireWriteAccess, uploadEvidence, validate(s.findingUpdate), h(a.updateFinding));
+// 030: completion verification (the project shows 100% only once the Auditor and PACC both verified)
+r.get('/projects/:id/completion-verification', requireAuth, viewers, h(cv.getCompletionVerification));
+r.post('/projects/:id/completion-verification', requireAuth, requireRole(ROLES.AUDITOR), requireWriteAccess, validate(s.completionVerification), h(cv.verifyAsAuditor));
 export default r;

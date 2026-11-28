@@ -1,6 +1,7 @@
 /** PACC portal API. Every route needs an approved PACC account; writes also need the service role. */
 import { Router } from 'express';
 import * as c from '../controllers/paccController.js';
+import { verifyAsPacc } from '../controllers/completionController.js';
 import { requireAuth } from '../middleware/auth.js';
 import { uploadLimiter } from '../middleware/rateLimits.js';
 import { requireRole, requireWriteAccess, ROLES } from '../middleware/role.js';
@@ -18,6 +19,8 @@ r.get('/inbox', h(c.inbox));
 r.get('/projects/:id', h(c.projectView));
 r.post('/reports/:reportId/close', requireWriteAccess, validate(s.reportClose), h(c.closeReport));
 r.post('/projects/:id/reports/close-all', requireWriteAccess, validate(s.reportClose), h(c.closeAllReports));
+// 030: PACC verifies a Completed project's completion (refused while a PACC case is open), or records "Not yet".
+r.post('/projects/:id/completion-verification', requireWriteAccess, validate(s.completionVerification), h(verifyAsPacc));
 
 r.get('/cases', h(c.listCases));
 r.get('/cases/:caseId', h(c.getCase));

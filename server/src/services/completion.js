@@ -36,6 +36,36 @@ export function computeOverallProgress(phases = []) {
   return round2(clamp(weighted / totalWeight));
 }
 
+/**
+ * Progress rules (migration 030). A phase with sub-activities: its accomplishment is the weighted
+ * sub-activity accomplishment, Σ(weight × accomplishment) ÷ Σ(weight) (the weights total 100), to
+ * 2 decimals. A phase without sub-activities keeps its own %.
+ */
+export function computeActivityProgress(activities = []) {
+  return computeOverallProgress(activities);
+}
+
+/** Highest overall progress a project shows until the Auditor and PACC have both verified its completion. */
+export const UNVERIFIED_PROGRESS_CAP = 99;
+export const COMPLETED_AWAITING_LABEL = 'Completed – awaiting verification';
+export const COMPLETED_VERIFIED_LABEL = 'Completed – verified';
+
+/**
+ * The overall progress that is stored and shown: min(computed, 99) until the completion is
+ * verified (projects.completion_verified_at), then the computed value (100). Used wherever
+ * projects.overall_progress or progress_updates.overall_progress is written.
+ */
+export function officialProgress(computed, verifiedAt) {
+  const value = round2(clamp(Number(computed) || 0));
+  return verifiedAt ? value : Math.min(value, UNVERIFIED_PROGRESS_CAP);
+}
+
+/** "Completed – verified" / "Completed – awaiting verification" for a Completed project; otherwise null. */
+export function completionLabel(project) {
+  if (project?.status !== 'completed') return null;
+  return project.completion_verified_at ? COMPLETED_VERIFIED_LABEL : COMPLETED_AWAITING_LABEL;
+}
+
 /** Planned % for one window [start, end] on `today` (straight line). */
 function linearPlanned(start, end, today) {
   const s = toDate(start);

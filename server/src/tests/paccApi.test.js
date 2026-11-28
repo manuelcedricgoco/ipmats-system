@@ -103,7 +103,7 @@ describe('the PACC project view', () => {
     let body;
     await projectView({ params: { id: ID }, db }, { json: (b) => (body = b) });
     const d = body.data;
-    assert.deepEqual(d.phases, tables.project_phases);
+    assert.deepEqual(d.phases, tables.project_phases.map((p) => ({ ...p, activities: [] })));
     assert.equal(d.progress_updates[0].submitted_by_name, 'Ana');
     assert.equal('submitter' in d.progress_updates[0], false);
     assert.equal(d.financial_records[0].phase_name, 'Earthworks');
@@ -119,6 +119,31 @@ describe('the PACC project view', () => {
     assert.equal('url' in d.documents[0], true);
     const progress = db.calls.find((c) => c.table === 'progress_updates');
     assert.ok(progress.ops.some(([op, n]) => op === 'limit' && n === 50));
+  });
+
+  it('030: sub-activities, report photos and descriptions, and the completion verification state', async () => {
+    const { projectView } = await import('../controllers/paccController.js');
+    const db = fakeDb({
+      ...tables,
+      v_project_summary: [{ ...tables.v_project_summary[0], status: 'completed', completed_at: '2026-11-20T00:00:00Z', completion_verified_at: null }],
+      phase_activities: [{ id: 'a1', phase_id: 'ph1', sequence_no: 1, name: 'Excavation', weight: 100, accomplishment: 50 }],
+      progress_updates: [{ id: 'pu1', report_date: '2026-11-01', overall_progress: 20, description: 'Excavated 120 m of the canal.', submitter: { full_name: 'Ana' } }],
+      progress_photos: [{ id: 'ph-1', progress_update_id: 'pu1', storage_path: 'p/pu1/x.jpg', size_bytes: 10 }],
+      pacc_cases: [{ id: 'c1', status: 'under_investigation' }],
+      completion_verifications: [{ id: 'v1', verifier_role: 'auditor', decision: 'verified', created_at: '2026-11-21T00:00:00Z', verifier_name: 'Aud' }],
+    });
+    let body;
+    await projectView({ params: { id: ID }, db, user: { role: 'pacc' } }, { json: (b) => (body = b) });
+    const d = body.data;
+    assert.equal(d.phases[0].activities[0].name, 'Excavation');
+    assert.equal(d.progress_updates[0].description, 'Excavated 120 m of the canal.');
+    assert.deepEqual(d.progress_updates[0].photos.map((p) => p.id), ['ph-1']);
+    assert.equal(d.project.completion_label, 'Completed – awaiting verification');
+    assert.equal(d.completion_verification.auditor.decision, 'verified');
+    assert.equal(d.completion_verification.pacc, null);
+    assert.equal(d.completion_verification.pacc_case_open, true);
+    const photos = db.calls.find((c) => c.table === 'progress_photos');
+    assert.deepEqual(photos.ops.find(([op]) => op === 'in').slice(1), ['progress_update_id', ['pu1']]);
   });
 
   it('reads the proof photos of many reports in chunks of 100', async () => {

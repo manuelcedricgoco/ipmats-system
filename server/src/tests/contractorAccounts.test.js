@@ -102,6 +102,7 @@ const CONTRACTOR_ROUTES = new Set([
   'get /projects/:id/documents',
   'get /projects/:id/flags',
   'get /projects/:id/findings',
+  'get /projects/:id/completion-verification',
 ]);
 
 describe('a contractor account reaches only its own project pages', () => {
@@ -164,14 +165,17 @@ describe('a contractor account reaches only its own project pages', () => {
   it('the write routes check the company before any upload is read', () => {
     const stack = (router, path) => router.stack.find((l) => l.route?.path === path && l.route.methods.post).route.stack.map((s) => s.handle);
     for (const [router, path, next] of [
-      [routers.progress, '/projects/:id/progress', 'validate'],
+      [routers.progress, '/projects/:id/progress', 'uploadProgressPhotos'],
       [routers.images, '/projects/:id/images', 'uploadPanorama'],
     ]) {
       const handlers = stack(router, path);
       const own = handlers.indexOf(role.requireOwnProject);
       assert.ok(own > handlers.indexOf(requireAuth), `${path}: requireOwnProject after sign-in`);
       assert.ok(own > handlers.indexOf(role.requireWriteAccess), `${path}: after requireWriteAccess`);
-      if (next === 'uploadPanorama') assert.equal(handlers[own + 1].name, 'multerMiddleware', `${path}: before the upload`);
+      // 030: then the verified-completion lock, then the upload (the company is checked first)
+      assert.equal(handlers[own + 1], role.requireUnlockedProject, `${path}: the lock right after the company check`);
+      const upload = next === 'uploadPanorama' ? 'multerMiddleware' : 'uploadProgressPhotos';
+      assert.equal(handlers[own + 2].name, upload, `${path}: before the upload`);
     }
   });
 });

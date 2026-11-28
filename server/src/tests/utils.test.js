@@ -70,7 +70,7 @@ import { financialRecord, phasesReplace, progressSubmit } from '../routes/schema
 
 describe('Week 2 schemas', () => {
   it('accepts a progress update and rejects accomplishment above 100%', () => {
-    const ok = { report_date: '2026-11-15', phases: [{ phase_id: '9f343767-8d98-5863-903c-3bc97288d015', accomplishment: 55 }] };
+    const ok = { report_date: '2026-11-15', description: 'Poured the concrete of section 2.', phases: [{ phase_id: '9f343767-8d98-5863-903c-3bc97288d015', accomplishment: 55 }] };
     assert.equal(progressSubmit.safeParse(ok).success, true);
     assert.equal(progressSubmit.safeParse({ ...ok, phases: [{ ...ok.phases[0], accomplishment: 120 }] }).success, false);
   });

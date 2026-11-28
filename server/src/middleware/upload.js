@@ -54,3 +54,52 @@ export const uploadProof = multer({
     return cb(null, true);
   },
 }).array('proof', 3);
+
+// ---------------------------------------------------------------------------
+// Progress rules (030): a progress report is multipart/form-data
+// ---------------------------------------------------------------------------
+export const PROGRESS_PHOTOS_MESSAGE = 'Attach 1 to 5 reference photos.';
+export const MAX_PROGRESS_PHOTOS = 5;
+
+const progressPhotos = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * MB, files: MAX_PROGRESS_PHOTOS },
+  fileFilter: (_req, file, cb) => {
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype)) return cb(badRequest('The file is not a JPEG, PNG or WebP image.'));
+    return cb(null, true);
+  },
+}).array('photos', MAX_PROGRESS_PHOTOS);
+
+/**
+ * Progress report reference photos: 1–5 JPEG / PNG / WebP up to 10 MB each (field "photos").
+ * More than 5 files answers 400 "Attach 1 to 5 reference photos."; too few is checked by the
+ * controller (after the fields are validated).
+ */
+export function uploadProgressPhotos(req, res, next) {
+  progressPhotos(req, res, (err) => {
+    if (err instanceof multer.MulterError && ['LIMIT_FILE_COUNT', 'LIMIT_UNEXPECTED_FILE'].includes(err.code)) {
+      return next(badRequest(PROGRESS_PHOTOS_MESSAGE, [{ field: 'photos', message: PROGRESS_PHOTOS_MESSAGE }]));
+    }
+    if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+      return next(badRequest('Each reference photo can be at most 10 MB.', [{ field: 'photos', message: 'Each reference photo can be at most 10 MB.' }]));
+    }
+    return next(err);
+  });
+}
+
+/**
+ * Multipart forms that carry nested data send it as one JSON string in the field "payload":
+ * req.body becomes the parsed object (then validated by zod). 400 when it is missing or not JSON.
+ */
+export function parseJsonPayload(req, _res, next) {
+  const raw = req.body?.payload;
+  if (typeof raw !== 'string' || !raw.trim()) return next(badRequest('Send the report fields as JSON in the "payload" field.'));
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('not an object');
+    req.body = parsed;
+    return next();
+  } catch {
+    return next(badRequest('The "payload" field is not valid JSON.'));
+  }
+}

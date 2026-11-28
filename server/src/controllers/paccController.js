@@ -18,7 +18,10 @@
 import { randomUUID } from 'node:crypto';
 import { adminClient } from '../config/supabase.js';
 import { canTransition, isClosedCaseStatus, referralReasons } from '../services/citizenReports.js';
-import { summarizeFinance } from '../services/completion.js';
+import { completionLabel, summarizeFinance } from '../services/completion.js';
+import { verificationState } from '../services/completionVerification.js';
+import { loadVerifications } from './completionController.js';
+import { loadReportPhotos, withActivities } from './phasesController.js';
 import { DOCUMENT_BUCKET, TYPE_LABELS as DOCUMENT_TYPE_LABELS } from './documentsController.js';
 import { BUCKET as PANORAMA_BUCKET } from './imagesController.js';
 import { removeAvatarFile } from '../services/avatars.js';
@@ -122,7 +125,7 @@ export async function projectView(req, res) {
     }
   }
 
-  const [reportRows, history, reviews, findings, cases, phases, progress, financial, imageRows, documentRows] = await Promise.all([
+  const [reportRows, history, reviews, findings, cases, phases, progress, financial, imageRows, documentRows, activities, verifications] = await Promise.all([
     req.db
       .from('citizen_reports')
       .select('id, category, description, status, outcome, case_id, submitted_on')
@@ -138,7 +141,7 @@ export async function projectView(req, res) {
     req.db.from('project_phases').select('*').eq('project_id', id).order('sequence_no').then(unwrap),
     req.db
       .from('progress_updates')
-      .select('id, report_date, overall_progress, remarks, created_at, submitter:profiles!progress_updates_submitted_by_fkey(full_name)')
+      .select('id, report_date, overall_progress, description, remarks, phase_snapshot, activity_snapshot, created_at, submitter:profiles!progress_updates_submitted_by_fkey(full_name)')
       .eq('project_id', id)
       .order('report_date', { ascending: false })
       .order('created_at', { ascending: false })
@@ -158,17 +161,22 @@ export async function projectView(req, res) {
       .eq('project_id', id)
       .order('created_at', { ascending: false })
       .then(unwrap),
+    // 030: sub-activities and the completion verifications (RLS "…: pacc read").
+    req.db.from('phase_activities').select('*').eq('project_id', id).order('sequence_no').then(unwrap),
+    loadVerifications(req.db, id),
   ]);
 
   const files = await inChunks(
     reportRows.map((r) => r.id),
     (chunk) => req.db.from('citizen_report_files').select('id, report_id, storage_path').in('report_id', chunk).order('id'),
   );
-  const [urls, imageUrls, documentUrls] = await Promise.all([
+  const [urls, imageUrls, documentUrls, reportPhotos] = await Promise.all([
     signedUrls('citizen-reports', files.map((f) => f.storage_path)),
     signedUrls(PANORAMA_BUCKET, imageRows.map((r) => r.storage_path)),
     signedUrls(DOCUMENT_BUCKET, documentRows.map((r) => r.storage_path)),
+    loadReportPhotos(req.db, progress.map((u) => u.id)),
   ]);
+  const paccCaseOpen = cases.some((cs) => OPEN_CASE.includes(cs.status));
   const reports = reportRows.map((r) => ({
     ...r,
     files: files.filter((f) => f.report_id === r.id).map((f) => ({ id: f.id, url: urls[f.storage_path] ?? null })),
@@ -177,14 +185,15 @@ export async function projectView(req, res) {
 
   res.json({
     data: {
-      project,
+      project: { ...project, completion_label: completionLabel(project) },
+      completion_verification: verificationState(project, verifications, req.user, { pacc_case_open: paccCaseOpen }),
       reports,
       flag_history: history,
       flag_reviews: reviews.map(({ auditor, ...r }) => ({ ...r, auditor_name: auditor?.full_name ?? null })),
       findings,
       cases,
-      phases,
-      progress_updates: progress.map(({ submitter, ...u }) => ({ ...u, submitted_by_name: submitter?.full_name ?? null })),
+      phases: withActivities(phases, activities),
+      progress_updates: progress.map(({ submitter, ...u }) => ({ ...u, submitted_by_name: submitter?.full_name ?? null, photos: reportPhotos.get(u.id) ?? [] })),
       financial_records: financial.map((r) => ({ ...r, phase_name: r.phase_id ? phaseName[r.phase_id] ?? null : null })),
       finance_summary: summarizeFinance(project, financial),
       images: imageRows.map(({ phase, uploader, storage_path, ...r }) => ({
